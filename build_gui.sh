@@ -15,15 +15,19 @@ fi
 
 # 1. Generate C sources from Vala library
 echo "[1/5] Generating C sources from Vala..."
-if [ ! -d "gen-c" ]; then
-    ./gen_c_sources.sh
-fi
+rm -rf gen-c
+valac --pkg glib-2.0 --pkg gio-unix-2.0 --pkg json-glib-1.0 --pkg posix \
+    --vapidir=vala-extra-vapis --pkg libsodium \
+    libdvx3.vala -C -d gen-c
 
 # 2. Compile generated C code
 echo "[2/5] Compiling C library..."
-gcc -c gen-c/libdvx3.c -o libdvx3.o \
+gcc -c -fPIC gen-c/libdvx3.c -o libdvx3.o \
     $(pkg-config --cflags glib-2.0 gio-unix-2.0 json-glib-1.0 libsodium) \
     -I.
+
+gcc -shared -o libdvx3.so libdvx3.o \
+    $(pkg-config --libs glib-2.0 gio-unix-2.0 json-glib-1.0 libsodium)
 
 # 3. Compile backup-manager implementation
 echo "[3/5] Compiling backup manager library..."
@@ -38,11 +42,12 @@ echo "[4/5] Running Qt MOC..."
 
 # 5. Compile and link GUI
 echo "[5/5] Compiling Qt6 GUI..."
-g++ backup-manager-gui.cpp backup-manager-gui.moc.cpp libdvx3.o \
+g++ -fPIC backup-manager-gui.cpp backup-manager-gui.moc.cpp \
     -o backup-manager-gui \
-    -std=c++17 -fPIC \
+    -std=c++17 \
     $(pkg-config --cflags --libs Qt6Widgets glib-2.0 gio-unix-2.0 json-glib-1.0 libsodium) \
     -lstdc++fs \
+    -L. -ldvx3 -Wl,-rpath,'$ORIGIN' \
     -I.
 
 echo ""

@@ -22,6 +22,30 @@ namespace Dvx3 {
     
     private const size_t SECRETBOX_MAC = Sodium.Symmetric.MAC_BYTES;
 
+    /* Compute directory size recursively */
+    private uint64 compute_directory_size (File dir, string? exclude_path = null) throws Error {
+        uint64 total = 0;
+        var enumerator = dir.enumerate_children (
+            FileAttribute.STANDARD_NAME + "," + FileAttribute.STANDARD_TYPE + "," + FileAttribute.STANDARD_SIZE,
+            FileQueryInfoFlags.NOFOLLOW_SYMLINKS);
+        
+        FileInfo? info = null;
+        while ((info = enumerator.next_file ()) != null) {
+            var child = dir.resolve_relative_path (info.get_name ());
+            var child_path = child.get_path ();
+            
+            if (exclude_path != null && child_path == exclude_path)
+                continue;
+            
+            if (info.get_file_type () == FileType.DIRECTORY) {
+                total += compute_directory_size (child, exclude_path);
+            } else if (info.get_file_type () == FileType.REGULAR) {
+                total += info.get_size ();
+            }
+        }
+        return total;
+    }
+
     /* Big-endian helpers */
     private uint8[] uint64_to_be (uint64 v) {
         uint8[] buf = new uint8[8];
@@ -142,6 +166,10 @@ namespace Dvx3 {
         
         var src_path = src_dir.get_path ();
         
+        /* Calculate source size for progress estimation (compressed will be ~30-50% of this) */
+        uint64 source_size = compute_directory_size (src_dir, exclude_path);
+        uint64 estimated_compressed = source_size / 2; // Rough estimate: 50% compression
+        
         /* Generate salt and derive key */
         var salt = random_bytes (Sodium.CRYPTO_PWHASH_SALTBYTES);
         var master = derive_key (password, salt);
@@ -226,7 +254,7 @@ namespace Dvx3 {
             encoder.write (blk);
             
             if (progress != null)
-                progress (compressed_bytes, compressed_bytes, encoder.cipher_bytes);
+                progress (compressed_bytes, estimated_compressed, encoder.cipher_bytes);
         }
 
         /* Wait for pipeline */

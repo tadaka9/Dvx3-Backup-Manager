@@ -490,7 +490,7 @@ private void encrypt_stream (File src_dir,
     }
 
     string[] zstd_cmd = {
-        "zstd", "-T16", "-22",
+        "zstd", "-T0", "-19",
         "-f", tar_path,
         "-o", zstd_path
     };
