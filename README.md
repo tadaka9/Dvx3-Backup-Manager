@@ -137,7 +137,7 @@ void decrypt_example(void) {
 
 ```
 ┌─────────────────────────────────────────┐
-│ 4 bytes: JSON header length (BE)       │
+│ 4 bytes: JSON header length (BE)        │
 ├─────────────────────────────────────────┤
 │ JSON header:                            │
 │   - salt (base64)                       │
