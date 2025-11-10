@@ -242,7 +242,7 @@ namespace Dvx3 {
             out pipe_stdout,
             null);
 
-        var pipe_in = new GLib.UnixInputStream (pipe_stdout, true);
+        var pipe_in = new UnixInputStream (pipe_stdout, true);
         uint64 compressed_bytes = 0;
 
         /* Read from pipeline, encrypt and write chunks */
@@ -361,7 +361,7 @@ namespace Dvx3 {
             null,
             null);
 
-        var pipe_out = new GLib.UnixOutputStream (pipe_stdin, true);
+        var pipe_out = new UnixOutputStream (pipe_stdin, true);
 
         for (uint64 i = 0; i < chunks; i++) {
             uint8[] nonce = fin.read_bytes((uint)Sodium.Symmetric.NONCE_BYTES).get_data();
