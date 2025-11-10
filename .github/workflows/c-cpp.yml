@@ -31,30 +31,7 @@ jobs:
             qt6-base-dev qt6-base-dev-tools qt6-tools-dev \
             tar zstd file wget
 
-      - name: Prepare VAPI (libsodium)
-        run: |
-          set -e
-          mkdir -p vala-extra-vapis
-          if [ ! -f vala-extra-vapis/libsodium.vapi ]; then
-            echo "libsodium.vapi missing – generating minimal stub" >&2
-            cat > vala-extra-vapis/libsodium.vapi <<'EOF'
-[CCode (cheader_filename = "sodium.h")]
-namespace Sodium {
-  [CCode (cname = "crypto_pwhash_SALTBYTES")] public const size_t CRYPTO_PWHASH_SALTBYTES;
-  [CCode (cname = "crypto_pwhash_ALG_ARGON2ID13")] public const int CRYPTO_PWHASH_ALG_ARGON2ID13;
-  [CCode (cname = "crypto_pwhash")] public static int crypto_pwhash(uint8[] out, ulong outlen, string passwd, ulong passwdlen, uint8[] salt, ulong opslimit, size_t memlimit, int alg);
-  namespace Random { [CCode (cname = "randombytes_buf")] public static void buffer(uint8[] buf); }
-  namespace Symmetric {
-    [CCode (cname = "crypto_secretbox_NONCEBYTES")] public const size_t NONCE_BYTES;
-    [CCode (cname = "crypto_secretbox_KEYBYTES")]  public const size_t KEY_BYTES;
-    [CCode (cname = "crypto_secretbox_MACBYTES")]  public const size_t MAC_BYTES;
-    [CCode (cname = "crypto_secretbox_easy")] public static int secretbox(uint8[] c, uint8[] m, ulong mlen, uint8[] n, uint8[] k);
-    [CCode (cname = "crypto_secretbox_open_easy")] public static int secretbox_open(uint8[] m, uint8[] c, ulong clen, uint8[] n, uint8[] k);
-  }
-}
-EOF
-          fi
-          echo "Using libsodium.vapi:"; ls -la vala-extra-vapis/libsodium.vapi
+      
 
       - name: Build application
         run: |
@@ -86,31 +63,7 @@ EOF
           submodules: recursive
           fetch-depth: 0
       
-      - name: Prepare VAPI (libsodium)
-        run: |
-          set -e
-          mkdir -p vala-extra-vapis
-          if [ ! -f "vala-extra-vapis/libsodium.vapi" ]; then
-            echo "libsodium.vapi missing – generating minimal stub"
-            cat > vala-extra-vapis/libsodium.vapi <<'EOF'
-/* Auto-generated minimal libsodium VAPI stub (CI fallback) */
-[CCode (cheader_filename = "sodium.h")]
-namespace Sodium {
-  [CCode (cname = "crypto_pwhash_SALTBYTES")] public const size_t CRYPTO_PWHASH_SALTBYTES;
-  [CCode (cname = "crypto_pwhash_ALG_ARGON2ID13")] public const int CRYPTO_PWHASH_ALG_ARGON2ID13;
-  [CCode (cname = "crypto_pwhash")] public static int crypto_pwhash(uint8[] out, ulong outlen, string passwd, ulong passwdlen, uint8[] salt, ulong opslimit, size_t memlimit, int alg);
-  namespace Random { [CCode (cname = "randombytes_buf")] public static void buffer(uint8[] buf); }
-  namespace Symmetric {
-    [CCode (cname = "crypto_secretbox_NONCEBYTES")] public const size_t NONCE_BYTES;
-    [CCode (cname = "crypto_secretbox_KEYBYTES")]  public const size_t KEY_BYTES;
-    [CCode (cname = "crypto_secretbox_MACBYTES")]  public const size_t MAC_BYTES;
-    [CCode (cname = "crypto_secretbox_easy")] public static int secretbox(uint8[] c, uint8[] m, ulong mlen, uint8[] n, uint8[] k);
-    [CCode (cname = "crypto_secretbox_open_easy")] public static int secretbox_open(uint8[] m, uint8[] c, ulong clen, uint8[] n, uint8[] k);
-  }
-}
-EOF
-          fi
-          ls -la vala-extra-vapis/libsodium.vapi
+      
 
       - name: Install dependencies
         run: |
@@ -242,32 +195,7 @@ EOF
             curl
             zip
 
-      - name: Prepare VAPI (libsodium)
-        shell: msys2 {0}
-        run: |
-          set -e
-          mkdir -p vala-extra-vapis
-          if [ ! -f "vala-extra-vapis/libsodium.vapi" ]; then
-            printf '%s\n' "libsodium.vapi missing – generating minimal stub" >&2
-            cat > vala-extra-vapis/libsodium.vapi <<'EOF'
-/* Auto-generated minimal libsodium VAPI stub (CI fallback) */
-[CCode (cheader_filename = "sodium.h")]
-namespace Sodium {
-  [CCode (cname = "crypto_pwhash_SALTBYTES")] public const size_t CRYPTO_PWHASH_SALTBYTES;
-  [CCode (cname = "crypto_pwhash_ALG_ARGON2ID13")] public const int CRYPTO_PWHASH_ALG_ARGON2ID13;
-  [CCode (cname = "crypto_pwhash")] public static int crypto_pwhash(uint8[] out, ulong outlen, string passwd, ulong passwdlen, uint8[] salt, ulong opslimit, size_t memlimit, int alg);
-  namespace Random { [CCode (cname = "randombytes_buf")] public static void buffer(uint8[] buf); }
-  namespace Symmetric {
-    [CCode (cname = "crypto_secretbox_NONCEBYTES")] public const size_t NONCE_BYTES;
-    [CCode (cname = "crypto_secretbox_KEYBYTES")]  public const size_t KEY_BYTES;
-    [CCode (cname = "crypto_secretbox_MACBYTES")]  public const size_t MAC_BYTES;
-    [CCode (cname = "crypto_secretbox_easy")] public static int secretbox(uint8[] c, uint8[] m, ulong mlen, uint8[] n, uint8[] k);
-    [CCode (cname = "crypto_secretbox_open_easy")] public static int secretbox_open(uint8[] m, uint8[] c, ulong clen, uint8[] n, uint8[] k);
-  }
-}
-EOF
-          fi
-          ls -la vala-extra-vapis/libsodium.vapi
+      
 
       - name: Build library and CLI
         shell: msys2 {0}
@@ -318,28 +246,7 @@ EOF
         run: |
           # Ensure libsodium.vapi is present on host (mounted into container)
           set -e
-          mkdir -p vala-extra-vapis
-          if [ ! -f "vala-extra-vapis/libsodium.vapi" ]; then
-            echo "libsodium.vapi missing – generating minimal stub"
-            cat > vala-extra-vapis/libsodium.vapi <<'EOF'
-/* Auto-generated minimal libsodium VAPI stub (CI fallback) */
-[CCode (cheader_filename = "sodium.h")]
-namespace Sodium {
-  [CCode (cname = "crypto_pwhash_SALTBYTES")] public const size_t CRYPTO_PWHASH_SALTBYTES;
-  [CCode (cname = "crypto_pwhash_ALG_ARGON2ID13")] public const int CRYPTO_PWHASH_ALG_ARGON2ID13;
-  [CCode (cname = "crypto_pwhash")] public static int crypto_pwhash(uint8[] out, ulong outlen, string passwd, ulong passwdlen, uint8[] salt, ulong opslimit, size_t memlimit, int alg);
-  namespace Random { [CCode (cname = "randombytes_buf")] public static void buffer(uint8[] buf); }
-  namespace Symmetric {
-    [CCode (cname = "crypto_secretbox_NONCEBYTES")] public const size_t NONCE_BYTES;
-    [CCode (cname = "crypto_secretbox_KEYBYTES")]  public const size_t KEY_BYTES;
-    [CCode (cname = "crypto_secretbox_MACBYTES")]  public const size_t MAC_BYTES;
-    [CCode (cname = "crypto_secretbox_easy")] public static int secretbox(uint8[] c, uint8[] m, ulong mlen, uint8[] n, uint8[] k);
-    [CCode (cname = "crypto_secretbox_open_easy")] public static int secretbox_open(uint8[] m, uint8[] c, ulong clen, uint8[] n, uint8[] k);
-  }
-}
-EOF
-          fi
-          ls -la vala-extra-vapis/libsodium.vapi
+          ls -la vala-extra-vapis/libsodium.vapi || true
           docker run --rm --platform linux/arm/v7 \
             -v ${{ github.workspace }}:/workspace -w /workspace debian:trixie bash -c '
               set -e
@@ -378,28 +285,7 @@ EOF
         run: |
           # Ensure libsodium.vapi is present on host (mounted into container)
           set -e
-          mkdir -p vala-extra-vapis
-          if [ ! -f "vala-extra-vapis/libsodium.vapi" ]; then
-            echo "libsodium.vapi missing – generating minimal stub"
-            cat > vala-extra-vapis/libsodium.vapi <<'EOF'
-/* Auto-generated minimal libsodium VAPI stub (CI fallback) */
-[CCode (cheader_filename = "sodium.h")]
-namespace Sodium {
-  [CCode (cname = "crypto_pwhash_SALTBYTES")] public const size_t CRYPTO_PWHASH_SALTBYTES;
-  [CCode (cname = "crypto_pwhash_ALG_ARGON2ID13")] public const int CRYPTO_PWHASH_ALG_ARGON2ID13;
-  [CCode (cname = "crypto_pwhash")] public static int crypto_pwhash(uint8[] out, ulong outlen, string passwd, ulong passwdlen, uint8[] salt, ulong opslimit, size_t memlimit, int alg);
-  namespace Random { [CCode (cname = "randombytes_buf")] public static void buffer(uint8[] buf); }
-  namespace Symmetric {
-    [CCode (cname = "crypto_secretbox_NONCEBYTES")] public const size_t NONCE_BYTES;
-    [CCode (cname = "crypto_secretbox_KEYBYTES")]  public const size_t KEY_BYTES;
-    [CCode (cname = "crypto_secretbox_MACBYTES")]  public const size_t MAC_BYTES;
-    [CCode (cname = "crypto_secretbox_easy")] public static int secretbox(uint8[] c, uint8[] m, ulong mlen, uint8[] n, uint8[] k);
-    [CCode (cname = "crypto_secretbox_open_easy")] public static int secretbox_open(uint8[] m, uint8[] c, ulong clen, uint8[] n, uint8[] k);
-  }
-}
-EOF
-          fi
-          ls -la vala-extra-vapis/libsodium.vapi
+          ls -la vala-extra-vapis/libsodium.vapi || true
           docker run --rm --platform linux/arm64 \
             -v ${{ github.workspace }}:/workspace -w /workspace debian:trixie bash -c '
               set -e
