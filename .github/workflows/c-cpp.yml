@@ -7,12 +7,8 @@
 3. **Windows** (x64)
 4. **Raspberry Pi** (ARMv7/32-bit & ARM64/64-bit)
 
----
-
-## Prerequisites by Platform
-
 ### Linux (Build Host)
-```bash
+
 # Install build tools
 sudo apt install -y valac gcc g++ make cmake pkg-config \
     libglib2.0-dev libjson-glib-dev libsodium-dev \
@@ -24,23 +20,17 @@ chmod +x appimagetool-x86_64.AppImage
 ```
 
 ### macOS
-```bash
 # Install Homebrew, then:
 brew install vala glib json-glib libsodium qt@6 cmake pkg-config
-```
 
 ### Windows (Cross-compile from Linux)
-```bash
 # Install MinGW cross-compiler
 sudo apt install -y mingw-w64 wine64
-```
 
 ### Raspberry Pi
-```bash
 # On Raspberry Pi OS:
 sudo apt install -y valac gcc libglib2.0-dev libjson-glib-dev \
     libsodium-dev qt6-base-dev
-```
 
 ---
 
@@ -49,7 +39,7 @@ sudo apt install -y valac gcc libglib2.0-dev libjson-glib-dev \
 ### 1. Linux AppImage
 
 Create `build-appimage.sh`:
-```bash
+
 #!/bin/bash
 set -e
 
