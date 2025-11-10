@@ -16,38 +16,79 @@ fi
 # 1. Generate C sources from Vala library
 echo "[1/5] Generating C sources from Vala..."
 rm -rf gen-c
-valac --pkg glib-2.0 --pkg gio-unix-2.0 --pkg json-glib-1.0 --pkg posix \
+valac --pkg glib-2.0 --pkg gio-2.0 --pkg json-glib-1.0 --pkg posix \
     --vapidir=vala-extra-vapis --pkg libsodium \
     libdvx3.vala -C -d gen-c
 
 # 2. Compile generated C code
 echo "[2/5] Compiling C library..."
 gcc -c -fPIC gen-c/libdvx3.c -o libdvx3.o \
-    $(pkg-config --cflags glib-2.0 gio-unix-2.0 json-glib-1.0 libsodium) \
+    $(pkg-config --cflags glib-2.0 gio-2.0 json-glib-1.0 libsodium) \
     -I.
 
-gcc -shared -o libdvx3.so libdvx3.o \
-    $(pkg-config --libs glib-2.0 gio-unix-2.0 json-glib-1.0 libsodium)
+# Detect platform for shared library extension
+UNAME_OUT="$(uname -s 2>/dev/null || echo unknown)"
+case "$UNAME_OUT" in
+    MINGW*|MSYS*|CYGWIN*)
+        SHARED_EXT="dll"
+        SHARED_FLAGS="-shared -Wl,--out-implib,libdvx3.dll.a -Wl,--export-all-symbols"
+        ;;
+    Darwin)
+        SHARED_EXT="dylib"
+        SHARED_FLAGS="-dynamiclib -install_name @loader_path/libdvx3.dylib"
+        ;;
+    *)
+        SHARED_EXT="so"
+        SHARED_FLAGS="-shared"
+        ;;
+esac
+
+gcc $SHARED_FLAGS -o libdvx3.$SHARED_EXT libdvx3.o \
+    $(pkg-config --libs glib-2.0 gio-2.0 json-glib-1.0 libsodium)
 
 # 3. Compile backup-manager implementation
 echo "[3/5] Compiling backup manager library..."
 g++ -c -fPIC backup-manager.hpp -o backup-manager-lib.o \
     -std=c++17 \
-    $(pkg-config --cflags glib-2.0 gio-unix-2.0 json-glib-1.0 libsodium) \
+    $(pkg-config --cflags glib-2.0 gio-2.0 json-glib-1.0 libsodium) \
     -I.
 
 # 4. Run MOC on GUI header
 echo "[4/5] Running Qt MOC..."
-/usr/lib/qt6/moc backup-manager-gui.hpp -o backup-manager-gui.moc.cpp
+# Find moc and rcc (works on Linux, macOS, Windows/MSYS2)
+MOC=$(command -v moc6 || command -v moc || command -v moc-qt6 || echo /usr/lib/qt6/bin/moc)
+RCC=$(command -v rcc6 || command -v rcc || command -v rcc-qt6 || echo /usr/lib/qt6/bin/rcc)
+
+$MOC backup-manager-gui.hpp -o backup-manager-gui.moc.cpp
+
+echo "[4b/5] Compiling resources..."
+if [ -f resources.qrc ]; then
+    $RCC resources.qrc -o resources.rcc.cpp
+else
+    echo "Warning: resources.qrc not found; icon will not be embedded"
+    touch resources.rcc.cpp
+fi
 
 # 5. Compile and link GUI
 echo "[5/5] Compiling Qt6 GUI..."
-g++ -fPIC backup-manager-gui.cpp backup-manager-gui.moc.cpp \
+# Set platform-specific rpath
+case "$UNAME_OUT" in
+    MINGW*|MSYS*|CYGWIN*)
+        RPATH_FLAGS=""
+        ;;
+    Darwin)
+        RPATH_FLAGS="-Wl,-rpath,@executable_path"
+        ;;
+    *)
+        RPATH_FLAGS="-Wl,-rpath,\$ORIGIN"
+        ;;
+esac
+
+g++ -fPIC backup-manager-gui.cpp backup-manager-gui.moc.cpp resources.rcc.cpp \
     -o backup-manager-gui \
     -std=c++17 \
-    $(pkg-config --cflags --libs Qt6Widgets glib-2.0 gio-unix-2.0 json-glib-1.0 libsodium) \
-    -lstdc++fs \
-    -L. -ldvx3 -Wl,-rpath,'$ORIGIN' \
+    $(pkg-config --cflags --libs Qt6Widgets glib-2.0 gio-2.0 json-glib-1.0 libsodium) \
+    -L. -ldvx3 $RPATH_FLAGS \
     -I.
 
 echo ""
@@ -55,3 +96,8 @@ echo "✓ Build complete!"
 echo ""
 echo "Run with: ./backup-manager-gui"
 echo ""
+if [ -f icon.png ]; then
+    echo "Icon embedded from icon.png"
+else
+    echo "No icon.png found; place one in project root to customize icon."
+fi
