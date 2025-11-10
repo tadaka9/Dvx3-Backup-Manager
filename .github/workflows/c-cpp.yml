@@ -34,20 +34,11 @@ jobs:
       - name: Prepare VAPI (libsodium)
         run: |
           set -e
-          mkdir -p vala-extra-vapis
-          if [ ! -f "vala-extra-vapis/libsodium.vapi" ]; then
-            echo "libsodium.vapi not found; downloading fallback copy..."
-            URL_MASTER="https://raw.githubusercontent.com/vala-extra-vapis/vala-extra-vapis/master/libsodium.vapi"
-            URL_MAIN="https://raw.githubusercontent.com/vala-extra-vapis/vala-extra-vapis/main/libsodium.vapi"
-            if curl -fsSL "$URL_MASTER" -o vala-extra-vapis/libsodium.vapi; then
-              echo "Downloaded libsodium.vapi from master."
-            elif curl -fsSL "$URL_MAIN" -o vala-extra-vapis/libsodium.vapi; then
-              echo "Downloaded libsodium.vapi from main."
-            else
-              echo "ERROR: Unable to download libsodium.vapi." >&2
-              exit 1
-            fi
+          if [ ! -f vala-extra-vapis/libsodium.vapi ]; then
+            echo "ERROR: vendored libsodium.vapi missing" >&2
+            exit 1
           fi
+          echo "Using vendored libsodium.vapi"
           ls -la vala-extra-vapis/libsodium.vapi
 
       - name: Build application
@@ -85,18 +76,7 @@ jobs:
           set -e
           mkdir -p vala-extra-vapis
           if [ ! -f "vala-extra-vapis/libsodium.vapi" ]; then
-            echo "libsodium.vapi not found; downloading fallback copy..."
-            URL_MASTER="https://raw.githubusercontent.com/vala-extra-vapis/vala-extra-vapis/master/libsodium.vapi"
-            URL_MAIN="https://raw.githubusercontent.com/vala-extra-vapis/vala-extra-vapis/main/libsodium.vapi"
-            if curl -fsSL "$URL_MASTER" -o vala-extra-vapis/libsodium.vapi; then
-              echo "Downloaded libsodium.vapi from master."
-            elif curl -fsSL "$URL_MAIN" -o vala-extra-vapis/libsodium.vapi; then
-              echo "Downloaded libsodium.vapi from main."
-            else
-              echo "ERROR: Unable to download libsodium.vapi." >&2
-              exit 1
-            fi
-          fi
+            echo "ERROR: vendored libsodium.vapi missing" >&2; exit 1; fi
           ls -la vala-extra-vapis/libsodium.vapi
 
       - name: Install dependencies
@@ -234,12 +214,7 @@ jobs:
         run: |
           set -e
           mkdir -p vala-extra-vapis
-          if [ ! -f "vala-extra-vapis/libsodium.vapi" ]; then
-            URL_MASTER="https://raw.githubusercontent.com/vala-extra-vapis/vala-extra-vapis/master/libsodium.vapi"
-            URL_MAIN="https://raw.githubusercontent.com/vala-extra-vapis/vala-extra-vapis/main/libsodium.vapi"
-            curl -fsSL "$URL_MASTER" -o vala-extra-vapis/libsodium.vapi || \
-            curl -fsSL "$URL_MAIN" -o vala-extra-vapis/libsodium.vapi
-          fi
+          if [ ! -f "vala-extra-vapis/libsodium.vapi" ]; then echo "ERROR: vendored libsodium.vapi missing" >&2; exit 1; fi
           ls -la vala-extra-vapis/libsodium.vapi
 
       - name: Build library and CLI
@@ -292,13 +267,7 @@ jobs:
           # Ensure libsodium.vapi is present on host (mounted into container)
           set -e
           mkdir -p vala-extra-vapis
-          if [ ! -f "vala-extra-vapis/libsodium.vapi" ]; then
-            echo "libsodium.vapi not found; downloading fallback copy..."
-            URL_MASTER="https://raw.githubusercontent.com/vala-extra-vapis/vala-extra-vapis/master/libsodium.vapi"
-            URL_MAIN="https://raw.githubusercontent.com/vala-extra-vapis/vala-extra-vapis/main/libsodium.vapi"
-            curl -fsSL "$URL_MASTER" -o vala-extra-vapis/libsodium.vapi || \
-            curl -fsSL "$URL_MAIN" -o vala-extra-vapis/libsodium.vapi
-          fi
+          if [ ! -f "vala-extra-vapis/libsodium.vapi" ]; then echo "ERROR: vendored libsodium.vapi missing" >&2; exit 1; fi
           ls -la vala-extra-vapis/libsodium.vapi
           docker run --rm --platform linux/arm/v7 \
             -v ${{ github.workspace }}:/workspace -w /workspace debian:trixie bash -c '
@@ -339,13 +308,7 @@ jobs:
           # Ensure libsodium.vapi is present on host (mounted into container)
           set -e
           mkdir -p vala-extra-vapis
-          if [ ! -f "vala-extra-vapis/libsodium.vapi" ]; then
-            echo "libsodium.vapi not found; downloading fallback copy..."
-            URL_MASTER="https://raw.githubusercontent.com/vala-extra-vapis/vala-extra-vapis/master/libsodium.vapi"
-            URL_MAIN="https://raw.githubusercontent.com/vala-extra-vapis/vala-extra-vapis/main/libsodium.vapi"
-            curl -fsSL "$URL_MASTER" -o vala-extra-vapis/libsodium.vapi || \
-            curl -fsSL "$URL_MAIN" -o vala-extra-vapis/libsodium.vapi
-          fi
+          if [ ! -f "vala-extra-vapis/libsodium.vapi" ]; then echo "ERROR: vendored libsodium.vapi missing" >&2; exit 1; fi
           ls -la vala-extra-vapis/libsodium.vapi
           docker run --rm --platform linux/arm64 \
             -v ${{ github.workspace }}:/workspace -w /workspace debian:trixie bash -c '
