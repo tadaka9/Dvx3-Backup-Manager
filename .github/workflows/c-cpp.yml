@@ -38,7 +38,6 @@ jobs:
           if [ ! -f vala-extra-vapis/libsodium.vapi ]; then
             echo "libsodium.vapi missing – generating minimal stub" >&2
             cat > vala-extra-vapis/libsodium.vapi <<'EOF'
-/* Auto-generated minimal libsodium VAPI stub (CI fallback) */
 [CCode (cheader_filename = "sodium.h")]
 namespace Sodium {
   [CCode (cname = "crypto_pwhash_SALTBYTES")] public const size_t CRYPTO_PWHASH_SALTBYTES;
