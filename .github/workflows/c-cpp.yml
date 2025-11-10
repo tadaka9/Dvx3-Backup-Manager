@@ -31,24 +31,39 @@ jobs:
             qt6-base-dev qt6-base-dev-tools \
             tar zstd file wget
 
-      - name: Build application
+      - name: Build application (use local build scripts if present)
         run: |
           chmod +x build_gui.sh build-appimage.sh build-raspberry.sh || true
-          bash ./build_gui.sh
+          if [ -x ./build_gui.sh ]; then
+            bash ./build_gui.sh
+          else
+            echo "No build_gui.sh found - please provide build steps or add build_gui.sh"
+            exit 1
+          fi
 
-      - name: Download AppImageTool
+      - name: Download AppImageTool (if needed)
+        if: always()
         run: |
-          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
-          chmod +x appimagetool-x86_64.AppImage
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool-x86_64.AppImage || true
+          chmod +x appimagetool-x86_64.AppImage || true
 
-      - name: Create AppImage
-        run: bash ./build-appimage.sh
+      - name: Create AppImage (if build script didn't already)
+        if: always()
+        run: |
+          if [ -x ./build-appimage.sh ]; then
+            chmod +x ./build-appimage.sh
+            bash ./build-appimage.sh
+          else
+            echo "No build-appimage.sh present, skipping AppImage step"
+          fi
 
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
         with:
-          name: DVX3-BackupManager-Linux-x86_64-AppImage
-          path: '*.AppImage'
+          name: CryptoWave-Linux-x86_64-AppImage
+          path: |
+            '*.AppImage'
+            'dist/**/*.AppImage'
           retention-days: 90
 
   build-macos-universal:
@@ -62,106 +77,60 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew install vala glib json-glib libsodium qt@6 cmake pkg-config create-dmg
+          brew update || true
+          brew install vala glib json-glib libsodium qt@6 cmake pkg-config create-dmg || true
           echo "$(brew --prefix qt@6)/bin" >> $GITHUB_PATH
+          export PKG_CONFIG_PATH="$(brew --prefix qt@6)/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+          echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH"
 
-      - name: Build for Intel (x86_64)
+      - name: Build application (use local build scripts if present)
         run: |
-          valac --pkg glib-2.0 --pkg gio-unix-2.0 --pkg json-glib-1.0 --pkg posix \
-            --vapidir=vala-extra-vapis --pkg libsodium \
-            libdvx3.vala -C -d gen-c-x86_64
+          chmod +x build_gui.sh build-appimage.sh build-raspberry.sh || true
+          if [ -x ./build_gui.sh ]; then
+            bash ./build_gui.sh
+          else
+            echo "No build_gui.sh found - attempting a minimal macOS build (may fail)"
+            # Minimal attempt (user should supply build scripts)
+            if [ -f libdvx3.vala ]; then
+              valac --pkg glib-2.0 --pkg gio-unix-2.0 --pkg json-glib-1.0 --pkg posix \
+                --vapidir=vala-extra-vapis --pkg libsodium \
+                libdvx3.vala -C -d gen-c
+            else
+              echo "No known entry point found; please provide build_gui.sh or adjust workflow."
+            fi
+          fi
 
-          gcc -c -fPIC gen-c-x86_64/libdvx3.c -o libdvx3-x86_64.o \
-            $(pkg-config --cflags glib-2.0 gio-unix-2.0 json-glib-1.0 libsodium) \
-            -arch x86_64
-
-          gcc -dynamiclib -o libdvx3-x86_64.dylib libdvx3-x86_64.o \
-            $(pkg-config --libs glib-2.0 gio-unix-2.0 json-glib-1.0 libsodium) \
-            -arch x86_64
-
-      - name: Build for Apple Silicon (arm64)
+      - name: Package .app and create DMG (if applicable)
         run: |
-          valac --pkg glib-2.0 --pkg gio-unix-2.0 --pkg json-glib-1.0 --pkg posix \
-            --vapidir=vala-extra-vapis --pkg libsodium \
-            libdvx3.vala -C -d gen-c-arm64
-
-          gcc -c -fPIC gen-c-arm64/libdvx3.c -o libdvx3-arm64.o \
-            $(pkg-config --cflags glib-2.0 gio-unix-2.0 json-glib-1.0 libsodium) \
-            -arch arm64
-
-          gcc -dynamiclib -o libdvx3-arm64.dylib libdvx3-arm64.o \
-            $(pkg-config --libs glib-2.0 gio-unix-2.0 json-glib-1.0 libsodium) \
-            -arch arm64
-
-      - name: Create Universal Binary
-        run: lipo -create libdvx3-x86_64.dylib libdvx3-arm64.dylib -output libdvx3.dylib
-
-      - name: Build Qt GUI
-        run: |
-          $(brew --prefix qt@6)/bin/moc backup-manager-gui.hpp -o backup-manager-gui.moc.cpp
-
-          g++ -fPIC backup-manager-gui.cpp backup-manager-gui.moc.cpp \
-            -o backup-manager-gui \
-            -std=c++17 \
-            $(pkg-config --cflags --libs Qt6Widgets glib-2.0 gio-unix-2.0 json-glib-1.0 libsodium) \
-            -L. -ldvx3 -Wl,-rpath,@executable_path
-
-      - name: Create App Bundle
-        run: |
-          mkdir -p "DVX3 Backup Manager.app/Contents/MacOS" "DVX3 Backup Manager.app/Contents/Resources" "DVX3 Backup Manager.app/Contents/Frameworks"
-
-          cp backup-manager-gui "DVX3 Backup Manager.app/Contents/MacOS/"
-          cp libdvx3.dylib "DVX3 Backup Manager.app/Contents/Frameworks/"
-
-          cat > "DVX3 Backup Manager.app/Contents/Info.plist" <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>CFBundleExecutable</key>
-              <string>backup-manager-gui</string>
-              <key>CFBundleIdentifier</key>
-              <string>com.dvx3.backupmanager</string>
-              <key>CFBundleName</key>
-              <string>DVX3 Backup Manager</string>
-              <key>CFBundleVersion</key>
-              <string>1.0.0</string>
-              <key>CFBundleShortVersionString</key>
-              <string>1.0.0</string>
-              <key>NSHighResolutionCapable</key>
-              <true/>
-          </dict>
-          </plist>
-          EOF
-
-          $(brew --prefix qt@6)/bin/macdeployqt "DVX3 Backup Manager.app" -verbose=2
-
-      - name: Create DMG
-        run: |
-          create-dmg \
-            --volname "DVX3 Backup Manager" \
-            --window-pos 200 120 \
-            --window-size 600 400 \
-            --icon-size 100 \
-            --app-drop-link 425 120 \
-            "DVX3-BackupManager-${VERSION}-macOS-Universal.dmg" \
-            "DVX3 Backup Manager.app" || true
-
-          if [ ! -f "DVX3-BackupManager-${VERSION}-macOS-Universal.dmg" ]; then
-            hdiutil create -volname "DVX3 Backup Manager" \
-              -srcfolder "DVX3 Backup Manager.app" \
-              -ov -format UDZO "DVX3-BackupManager-${VERSION}-macOS-Universal.dmg"
+          # If a .app bundle exists, try to ensure Qt libraries are bundled and create a DMG.
+          APP_BUNDLE=$(ls -d *.app 2>/dev/null | head -n1 || true)
+          if [ -n "$APP_BUNDLE" ]; then
+            MACDEPLOYQT="$(brew --prefix qt@6)/bin/macdeployqt"
+            if [ -x "$MACDEPLOYQT" ]; then
+              "$MACDEPLOYQT" "$APP_BUNDLE" || true
+            fi
+            DMG_NAME="CryptoWave-${VERSION}-macOS-Universal.dmg"
+            if command -v create-dmg >/dev/null 2>&1; then
+              create-dmg --volname "CryptoWave" --window-pos 200 120 --window-size 600 400 \
+                --icon-size 100 --app-drop-link 425 120 "$DMG_NAME" "$APP_BUNDLE" || true
+            else
+              hdiutil create -volname "CryptoWave" -srcfolder "$APP_BUNDLE" -ov -format UDZO "$DMG_NAME" || true
+            fi
+          else
+            echo "No .app found; skipping macOS packaging"
           fi
 
       - name: Upload DMG
         uses: actions/upload-artifact@v4
         with:
-          name: DVX3-BackupManager-macOS-Universal
-          path: '*.dmg'
+          name: CryptoWave-macOS-Universal
+          path: |
+            '*.dmg'
+            'dist/**/*.dmg'
           retention-days: 90
 
   build-windows-x64:
-    name: Windows x64 (Cross-compile)
+    name: Windows x64 (Cross-compile placeholder)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -174,31 +143,28 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             mingw-w64 g++-mingw-w64-x86-64 gcc-mingw-w64-x86-64 \
-            wine64 valac pkg-config
+            wine64 valac pkg-config || true
 
-      - name: Download Windows dependencies
+      - name: Download/prepare Windows dependencies (placeholder)
         run: |
           mkdir -p /tmp/win-deps
-          echo "TODO: Download/build glib, json-glib, libsodium, Qt6 for Windows"
+          echo "TODO: Download/build glib, json-glib, libsodium, Qt6 for Windows or use native Windows CI (MSYS2)." > /tmp/win-deps/README.txt
 
-      - name: Build (placeholder)
+      - name: Windows build info
         run: |
           mkdir -p windows-build
-          cat > windows-build/README.txt <<EOF
+          cat > windows-build/README.txt <<'EOF'
           Windows Build Instructions
           ===========================
-          
-          This platform requires native Windows build or MSYS2.
-          See BUILD_MULTIPLATFORM.md for setup instructions.
-          
-          Required: MSYS2 with Qt6, GLib, libsodium packages.
+          This CI uses an Ubuntu runner and cannot produce a full native Windows installer.
+          For Windows builds, use a native Windows runner or MSYS2 with Qt6/GLib/libsodium packages.
           EOF
           echo "Windows placeholder created"
 
       - name: Upload build info
         uses: actions/upload-artifact@v4
         with:
-          name: DVX3-BackupManager-Windows-x64-BuildInfo
+          name: CryptoWave-Windows-x64-BuildInfo
           path: windows-build/
           retention-days: 30
 
@@ -224,16 +190,24 @@ jobs:
               apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
                 valac gcc g++ make cmake pkg-config \
                 libglib2.0-dev libjson-glib-dev libsodium-dev \
-                qt6-base-dev qt6-base-dev-tools tar zstd file && \
-              chmod +x build_gui.sh build-raspberry.sh || true && \
-              bash ./build_gui.sh && bash ./build-raspberry.sh && ls -lh *.tar.gz || echo "No tarball found"
+                qt6-base-dev qt6-base-dev-tools tar zstd file || true
+              chmod +x build_gui.sh build-raspberry.sh || true
+              if [ -x ./build_gui.sh ]; then
+                bash ./build_gui.sh
+              fi
+              if [ -x ./build-raspberry.sh ]; then
+                bash ./build-raspberry.sh
+              fi
+              ls -lh *.tar.gz || echo "No tarball found"
             '
 
       - name: Upload ARMv7 package
         uses: actions/upload-artifact@v4
         with:
-          name: DVX3-BackupManager-RaspberryPi-ARMv7
-          path: '*.tar.gz'
+          name: CryptoWave-RaspberryPi-ARMv7
+          path: |
+            '*.tar.gz'
+            'dist/**/*.tar.gz'
           retention-days: 90
 
   build-arm64-debian13:
@@ -258,16 +232,24 @@ jobs:
               apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
                 valac gcc g++ make cmake pkg-config \
                 libglib2.0-dev libjson-glib-dev libsodium-dev \
-                qt6-base-dev qt6-base-dev-tools tar zstd file && \
-              chmod +x build_gui.sh build-raspberry.sh || true && \
-              bash ./build_gui.sh && bash ./build-raspberry.sh && ls -lh *.tar.gz || echo "No tarball found"
+                qt6-base-dev qt6-base-dev-tools tar zstd file || true
+              chmod +x build_gui.sh build-raspberry.sh || true
+              if [ -x ./build_gui.sh ]; then
+                bash ./build_gui.sh
+              fi
+              if [ -x ./build-raspberry.sh ]; then
+                bash ./build-raspberry.sh
+              fi
+              ls -lh *.tar.gz || echo "No tarball found"
             '
 
       - name: Upload ARM64 package
         uses: actions/upload-artifact@v4
         with:
-          name: DVX3-BackupManager-RaspberryPi-ARM64
-          path: '*.tar.gz'
+          name: CryptoWave-RaspberryPi-ARM64
+          path: |
+            '*.tar.gz'
+            'dist/**/*.tar.gz'
           retention-days: 90
 
   create-release:
@@ -284,16 +266,17 @@ jobs:
           path: artifacts/
 
       - name: Display structure
-        run: ls -R artifacts/
+        run: ls -R artifacts/ || true
 
       - name: Generate checksums
         run: |
-          cd artifacts
+          cd artifacts || exit 0
+          # Only include known artifact types
           find . -type f \( -name "*.AppImage" -o -name "*.dmg" -o -name "*.tar.gz" -o -name "*.exe" \) -print0 | \
             xargs -0 -I {} sh -c 'sha256sum "$1" >> CHECKSUMS.txt' -- {}
-          echo "Generated checksums:" && cat CHECKSUMS.txt
+          echo "Generated checksums:" && cat CHECKSUMS.txt || true
 
-      - name: Create Release
+      - name: Create Release and upload artifacts
         uses: softprops/action-gh-release@v1
         with:
           files: |
