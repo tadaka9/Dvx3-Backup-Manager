@@ -80,7 +80,7 @@ jobs:
 
       - name: Build for Intel (x86_64)
         run: |
-          valac --pkg glib-2.0 --pkg gio-2.0 --pkg json-glib-1.0 --pkg posix \
+          valac --pkg glib-2.0 --pkg gio-2.0 --pkg gio-unix-2.0 --pkg json-glib-1.0 --pkg posix \
             --vapidir=vala-extra-vapis --pkg libsodium \
             libdvx3.vala -C -d gen-c-x86_64
 
@@ -94,7 +94,7 @@ jobs:
 
       - name: Build for Apple Silicon (arm64)
         run: |
-          valac --pkg glib-2.0 --pkg gio-2.0 --pkg json-glib-1.0 --pkg posix \
+          valac --pkg glib-2.0 --pkg gio-2.0 --pkg gio-unix-2.0 --pkg json-glib-1.0 --pkg posix \
             --vapidir=vala-extra-vapis --pkg libsodium \
             libdvx3.vala -C -d gen-c-arm64
 

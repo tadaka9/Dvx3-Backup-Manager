@@ -16,18 +16,42 @@ fi
 # 1. Generate C sources from Vala library
 echo "[1/5] Generating C sources from Vala..."
 rm -rf gen-c
-valac --pkg glib-2.0 --pkg gio-2.0 --pkg json-glib-1.0 --pkg posix \
+
+# Detect platform for package selection
+UNAME_OUT="$(uname -s 2>/dev/null || echo unknown)"
+case "$UNAME_OUT" in
+    MINGW*|MSYS*|CYGWIN*)
+        # Windows: gio-2.0 only (no gio-unix)
+        GIO_PKG="gio-2.0"
+        ;;
+    *)
+        # Linux/macOS: needs gio-unix-2.0 for UnixInputStream/UnixOutputStream
+        GIO_PKG="gio-2.0 --pkg gio-unix-2.0"
+        ;;
+esac
+
+valac --pkg glib-2.0 --pkg $GIO_PKG --pkg json-glib-1.0 --pkg posix \
     --vapidir=vala-extra-vapis --pkg libsodium \
     libdvx3.vala -C -d gen-c
 
 # 2. Compile generated C code
 echo "[2/5] Compiling C library..."
+
+# Set GIO libs based on platform
+case "$UNAME_OUT" in
+    MINGW*|MSYS*|CYGWIN*)
+        GIO_LIBS="gio-2.0"
+        ;;
+    *)
+        GIO_LIBS="gio-2.0 gio-unix-2.0"
+        ;;
+esac
+
 gcc -c -fPIC gen-c/libdvx3.c -o libdvx3.o \
-    $(pkg-config --cflags glib-2.0 gio-2.0 json-glib-1.0 libsodium) \
+    $(pkg-config --cflags glib-2.0 $GIO_LIBS json-glib-1.0 libsodium) \
     -I.
 
-# Detect platform for shared library extension
-UNAME_OUT="$(uname -s 2>/dev/null || echo unknown)"
+# Shared library extension (UNAME_OUT already set above)
 case "$UNAME_OUT" in
     MINGW*|MSYS*|CYGWIN*)
         SHARED_EXT="dll"
@@ -44,13 +68,13 @@ case "$UNAME_OUT" in
 esac
 
 gcc $SHARED_FLAGS -o libdvx3.$SHARED_EXT libdvx3.o \
-    $(pkg-config --libs glib-2.0 gio-2.0 json-glib-1.0 libsodium)
+    $(pkg-config --libs glib-2.0 $GIO_LIBS json-glib-1.0 libsodium)
 
 # 3. Compile backup-manager implementation
 echo "[3/5] Compiling backup manager library..."
 g++ -c -fPIC backup-manager.hpp -o backup-manager-lib.o \
     -std=c++17 \
-    $(pkg-config --cflags glib-2.0 gio-2.0 json-glib-1.0 libsodium) \
+    $(pkg-config --cflags glib-2.0 $GIO_LIBS json-glib-1.0 libsodium) \
     -I.
 
 # 4. Run MOC on GUI header
@@ -87,7 +111,7 @@ esac
 g++ -fPIC backup-manager-gui.cpp backup-manager-gui.moc.cpp resources.rcc.cpp \
     -o backup-manager-gui \
     -std=c++17 \
-    $(pkg-config --cflags --libs Qt6Widgets glib-2.0 gio-2.0 json-glib-1.0 libsodium) \
+    $(pkg-config --cflags --libs Qt6Widgets glib-2.0 $GIO_LIBS json-glib-1.0 libsodium) \
     -L. -ldvx3 $RPATH_FLAGS \
     -I.
 
