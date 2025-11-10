@@ -31,6 +31,14 @@ jobs:
             qt6-base-dev qt6-base-dev-tools qt6-tools-dev \
             tar zstd file wget
 
+      - name: Verify submodules
+        run: |
+          if [ ! -f "vala-extra-vapis/libsodium.vapi" ]; then
+            echo "Submodule not initialized, forcing update..."
+            git submodule update --init --recursive --depth 1
+          fi
+          ls -la vala-extra-vapis/libsodium.vapi
+
       - name: Build application
         run: |
           chmod +x build_gui.sh build-appimage.sh build-raspberry.sh || true
@@ -63,10 +71,11 @@ jobs:
       
       - name: Verify submodules
         run: |
-          if [ ! -f "vala-extra-vapis/libsodium.vapi" ]; then
-            git submodule update --init --recursive --depth 1
-          fi
+          echo "Forcing submodule initialization..."
+          git submodule update --init --recursive --force
           ls -la vala-extra-vapis/libsodium.vapi
+          echo "Submodule contents:"
+          ls -la vala-extra-vapis/ | head -20
 
       - name: Install dependencies
         run: |
@@ -226,8 +235,10 @@ jobs:
 
       - name: Build in ARM container
         run: |
-          # Ensure submodules are present
-          git submodule update --init --recursive --depth 1 || true
+          # Force submodule initialization
+          echo "Forcing submodule update..."
+          git submodule update --init --recursive --force
+          ls -la vala-extra-vapis/libsodium.vapi
           docker run --rm --platform linux/arm/v7 \
             -v ${{ github.workspace }}:/workspace -w /workspace debian:trixie bash -c '
               set -e
@@ -235,7 +246,8 @@ jobs:
                 valac gcc g++ make cmake pkg-config git \
                 libglib2.0-dev libjson-glib-dev libsodium-dev \
                 qt6-base-dev qt6-base-dev-tools qt6-tools-dev tar zstd file && \
-              test -f vala-extra-vapis/libsodium.vapi || echo "Warning: libsodium.vapi not found" && \
+              echo "Verifying submodule in container..." && \
+              ls -la vala-extra-vapis/libsodium.vapi && \
               chmod +x build_gui.sh build-raspberry.sh || true && \
               bash ./build_gui.sh && bash ./build-raspberry.sh && ls -lh *.tar.gz || echo "No tarball found"
             '
@@ -263,8 +275,10 @@ jobs:
 
       - name: Build in ARM64 container
         run: |
-          # Ensure submodules are present
-          git submodule update --init --recursive --depth 1 || true
+          # Force submodule initialization
+          echo "Forcing submodule update..."
+          git submodule update --init --recursive --force
+          ls -la vala-extra-vapis/libsodium.vapi
           docker run --rm --platform linux/arm64 \
             -v ${{ github.workspace }}:/workspace -w /workspace debian:trixie bash -c '
               set -e
@@ -272,7 +286,8 @@ jobs:
                 valac gcc g++ make cmake pkg-config git \
                 libglib2.0-dev libjson-glib-dev libsodium-dev \
                 qt6-base-dev qt6-base-dev-tools qt6-tools-dev tar zstd file && \
-              test -f vala-extra-vapis/libsodium.vapi || echo "Warning: libsodium.vapi not found" && \
+              echo "Verifying submodule in container..." && \
+              ls -la vala-extra-vapis/libsodium.vapi && \
               chmod +x build_gui.sh build-raspberry.sh || true && \
               bash ./build_gui.sh && bash ./build-raspberry.sh && ls -lh *.tar.gz || echo "No tarball found"
             '
