@@ -31,7 +31,10 @@ jobs:
             qt6-base-dev qt6-base-dev-tools qt6-tools-dev \
             tar zstd file wget
 
-      
+      - name: Verify VAPI
+        run: |
+          ls -la vala-extra-vapis/libsodium.vapi
+          echo "libsodium.vapi found and ready"
 
       - name: Build application
         run: |
@@ -69,6 +72,11 @@ jobs:
         run: |
           brew install vala glib json-glib libsodium qt@6 cmake pkg-config create-dmg
           echo "$(brew --prefix qt@6)/bin" >> $GITHUB_PATH
+
+      - name: Verify VAPI
+        run: |
+          ls -la vala-extra-vapis/libsodium.vapi
+          echo "libsodium.vapi found and ready"
 
       - name: Build for Intel (x86_64)
         run: |
@@ -195,7 +203,11 @@ jobs:
             curl
             zip
 
-      
+      - name: Verify VAPI
+        shell: msys2 {0}
+        run: |
+          ls -la vala-extra-vapis/libsodium.vapi
+          echo "libsodium.vapi found and ready"
 
       - name: Build library and CLI
         shell: msys2 {0}
