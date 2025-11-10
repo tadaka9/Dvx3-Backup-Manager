@@ -31,11 +31,22 @@ jobs:
             qt6-base-dev qt6-base-dev-tools qt6-tools-dev \
             tar zstd file wget
 
-      - name: Verify submodules
+      - name: Prepare VAPI (libsodium)
         run: |
+          set -e
+          mkdir -p vala-extra-vapis
           if [ ! -f "vala-extra-vapis/libsodium.vapi" ]; then
-            echo "Submodule not initialized, forcing update..."
-            git submodule update --init --recursive --depth 1
+            echo "libsodium.vapi not found; downloading fallback copy..."
+            URL_MASTER="https://raw.githubusercontent.com/vala-extra-vapis/vala-extra-vapis/master/libsodium.vapi"
+            URL_MAIN="https://raw.githubusercontent.com/vala-extra-vapis/vala-extra-vapis/main/libsodium.vapi"
+            if curl -fsSL "$URL_MASTER" -o vala-extra-vapis/libsodium.vapi; then
+              echo "Downloaded libsodium.vapi from master."
+            elif curl -fsSL "$URL_MAIN" -o vala-extra-vapis/libsodium.vapi; then
+              echo "Downloaded libsodium.vapi from main."
+            else
+              echo "ERROR: Unable to download libsodium.vapi." >&2
+              exit 1
+            fi
           fi
           ls -la vala-extra-vapis/libsodium.vapi
 
@@ -69,13 +80,24 @@ jobs:
           submodules: recursive
           fetch-depth: 0
       
-      - name: Verify submodules
+      - name: Prepare VAPI (libsodium)
         run: |
-          echo "Forcing submodule initialization..."
-          git submodule update --init --recursive --force
+          set -e
+          mkdir -p vala-extra-vapis
+          if [ ! -f "vala-extra-vapis/libsodium.vapi" ]; then
+            echo "libsodium.vapi not found; downloading fallback copy..."
+            URL_MASTER="https://raw.githubusercontent.com/vala-extra-vapis/vala-extra-vapis/master/libsodium.vapi"
+            URL_MAIN="https://raw.githubusercontent.com/vala-extra-vapis/vala-extra-vapis/main/libsodium.vapi"
+            if curl -fsSL "$URL_MASTER" -o vala-extra-vapis/libsodium.vapi; then
+              echo "Downloaded libsodium.vapi from master."
+            elif curl -fsSL "$URL_MAIN" -o vala-extra-vapis/libsodium.vapi; then
+              echo "Downloaded libsodium.vapi from main."
+            else
+              echo "ERROR: Unable to download libsodium.vapi." >&2
+              exit 1
+            fi
+          fi
           ls -la vala-extra-vapis/libsodium.vapi
-          echo "Submodule contents:"
-          ls -la vala-extra-vapis/ | head -20
 
       - name: Install dependencies
         run: |
@@ -235,9 +257,16 @@ jobs:
 
       - name: Build in ARM container
         run: |
-          # Force submodule initialization
-          echo "Forcing submodule update..."
-          git submodule update --init --recursive --force
+          # Ensure libsodium.vapi is present on host (mounted into container)
+          set -e
+          mkdir -p vala-extra-vapis
+          if [ ! -f "vala-extra-vapis/libsodium.vapi" ]; then
+            echo "libsodium.vapi not found; downloading fallback copy..."
+            URL_MASTER="https://raw.githubusercontent.com/vala-extra-vapis/vala-extra-vapis/master/libsodium.vapi"
+            URL_MAIN="https://raw.githubusercontent.com/vala-extra-vapis/vala-extra-vapis/main/libsodium.vapi"
+            curl -fsSL "$URL_MASTER" -o vala-extra-vapis/libsodium.vapi || \
+            curl -fsSL "$URL_MAIN" -o vala-extra-vapis/libsodium.vapi
+          fi
           ls -la vala-extra-vapis/libsodium.vapi
           docker run --rm --platform linux/arm/v7 \
             -v ${{ github.workspace }}:/workspace -w /workspace debian:trixie bash -c '
@@ -246,7 +275,7 @@ jobs:
                 valac gcc g++ make cmake pkg-config git \
                 libglib2.0-dev libjson-glib-dev libsodium-dev \
                 qt6-base-dev qt6-base-dev-tools qt6-tools-dev tar zstd file && \
-              echo "Verifying submodule in container..." && \
+              echo "Verifying VAPI in container..." && \
               ls -la vala-extra-vapis/libsodium.vapi && \
               chmod +x build_gui.sh build-raspberry.sh || true && \
               bash ./build_gui.sh && bash ./build-raspberry.sh && ls -lh *.tar.gz || echo "No tarball found"
@@ -275,9 +304,16 @@ jobs:
 
       - name: Build in ARM64 container
         run: |
-          # Force submodule initialization
-          echo "Forcing submodule update..."
-          git submodule update --init --recursive --force
+          # Ensure libsodium.vapi is present on host (mounted into container)
+          set -e
+          mkdir -p vala-extra-vapis
+          if [ ! -f "vala-extra-vapis/libsodium.vapi" ]; then
+            echo "libsodium.vapi not found; downloading fallback copy..."
+            URL_MASTER="https://raw.githubusercontent.com/vala-extra-vapis/vala-extra-vapis/master/libsodium.vapi"
+            URL_MAIN="https://raw.githubusercontent.com/vala-extra-vapis/vala-extra-vapis/main/libsodium.vapi"
+            curl -fsSL "$URL_MASTER" -o vala-extra-vapis/libsodium.vapi || \
+            curl -fsSL "$URL_MAIN" -o vala-extra-vapis/libsodium.vapi
+          fi
           ls -la vala-extra-vapis/libsodium.vapi
           docker run --rm --platform linux/arm64 \
             -v ${{ github.workspace }}:/workspace -w /workspace debian:trixie bash -c '
@@ -286,7 +322,7 @@ jobs:
                 valac gcc g++ make cmake pkg-config git \
                 libglib2.0-dev libjson-glib-dev libsodium-dev \
                 qt6-base-dev qt6-base-dev-tools qt6-tools-dev tar zstd file && \
-              echo "Verifying submodule in container..." && \
+              echo "Verifying VAPI in container..." && \
               ls -la vala-extra-vapis/libsodium.vapi && \
               chmod +x build_gui.sh build-raspberry.sh || true && \
               bash ./build_gui.sh && bash ./build-raspberry.sh && ls -lh *.tar.gz || echo "No tarball found"
