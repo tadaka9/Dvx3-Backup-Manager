@@ -33,8 +33,8 @@ jobs:
           
       - name: Build application
         run: |
-          chmod +x build_gui.sh
-          ./build_gui.sh
+          chmod +x build_gui.sh build-appimage.sh build-raspberry.sh || true
+          bash ./build_gui.sh
           
       - name: Download AppImageTool
         run: |
@@ -43,8 +43,7 @@ jobs:
           
       - name: Create AppImage
         run: |
-          chmod +x build-appimage.sh
-          ./build-appimage.sh
+          bash ./build-appimage.sh
           
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
@@ -191,13 +190,17 @@ jobs:
           
       - name: Build (placeholder)
         run: |
-          echo "Windows cross-compilation requires pre-built dependencies"
-          echo "See BUILD_MULTIPLATFORM.md for manual build instructions"
-          echo "Or use MSYS2 on native Windows"
-          
-          # Create placeholder
           mkdir -p windows-build
-          echo "Build on Windows with MSYS2 or Visual Studio" > windows-build/README.txt
+          cat > windows-build/README.txt << 'EOF'
+          Windows Build Instructions
+          ===========================
+          
+          This platform requires native Windows build or MSYS2.
+          See BUILD_MULTIPLATFORM.md for setup instructions.
+          
+          Required: MSYS2 with Qt6, GLib, libsodium packages.
+          EOF
+          echo "Windows placeholder created"
           
       - name: Upload build info
         uses: actions/upload-artifact@v4
@@ -227,15 +230,16 @@ jobs:
             -w /workspace \
             debian:trixie \
             bash -c '
+              set -e
               apt-get update && \
               DEBIAN_FRONTEND=noninteractive apt-get install -y \
                 valac gcc g++ make cmake pkg-config \
                 libglib2.0-dev libjson-glib-dev libsodium-dev \
-                qt6-base-dev qt6-base-dev-tools tar zstd && \
-              chmod +x build_gui.sh && \
-              ./build_gui.sh && \
-              chmod +x build-raspberry.sh && \
-              ./build-raspberry.sh
+                qt6-base-dev qt6-base-dev-tools tar zstd file && \
+              chmod +x build_gui.sh build-raspberry.sh || true && \
+              bash ./build_gui.sh && \
+              bash ./build-raspberry.sh && \
+              ls -lh *.tar.gz || echo "No tarball found"
             '
             
       - name: Upload ARMv7 package
@@ -266,15 +270,16 @@ jobs:
             -w /workspace \
             debian:trixie \
             bash -c '
+              set -e
               apt-get update && \
               DEBIAN_FRONTEND=noninteractive apt-get install -y \
                 valac gcc g++ make cmake pkg-config \
                 libglib2.0-dev libjson-glib-dev libsodium-dev \
-                qt6-base-dev qt6-base-dev-tools tar zstd && \
-              chmod +x build_gui.sh && \
-              ./build_gui.sh && \
-              chmod +x build-raspberry.sh && \
-              ./build-raspberry.sh
+                qt6-base-dev qt6-base-dev-tools tar zstd file && \
+              chmod +x build_gui.sh build-raspberry.sh || true && \
+              bash ./build_gui.sh && \
+              bash ./build-raspberry.sh && \
+              ls -lh *.tar.gz || echo "No tarball found"
             '
             
       - name: Upload ARM64 package
