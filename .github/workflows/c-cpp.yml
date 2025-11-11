@@ -217,9 +217,26 @@ jobs:
         shell: msys2 {0}
         run: |
           set -e
-          moc backup-manager-gui.hpp -o backup-manager-gui.moc.cpp
+          # Find Qt tools in MSYS2/MinGW
+          if command -v moc-qt6 >/dev/null 2>&1; then
+            MOC=moc-qt6
+            RCC=rcc-qt6
+          elif command -v moc6 >/dev/null 2>&1; then
+            MOC=moc6
+            RCC=rcc6
+          elif command -v moc >/dev/null 2>&1; then
+            MOC=moc
+            RCC=rcc
+          else
+            echo "Error: moc not found in PATH"
+            echo "Qt6 tools location:"
+            find /mingw64 -name "moc*" -o -name "rcc*" 2>/dev/null || true
+            exit 1
+          fi
+          
+          $MOC backup-manager-gui.hpp -o backup-manager-gui.moc.cpp
           if [ -f resources.qrc ]; then
-            rcc resources.qrc -o resources.rcc.cpp
+            $RCC resources.qrc -o resources.rcc.cpp
           fi
           g++ backup-manager-gui.cpp backup-manager-gui.moc.cpp resources.rcc.cpp \
             -o backup-manager-gui.exe \
