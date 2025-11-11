@@ -9,7 +9,6 @@
 
 using GLib;
 using Json;
-using Posix;
 using Sodium;
 
 namespace Dvx3 {
