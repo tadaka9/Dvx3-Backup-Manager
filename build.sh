@@ -18,7 +18,7 @@ case "$UNAME_OUT" in
         ;;
 esac
 
-PACKAGES="--pkg glib-2.0 --pkg $GIO_PKG --pkg json-glib-1.0 --pkg posix --pkg libsodium"
+PACKAGES="--pkg glib-2.0 --pkg $GIO_PKG --pkg json-glib-1.0 --pkg libsodium"
 
 case "$PLATFORM" in
     os_windows)

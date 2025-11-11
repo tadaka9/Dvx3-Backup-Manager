@@ -32,7 +32,7 @@ case "$UNAME_OUT" in
         ;;
 esac
 
-valac --pkg glib-2.0 --pkg $GIO_PKG --pkg json-glib-1.0 --pkg posix \
+valac --pkg glib-2.0 --pkg $GIO_PKG --pkg json-glib-1.0 \
     --vapidir=vala-extra-vapis --pkg libsodium \
     $VALA_DEFINES \
     libdvx3.vala -C -d gen-c
