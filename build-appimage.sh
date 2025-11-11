@@ -6,11 +6,14 @@ APPDIR="DVX3BackupManager.AppDir"
 
 echo "Building Dvx3 Backup Manager AppImage..."
 
-# Clean previous build
+# Clean previous AppDir
 rm -rf "$APPDIR" Dvx3-BackupManager-*.AppImage
 
-# Build the application
-./build_gui.sh
+# Build the application if binaries don't exist
+if [ ! -f backup-manager-gui ] || [ ! -f libdvx3.so ]; then
+    echo "Building GUI application..."
+    ./build_gui.sh
+fi
 
 # Create AppDir structure
 mkdir -p "$APPDIR/usr/bin"
@@ -23,7 +26,7 @@ cp backup-manager-gui "$APPDIR/usr/bin/"
 cp libdvx3.so "$APPDIR/usr/lib/"
 
 # Copy Qt plugins
-QT_PLUGIN_PATH=$(qmake6 -query QT_INSTALL_PLUGINS 2>/dev/null || echo "/usr/lib/qt6/plugins")
+QT_PLUGIN_PATH=$(qmake6 -query QT_INSTALL_PLUGINS 2>/dev/null || qmake -query QT_INSTALL_PLUGINS 2>/dev/null || echo "/usr/lib/qt6/plugins")
 if [ -d "$QT_PLUGIN_PATH" ]; then
     mkdir -p "$APPDIR/usr/plugins"
     [ -d "$QT_PLUGIN_PATH/platforms" ] && cp -r "$QT_PLUGIN_PATH/platforms" "$APPDIR/usr/plugins/"
@@ -98,7 +101,7 @@ fi
 
 # Build AppImage (use --appimage-extract-and-run if FUSE is not available)
 if [ -e /dev/fuse ]; then
-    ARCH=x86_64 ./appimagetool-x86_64.AppImage "$APPDIR" "DVX3-BackupManager-${VERSION}-x86_64.AppImage"
+    ARCH=x86_64 ./appimagetool-x86_64.AppImage "$APPDIR" "Dvx3-BackupManager-${VERSION}-x86_64.AppImage"
 else
     echo "FUSE not available, using --appimage-extract-and-run"
     ARCH=x86_64 ./appimagetool-x86_64.AppImage --appimage-extract-and-run "$APPDIR" "Dvx3-BackupManager-${VERSION}-x86_64.AppImage"
@@ -106,4 +109,4 @@ fi
 
 echo ""
 echo "✓ AppImage created successfully!"
-ls -lh DVX3-BackupManager-${VERSION}-x86_64.AppImage
+ls -lh Dvx3-BackupManager-${VERSION}-x86_64.AppImage 2>/dev/null || ls -lh *.AppImage
