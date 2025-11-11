@@ -259,16 +259,17 @@ namespace Dvx3 {
                 progress (compressed_bytes, estimated_compressed, encoder.cipher_bytes);
         }
 
-        /* Wait for pipeline */
-        int child_status;
-        Posix.waitpid (child_pid, out child_status, 0);
-        Process.close_pid (child_pid);
-        
-        if (child_status != 0)
-            throw new IOError.FAILED ("tar|zstd pipeline failed");
-
         Posix.close (pipe_stdout);
         encoder.close ();
+
+        /* Wait for pipeline to complete */
+#if POSIX
+        int child_status;
+        Posix.waitpid (child_pid, out child_status, 0);
+        if (child_status != 0)
+            throw new IOError.FAILED ("tar|zstd pipeline failed");
+#endif
+        Process.close_pid (child_pid);
 
         /* Rewrite header with correct chunk count */
         var final_header = new Json.Object();
@@ -399,12 +400,13 @@ namespace Dvx3 {
         Posix.close (pipe_stdin);
         fin.close ();
 
-        /* Wait for extraction */
+        /* Wait for extraction to complete */
+#if POSIX
         int child_status;
         Posix.waitpid (child_pid, out child_status, 0);
-        Process.close_pid (child_pid);
-
         if (child_status != 0)
             throw new IOError.FAILED ("Extraction pipeline failed");
+#endif
+        Process.close_pid (child_pid);
     }
 }

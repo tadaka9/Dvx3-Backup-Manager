@@ -28,6 +28,7 @@ case "$PLATFORM" in
         SHARED_LINK_FLAGS=(-X -shared -X -Wl,--out-implib,libdvx3.dll.a -X -Wl,--export-all-symbols)
         RPATH_FLAG=()
         EXE_EXT=".exe"
+        VALA_DEFINES=()
         ;;
     os_macos)
         SHARED_EXT="dylib"
@@ -37,6 +38,7 @@ case "$PLATFORM" in
         # Use @loader_path so CLI finds library in same directory
         RPATH_FLAG=(-X -Wl,-rpath,@loader_path)
         EXE_EXT=""
+        VALA_DEFINES=(-D POSIX)
         ;;
     os_unix)
         SHARED_EXT="so"
@@ -45,6 +47,7 @@ case "$PLATFORM" in
         SHARED_LINK_FLAGS=(-X -shared)
         RPATH_FLAG=(-X -Wl,-rpath,'$ORIGIN')
         EXE_EXT=""
+        VALA_DEFINES=(-D POSIX)
         ;;
 esac
 
@@ -55,6 +58,7 @@ valac --vapidir="$VAPIDIR" $PACKAGES \
         --library=dvx3 \
         --vapi=dvx3.vapi \
         --header=dvx3.h \
+        ${VALA_DEFINES[@]} \
         $PIC_FLAG \
         "${SHARED_LINK_FLAGS[@]}" \
         -o "$LIB_OUT" \

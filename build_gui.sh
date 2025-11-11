@@ -23,15 +23,18 @@ case "$UNAME_OUT" in
     MINGW*|MSYS*|CYGWIN*)
         # Windows: gio-2.0 only (no gio-unix)
         GIO_PKG="gio-2.0"
+        VALA_DEFINES=""
         ;;
     *)
-        # Linux/macOS: needs gio-unix-2.0 for UnixInputStream/UnixOutputStream
+        # Linux/macOS: needs gio-unix-2.0 and POSIX define
         GIO_PKG="gio-2.0 --pkg gio-unix-2.0"
+        VALA_DEFINES="-D POSIX"
         ;;
 esac
 
 valac --pkg glib-2.0 --pkg $GIO_PKG --pkg json-glib-1.0 --pkg posix \
     --vapidir=vala-extra-vapis --pkg libsodium \
+    $VALA_DEFINES \
     libdvx3.vala -C -d gen-c
 
 # 2. Compile generated C code
