@@ -10,6 +10,11 @@
 using GLib;
 using Dvx3;
 
+/* POSIX bindings for isatty */
+[CCode (cname = "isatty")]
+extern int posix_isatty (int fd);
+private const int STDOUT_FILENO = 1;
+
 /* Color helpers */
 private const string RST = "\x1b[0m";
 private const string BLD = "\x1b[1m";
@@ -19,7 +24,7 @@ private const string YLW = "\x1b[33m";
 private const string RED = "\x1b[31m";
 
 private bool stdout_is_tty () {
-    return Posix.isatty (Posix.STDOUT_FILENO);
+    return posix_isatty (STDOUT_FILENO) != 0;
 }
 
 private string colour_wrap (string txt, string col) {
