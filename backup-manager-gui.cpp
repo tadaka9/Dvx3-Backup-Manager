@@ -21,128 +21,21 @@
 
 namespace backup_gui {
 
-// Animated gradient background implementation with particles
-PsychedelicBackground::PsychedelicBackground(QWidget* parent) : QWidget(parent), hue_offset(0), time(0.0) {
+// Clean minimal background implementation
+PsychedelicBackground::PsychedelicBackground(QWidget* parent) : QWidget(parent) {
     setAttribute(Qt::WA_StyledBackground, false);
     setAttribute(Qt::WA_OpaquePaintEvent, false);
-    
-    init_particles();
-    
-    // Smooth animation timer (30 FPS - safe for all users)
-    auto* timer = new QTimer(this);
-    connect(timer, &QTimer::timeout, this, [this]() {
-        hue_offset = (hue_offset + 1) % 360;  // Slower color shift
-        time += 0.033;  // ~30ms per frame
-        update_particles();
-        update();
-    });
-    timer->start(33);  // 30 FPS for smooth, safe animation
-}
-
-void PsychedelicBackground::init_particles() {
-    particles.clear();
-    std::srand(static_cast<unsigned>(std::time(nullptr)));
-    
-    // Create 50 floating particles
-    for (int i = 0; i < 50; i++) {
-        Particle p;
-        p.x = std::rand() % 1400;
-        p.y = std::rand() % 900;
-        p.vx = (std::rand() % 40 - 20) / 20.0;  // -1 to +1
-        p.vy = (std::rand() % 40 - 20) / 20.0;
-        p.hue = std::rand() % 360;
-        p.size = 2.0 + (std::rand() % 6);
-        p.alpha = 0.3 + (std::rand() % 70) / 100.0;  // 0.3-1.0
-        particles.push_back(p);
-    }
-}
-
-void PsychedelicBackground::update_particles() {
-    for (auto& p : particles) {
-        p.x += p.vx;
-        p.y += p.vy;
-        
-        // Wrap around screen edges
-        if (p.x < 0) p.x = width();
-        if (p.x > width()) p.x = 0;
-        if (p.y < 0) p.y = height();
-        if (p.y > height()) p.y = 0;
-    }
 }
 
 void PsychedelicBackground::paintEvent(QPaintEvent*) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
-    p.setRenderHint(QPainter::SmoothPixmapTransform);
     
-    // Deep space background - dark purple/blue base
-    QLinearGradient base_grad(0, 0, width(), height());
-    base_grad.setColorAt(0.0, QColor(10, 0, 25));      // Deep purple
-    base_grad.setColorAt(0.5, QColor(0, 10, 30));      // Deep blue
-    base_grad.setColorAt(1.0, QColor(15, 0, 20));      // Dark purple
-    p.fillRect(rect(), base_grad);
-    
-    // Orbital radial gradients with time-based motion
-    double orbit1_x = width() * (0.5 + 0.3 * std::sin(time * 0.3));
-    double orbit1_y = height() * (0.5 + 0.3 * std::cos(time * 0.3));
-    QRadialGradient orbit1(orbit1_x, orbit1_y, width() * 0.5);
-    orbit1.setColorAt(0.0, QColor::fromHsv((hue_offset + 280) % 360, 220, 60, 50));
-    orbit1.setColorAt(0.5, QColor::fromHsv((hue_offset + 280) % 360, 180, 30, 20));
-    orbit1.setColorAt(1.0, QColor(0, 0, 0, 0));
-    p.fillRect(rect(), orbit1);
-    
-    double orbit2_x = width() * (0.5 + 0.35 * std::cos(time * 0.4 + 1.5));
-    double orbit2_y = height() * (0.5 + 0.35 * std::sin(time * 0.4 + 1.5));
-    QRadialGradient orbit2(orbit2_x, orbit2_y, width() * 0.45);
-    orbit2.setColorAt(0.0, QColor::fromHsv((hue_offset + 180) % 360, 240, 70, 45));
-    orbit2.setColorAt(0.6, QColor::fromHsv((hue_offset + 180) % 360, 200, 25, 15));
-    orbit2.setColorAt(1.0, QColor(0, 0, 0, 0));
-    p.fillRect(rect(), orbit2);
-    
-    double orbit3_x = width() * (0.5 + 0.25 * std::sin(time * 0.25 + 3.0));
-    double orbit3_y = height() * (0.5 + 0.25 * std::cos(time * 0.25 + 3.0));
-    QRadialGradient orbit3(orbit3_x, orbit3_y, width() * 0.4);
-    orbit3.setColorAt(0.0, QColor::fromHsv((hue_offset + 60) % 360, 255, 80, 40));
-    orbit3.setColorAt(0.7, QColor::fromHsv((hue_offset + 60) % 360, 220, 20, 10));
-    orbit3.setColorAt(1.0, QColor(0, 0, 0, 0));
-    p.fillRect(rect(), orbit3);
-    
-    // Render particles with glow
-    p.setCompositionMode(QPainter::CompositionMode_Plus);  // Additive blending for glow
-    for (const auto& particle : particles) {
-        QRadialGradient glow(particle.x, particle.y, particle.size * 3);
-        int part_hue = (particle.hue + hue_offset) % 360;
-        glow.setColorAt(0.0, QColor::fromHsv(part_hue, 255, 255, particle.alpha * 255 * 0.8));
-        glow.setColorAt(0.5, QColor::fromHsv(part_hue, 200, 200, particle.alpha * 255 * 0.3));
-        glow.setColorAt(1.0, QColor(0, 0, 0, 0));
-        
-        p.setBrush(glow);
-        p.setPen(Qt::NoPen);
-        p.drawEllipse(QPointF(particle.x, particle.y), particle.size * 3, particle.size * 3);
-    }
-    p.setCompositionMode(QPainter::CompositionMode_SourceOver);
-    
-    // Holographic grid with shimmer (subtle, non-strobing)
-    int shimmer = (int)(20 + 10 * std::sin(time * 2.0));  // 20-30 alpha
-    p.setPen(QPen(QColor(0, 255, 255, shimmer), 1));
-    int grid_size = 50;
-    for (int x = 0; x < width(); x += grid_size) {
-        p.drawLine(x, 0, x, height());
-    }
-    for (int y = 0; y < height(); y += grid_size) {
-        p.drawLine(0, y, width(), y);
-    }
-    
-    // Corner accent lines (cyberpunk aesthetic)
-    p.setPen(QPen(QColor::fromHsv((hue_offset + 180) % 360, 200, 255, 120), 2));
-    p.drawLine(0, 0, 100, 0);
-    p.drawLine(0, 0, 0, 100);
-    p.drawLine(width() - 100, 0, width(), 0);
-    p.drawLine(width(), 0, width(), 100);
-    p.drawLine(0, height(), 100, height());
-    p.drawLine(0, height() - 100, 0, height());
-    p.drawLine(width() - 100, height(), width(), height());
-    p.drawLine(width(), height() - 100, width(), height());
+    // Clean subtle gradient background
+    QLinearGradient grad(0, 0, 0, height());
+    grad.setColorAt(0.0, QColor(245, 247, 250));  // Light blue-gray
+    grad.setColorAt(1.0, QColor(235, 240, 245));  // Slightly darker
+    p.fillRect(rect(), grad);
 }
 
 // CompressionConfig implementation
@@ -346,7 +239,7 @@ CompressionConfig JobConfigDialog::get_compression_config() const {
 // BackupManagerWindow implementation
 BackupManagerWindow::BackupManagerWindow(QWidget* parent)
     : QMainWindow(parent) {
-    setWindowTitle("◈ DVX3 QUANTUM BACKUP SYSTEM ◈");
+    setWindowTitle("DVX3 Backup Manager");
     resize(1400, 900);
     
     // Psychedelic background
@@ -376,39 +269,34 @@ void BackupManagerWindow::setup_menu() {
     auto* menu_bar = menuBar();
     menu_bar->setStyleSheet(
         "QMenuBar {"
-        "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-        "    stop:0 rgba(100, 0, 200, 0.7), stop:0.5 rgba(0, 150, 200, 0.7), stop:1 rgba(100, 0, 200, 0.7));"
-        "  color: #00ffff;"
-        "  font-family: 'Monospace';"
-        "  font-weight: bold;"
-        "  padding: 5px;"
-        "  border-bottom: 2px solid rgba(0, 255, 255, 0.5);"
+        "  background: white;"
+        "  color: #333;"
+        "  padding: 4px;"
+        "  border-bottom: 1px solid #ddd;"
         "}"
         "QMenuBar::item {"
-        "  padding: 5px 15px;"
+        "  padding: 6px 12px;"
         "  background: transparent;"
         "}"
         "QMenuBar::item:selected {"
-        "  background: rgba(0, 255, 255, 0.3);"
-        "  border-radius: 5px;"
+        "  background: #e3f2fd;"
+        "  border-radius: 4px;"
         "}"
         "QMenu {"
-        "  background: rgba(20, 0, 40, 0.95);"
-        "  border: 2px solid rgba(0, 255, 255, 0.6);"
-        "  border-radius: 8px;"
-        "  color: #00ffff;"
-        "  font-family: 'Monospace';"
+        "  background: white;"
+        "  border: 1px solid #ddd;"
+        "  border-radius: 4px;"
+        "  color: #333;"
         "}"
         "QMenu::item {"
-        "  padding: 8px 25px;"
+        "  padding: 6px 20px;"
         "}"
         "QMenu::item:selected {"
-        "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-        "    stop:0 rgba(255, 0, 255, 0.5), stop:1 rgba(0, 255, 255, 0.5));"
+        "  background: #e3f2fd;"
         "}"
     );
-    auto* file_menu = menu_bar->addMenu("⚡ &SYSTEM");
-    auto* help_menu = menu_bar->addMenu("◉ &INFO");
+    auto* file_menu = menu_bar->addMenu("&File");
+    auto* help_menu = menu_bar->addMenu("&Help");
     
     settings_action = new QAction("&Settings", this);
     settings_action->setShortcut(QKeySequence::Preferences);
@@ -440,100 +328,80 @@ void BackupManagerWindow::setup_ui() {
     // Top section: Jobs list and controls
     auto* top_splitter = new QSplitter(Qt::Horizontal);
     
-    // Left: Job list with glassmorphism
+    // Left: Job list with clean styling
     auto* job_widget = new QWidget();
     job_widget->setStyleSheet(
         "QWidget {"
-        "  background: qlineargradient(x1:0, y1:0, x2:1, y2:1, "
-        "    stop:0 rgba(80, 0, 180, 0.15), stop:1 rgba(0, 120, 180, 0.15));"
-        "  border: 2px solid qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-        "    stop:0 rgba(0, 255, 255, 0.6), stop:0.5 rgba(255, 0, 255, 0.6), stop:1 rgba(255, 255, 0, 0.6));"
-        "  border-radius: 15px;"
+        "  background: white;"
+        "  border: 1px solid #ddd;"
+        "  border-radius: 8px;"
         "  padding: 10px;"
         "}"
     );
-    auto* shadow1 = new QGraphicsDropShadowEffect();
-    shadow1->setBlurRadius(30);
-    shadow1->setColor(QColor(0, 255, 255, 100));
-    shadow1->setOffset(0, 0);
-    job_widget->setGraphicsEffect(shadow1);
     auto* job_layout = new QVBoxLayout(job_widget);
     
-    auto* job_label = new QLabel("⚡ <b>BACKUP SEQUENCES</b> ⚡");
+    auto* job_label = new QLabel("<b>Backup Jobs</b>");
     job_label->setStyleSheet(
-        "color: #00ffff; "
-        "font-family: 'Monospace'; "
+        "color: #333; "
         "font-size: 14px; "
-        ""
         "background: transparent;"
         "border: none;"
         "padding: 5px;"
     );
-    job_label->setAlignment(Qt::AlignCenter);
+    job_label->setAlignment(Qt::AlignLeft);
     job_list = new QListWidget();
     job_list->setStyleSheet(
         "QListWidget {"
-        "  background: rgba(10, 10, 30, 0.5);"
-        "  border: 1px solid rgba(0, 255, 255, 0.3);"
-        "  border-radius: 10px;"
-        "  color: #00ff88;"
-        "  font-family: 'Monospace';"
-        "  font-size: 11px;"
+        "  background: #fafafa;"
+        "  border: 1px solid #e0e0e0;"
+        "  border-radius: 6px;"
+        "  color: #333;"
+        "  font-size: 12px;"
         "  padding: 5px;"
-        "  selection-background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-        "    stop:0 rgba(255, 0, 255, 0.4), stop:1 rgba(0, 255, 255, 0.4));"
         "}"
         "QListWidget::item {"
-        "  padding: 8px;"
-        "  border-bottom: 1px solid rgba(0, 255, 255, 0.1);"
+        "  padding: 10px;"
+        "  border-bottom: 1px solid #f0f0f0;"
         "}"
         "QListWidget::item:hover {"
-        "  background: rgba(0, 255, 255, 0.15);"
-        "  border-left: 3px solid #ff00ff;"
+        "  background: #f5f5f5;"
         "}"
         "QListWidget::item:selected {"
-        "  border-left: 3px solid #00ffff;"
-        "  "
+        "  background: #e3f2fd;"
+        "  color: #1976d2;"
+        "  border-left: 3px solid #1976d2;"
         "}"
     );
     
     auto* job_btn_layout = new QHBoxLayout();
     
-    QString neon_btn_style = 
+    QString clean_btn_style = 
         "QPushButton {"
-        "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
-        "    stop:0 rgba(100, 0, 200, 0.6), stop:1 rgba(0, 150, 255, 0.6));"
-        "  border: 2px solid rgba(0, 255, 255, 0.6);"
-        "  border-radius: 12px;"
-        "  color: #00ffff;"
-        "  font-family: 'Monospace';"
-        "  font-size: 11px;"
-        "  font-weight: bold;"
-        "  padding: 10px 15px;"
-        "  "
+        "  background: #1976d2;"
+        "  border: none;"
+        "  border-radius: 6px;"
+        "  color: white;"
+        "  font-size: 12px;"
+        "  font-weight: 500;"
+        "  padding: 8px 16px;"
         "}"
         "QPushButton:hover {"
-        "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
-        "    stop:0 rgba(150, 0, 255, 0.8), stop:1 rgba(0, 200, 255, 0.8));"
-        "  border: 2px solid rgba(255, 0, 255, 0.8);"
+        "  background: #1565c0;"
         "}"
         "QPushButton:pressed {"
-        "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
-        "    stop:0 rgba(200, 0, 255, 0.9), stop:1 rgba(0, 255, 255, 0.9));"
+        "  background: #0d47a1;"
         "}"
         "QPushButton:disabled {"
-        "  background: rgba(40, 40, 60, 0.3);"
-        "  border: 2px solid rgba(100, 100, 120, 0.3);"
-        "  color: rgba(100, 100, 120, 0.5);"
-        "  "
+        "  background: #ccc;"
+        "  color: #999;"
         "}";
     
-    add_job_btn = new QPushButton("⊕ ADD");
-    add_job_btn->setStyleSheet(neon_btn_style);
-    edit_job_btn = new QPushButton("✎ EDIT");
-    edit_job_btn->setStyleSheet(neon_btn_style);
-    remove_job_btn = new QPushButton("⊗ REMOVE");
-    remove_job_btn->setStyleSheet(neon_btn_style);
+    add_job_btn = new QPushButton("Add");
+    add_job_btn->setStyleSheet(clean_btn_style);
+    edit_job_btn = new QPushButton("Edit");
+    edit_job_btn->setStyleSheet(clean_btn_style);
+    remove_job_btn = new QPushButton("Remove");
+    remove_job_btn->setStyleSheet(clean_btn_style);
     
     job_btn_layout->addWidget(add_job_btn);
     job_btn_layout->addWidget(edit_job_btn);
@@ -549,61 +417,52 @@ void BackupManagerWindow::setup_ui() {
     auto* history_widget = new QWidget();
     history_widget->setStyleSheet(
         "QWidget {"
-        "  background: qlineargradient(x1:0, y1:0, x2:1, y2:1, "
-        "    stop:0 rgba(0, 120, 180, 0.15), stop:1 rgba(180, 0, 120, 0.15));"
-        "  border: 2px solid qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-        "    stop:0 rgba(255, 255, 0, 0.6), stop:0.5 rgba(0, 255, 255, 0.6), stop:1 rgba(255, 0, 255, 0.6));"
-        "  border-radius: 15px;"
+        "  background: white;"
+        "  border: 1px solid #ddd;"
+        "  border-radius: 8px;"
         "  padding: 10px;"
         "}"
     );
-    auto* shadow2 = new QGraphicsDropShadowEffect();
-    shadow2->setBlurRadius(30);
-    shadow2->setColor(QColor(255, 255, 0, 100));
-    shadow2->setOffset(0, 0);
-    history_widget->setGraphicsEffect(shadow2);
     auto* history_layout = new QVBoxLayout(history_widget);
     
-    auto* history_label = new QLabel("⌘ <b>QUANTUM HISTORY LOG</b> ⌘");
+    auto* history_label = new QLabel("<b>Backup History</b>");
     history_label->setStyleSheet(
-        "color: #ffff00; "
-        "font-family: 'Monospace'; "
+        "color: #333; "
         "font-size: 14px; "
-        ""
         "background: transparent;"
         "border: none;"
         "padding: 5px;"
     );
-    history_label->setAlignment(Qt::AlignCenter);
+    history_label->setAlignment(Qt::AlignLeft);
     history_table = new QTableWidget();
     history_table->setColumnCount(5);
-    history_table->setHorizontalHeaderLabels({"⟐ DATE/TIME", "⚙ JOB", "⊡ SIZE", "◎ RATIO", "◉ STATUS"});
+    history_table->setHorizontalHeaderLabels({"Date/Time", "Job", "Size", "Ratio", "Status"});
     history_table->setStyleSheet(
         "QTableWidget {"
-        "  background: rgba(10, 10, 30, 0.5);"
-        "  border: 1px solid rgba(255, 255, 0, 0.3);"
-        "  border-radius: 10px;"
-        "  color: #ffff00;"
-        "  font-family: 'Monospace';"
-        "  font-size: 10px;"
-        "  gridline-color: rgba(0, 255, 255, 0.2);"
-        "  selection-background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-        "    stop:0 rgba(255, 255, 0, 0.4), stop:1 rgba(255, 0, 255, 0.4));"
+        "  background: #fafafa;"
+        "  border: 1px solid #e0e0e0;"
+        "  border-radius: 6px;"
+        "  color: #333;"
+        "  font-size: 11px;"
+        "  gridline-color: #f0f0f0;"
         "}"
         "QHeaderView::section {"
-        "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
-        "    stop:0 rgba(100, 0, 200, 0.7), stop:1 rgba(0, 100, 200, 0.7));"
-        "  color: #00ffff;"
-        "  border: 1px solid rgba(0, 255, 255, 0.4);"
-        "  padding: 6px;"
-        "  font-weight: bold;"
-        "  "
+        "  background: #f5f5f5;"
+        "  color: #666;"
+        "  border: none;"
+        "  border-bottom: 1px solid #ddd;"
+        "  padding: 8px;"
+        "  font-weight: 600;"
         "}"
         "QTableWidget::item {"
-        "  padding: 5px;"
+        "  padding: 6px;"
         "}"
         "QTableWidget::item:hover {"
-        "  background: rgba(255, 255, 0, 0.15);"
+        "  background: #f5f5f5;"
+        "}"
+        "QTableWidget::item:selected {"
+        "  background: #e3f2fd;"
+        "  color: #1976d2;"
         "}"
     );
     history_table->horizontalHeader()->setStretchLastSection(true);
@@ -621,37 +480,30 @@ void BackupManagerWindow::setup_ui() {
     // Middle: Action buttons
     auto* action_layout = new QHBoxLayout();
     
-    run_backup_btn = new QPushButton("▶ RUN BACKUP");
+    run_backup_btn = new QPushButton("Run Backup");
     run_backup_btn->setStyleSheet(
         "QPushButton {"
-        "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
-        "    stop:0 rgba(0, 200, 0, 0.7), stop:1 rgba(0, 150, 0, 0.7));"
-        "  border: 2px solid rgba(0, 255, 0, 0.8);"
-        "  border-radius: 12px;"
-        "  color: #00ff00;"
-        "  font-family: 'Monospace';"
-        "  font-size: 12px;"
-        "  font-weight: bold;"
-        "  padding: 12px 25px;"
-        "  "
+        "  background: #4caf50;"
+        "  border: none;"
+        "  border-radius: 6px;"
+        "  color: white;"
+        "  font-size: 13px;"
+        "  font-weight: 600;"
+        "  padding: 12px 24px;"
         "}"
         "QPushButton:hover {"
-        "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
-        "    stop:0 rgba(0, 255, 0, 0.9), stop:1 rgba(0, 200, 0, 0.9));"
-        "  border: 2px solid rgba(0, 255, 0, 1);"
+        "  background: #45a049;"
         "}"
         "QPushButton:disabled {"
-        "  background: rgba(40, 60, 40, 0.3);"
-        "  border: 2px solid rgba(100, 120, 100, 0.3);"
-        "  color: rgba(100, 120, 100, 0.5);"
-        "  "
+        "  background: #ccc;"
+        "  color: #999;"
         "}"
     );
     
-    restore_btn = new QPushButton("◀ RESTORE");
-    restore_btn->setStyleSheet(neon_btn_style);
-    cleanup_btn = new QPushButton("⟲ CLEANUP");
-    cleanup_btn->setStyleSheet(neon_btn_style);
+    restore_btn = new QPushButton("Restore");
+    restore_btn->setStyleSheet(clean_btn_style);
+    cleanup_btn = new QPushButton("Cleanup");
+    cleanup_btn->setStyleSheet(clean_btn_style);
     
     action_layout->addWidget(run_backup_btn);
     action_layout->addWidget(restore_btn);
@@ -661,67 +513,50 @@ void BackupManagerWindow::setup_ui() {
     main_layout->addLayout(action_layout);
     
     // Bottom: Progress and log
-    auto* progress_group = new QGroupBox("◈ QUANTUM STATUS MATRIX ◈");
+    auto* progress_group = new QGroupBox("Status");
     progress_group->setStyleSheet(
         "QGroupBox {"
-        "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-        "    stop:0 rgba(180, 0, 180, 0.2), stop:0.5 rgba(0, 180, 180, 0.2), stop:1 rgba(180, 0, 180, 0.2));"
-        "  border: 2px solid qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-        "    stop:0 rgba(255, 0, 255, 0.7), stop:0.5 rgba(0, 255, 255, 0.7), stop:1 rgba(255, 0, 255, 0.7));"
-        "  border-radius: 15px;"
-        "  padding: 25px 15px 15px 15px;"
-        "  font-family: 'Monospace';"
+        "  background: white;"
+        "  border: 1px solid #ddd;"
+        "  border-radius: 8px;"
+        "  padding: 20px 10px 10px 10px;"
         "  font-size: 13px;"
-        "  font-weight: bold;"
-        "  color: #ff00ff;"
-        "  "
+        "  font-weight: 600;"
+        "  color: #333;"
         "}"
         "QGroupBox::title {"
         "  subcontrol-origin: margin;"
-        "  subcontrol-position: top center;"
-        "  padding: 5px 20px;"
+        "  subcontrol-position: top left;"
+        "  padding: 5px 10px;"
         "}"
     );
-    auto* shadow3 = new QGraphicsDropShadowEffect();
-    shadow3->setBlurRadius(40);
-    shadow3->setColor(QColor(255, 0, 255, 120));
-    shadow3->setOffset(0, 0);
-    progress_group->setGraphicsEffect(shadow3);
     auto* progress_layout = new QVBoxLayout(progress_group);
     
-    status_label = new QLabel("◈ SYSTEM READY ◈");
+    status_label = new QLabel("Ready");
     status_label->setStyleSheet(
-        "color: #00ff88; "
-        "font-family: 'Monospace'; "
+        "color: #666; "
         "font-size: 12px; "
-        "font-weight: bold; "
-        " "
         "padding: 5px;"
         "background: transparent;"
         "border: none;"
     );
     progress_bar = new QProgressBar();
-    progress_bar->setRange(0, 10000);  // 0-10000 for decimal precision (0.01% increments)
+    progress_bar->setRange(0, 10000);
     progress_bar->setValue(0);
     progress_bar->setStyleSheet(
         "QProgressBar {"
-        "  background: rgba(10, 10, 30, 0.6);"
-        "  border: 2px solid rgba(0, 255, 255, 0.5);"
-        "  border-radius: 12px;"
+        "  background: #f0f0f0;"
+        "  border: 1px solid #ddd;"
+        "  border-radius: 6px;"
         "  text-align: center;"
-        "  color: #00ffff;"
-        "  font-family: 'Monospace';"
-        "  font-size: 12px;"
-        "  font-weight: bold;"
-        "  "
-        "  min-height: 30px;"
+        "  color: #333;"
+        "  font-size: 11px;"
+        "  font-weight: 600;"
+        "  min-height: 24px;"
         "}"
         "QProgressBar::chunk {"
-        "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-        "    stop:0 rgba(255, 0, 255, 0.8), "
-        "    stop:0.5 rgba(0, 255, 255, 0.8), "
-        "    stop:1 rgba(255, 0, 255, 0.8));"
-        "  border-radius: 10px;"
+        "  background: #1976d2;"
+        "  border-radius: 5px;"
         "}"
     );
     
@@ -730,14 +565,13 @@ void BackupManagerWindow::setup_ui() {
     log_display->setMaximumHeight(150);
     log_display->setStyleSheet(
         "QTextEdit {"
-        "  background: rgba(0, 0, 0, 0.7);"
-        "  border: 1px solid rgba(0, 255, 136, 0.4);"
-        "  border-radius: 8px;"
-        "  color: #00ff88;"
-        "  font-family: 'Monospace';"
-        "  font-size: 10px;"
+        "  background: #fafafa;"
+        "  border: 1px solid #e0e0e0;"
+        "  border-radius: 6px;"
+        "  color: #333;"
+        "  font-family: monospace;"
+        "  font-size: 11px;"
         "  padding: 8px;"
-        "  selection-background-color: rgba(0, 255, 136, 0.3);"
         "}"
     );
     
