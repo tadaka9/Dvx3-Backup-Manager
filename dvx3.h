@@ -14,6 +14,7 @@ G_BEGIN_DECLS
 #define DVX3_ARGON_T ((guint) 2)
 #define DVX3_ARGON_M ((guint) 64000)
 #define DVX3_ARGON_P ((guint) 4)
+#define DVX3_HEADER_RESERVE ((gsize) 512)
 #if !defined(VALA_EXTERN)
 #if defined(_MSC_VER)
 #define VALA_EXTERN __declspec(dllexport) extern

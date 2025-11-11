@@ -29,20 +29,18 @@ jobs:
             qt6-base-dev qt6-base-dev-tools qt6-tools-dev \
             tar zstd file wget
 
-      - name: Ensure GNU tar available
-        run: |
-          set -e
-          tar --version || (echo "tar not found" && exit 1)
-          if ! tar --version | head -n1 | grep -qi "GNU tar"; then
-            echo "Error: GNU tar is required for dynamic progress estimation."
-            echo "Install GNU tar or accept static estimate fallback."
-            exit 1
-          fi
-
       - name: Verify VAPI
         run: |
           ls -la vala-extra-vapis/libsodium.vapi
           echo "libsodium.vapi found and ready"
+
+      - name: Check GNU tar version and assert
+        run: |
+          tar --version
+          if ! tar --version | grep -q "GNU tar"; then
+            echo "Error: GNU tar is required for dynamic progress."
+            exit 1
+          fi
 
       - name: Build application
         run: |
@@ -295,8 +293,6 @@ jobs:
                 qt6-base-dev qt6-base-dev-tools qt6-tools-dev tar zstd file && \
               echo "Verifying VAPI in container..." && \
               ls -la vala-extra-vapis/libsodium.vapi && \
-              tar --version | head -n1 && \
-              if ! tar --version | head -n1 | grep -qi "GNU tar"; then echo "Error: GNU tar required"; exit 1; fi && \
               chmod +x build_gui.sh build-raspberry.sh || true && \
               bash ./build_gui.sh && bash ./build-raspberry.sh && ls -lh *.tar.gz || echo "No tarball found"
             '
@@ -334,8 +330,6 @@ jobs:
                 qt6-base-dev qt6-base-dev-tools qt6-tools-dev tar zstd file && \
               echo "Verifying VAPI in container..." && \
               ls -la vala-extra-vapis/libsodium.vapi && \
-              tar --version | head -n1 && \
-              if ! tar --version | head -n1 | grep -qi "GNU tar"; then echo "Error: GNU tar required"; exit 1; fi && \
               chmod +x build_gui.sh build-raspberry.sh || true && \
               bash ./build_gui.sh && bash ./build-raspberry.sh && ls -lh *.tar.gz || echo "No tarball found"
             '

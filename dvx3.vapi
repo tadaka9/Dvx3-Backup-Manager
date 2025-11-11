@@ -12,6 +12,8 @@ namespace Dvx3 {
 	[CCode (cheader_filename = "dvx3.h")]
 	public const size_t CHUNK_SIZE;
 	[CCode (cheader_filename = "dvx3.h")]
+	public const size_t HEADER_RESERVE;
+	[CCode (cheader_filename = "dvx3.h")]
 	public static void decrypt (GLib.File enc_file, GLib.File dst_dir, string password, Dvx3.ProgressCallback? progress = null) throws GLib.Error;
 	[CCode (cheader_filename = "dvx3.h")]
 	public static void encrypt (GLib.File src_dir, GLib.File out_file, string password, string? exclude_path = null, Dvx3.ProgressCallback? progress = null) throws GLib.Error;

@@ -36,6 +36,7 @@ namespace Dvx3 {
     public const uint   ARGON_T   = 2;             // Argon2 time cost
     public const uint   ARGON_M   = 64000;         // Argon2 memory (KiB)
     public const uint   ARGON_P   = 4;             // Argon2 parallelism
+    public const size_t HEADER_RESERVE = 512;      // Reserved header space
     
     private const size_t SECRETBOX_MAC = Sodium.Symmetric.MAC_BYTES;
 
@@ -209,16 +210,26 @@ namespace Dvx3 {
         root_node.set_object(placeholder_header);
         gen.set_root(root_node);
         var placeholder_json_str = gen.to_data (null);
-        uint8[] placeholder_json = new uint8[placeholder_json_str.length];
-        for (int i = 0; i < placeholder_json_str.length; i++) {
+        
+        // Pad JSON to fixed size for reliable rewrite
+        uint8[] placeholder_json = new uint8[HEADER_RESERVE];
+        size_t actual_len = placeholder_json_str.length;
+        if (actual_len >= HEADER_RESERVE)
+            throw new IOError.FAILED ("Header JSON too large (%zu bytes, max %zu)".printf(actual_len, HEADER_RESERVE));
+        
+        for (int i = 0; i < (int)actual_len; i++) {
             placeholder_json[i] = (uint8) placeholder_json_str[i];
         }
-        uint32 placeholder_len = (uint32) placeholder_json.length;
+        // Zero-pad remaining space
+        for (int i = (int)actual_len; i < (int)HEADER_RESERVE; i++) {
+            placeholder_json[i] = 0;
+        }
+        uint32 header_size = (uint32) HEADER_RESERVE;
 
         /* Open output file and write placeholder header */
         size_t written;
         var fout = out_file.replace (null, false, FileCreateFlags.PRIVATE);
-        fout.write_all (uint32_to_be (placeholder_len), out written);
+        fout.write_all (uint32_to_be (header_size), out written);
         fout.write_all (placeholder_json, out written);
 
         /* Create chunk encoder */
@@ -240,6 +251,10 @@ namespace Dvx3 {
         } catch (Error e) {
             gnu_tar = false;
         }
+
+        // Note: Disabling GNU tar SIGUSR1 dynamic tracking due to signal handling issues
+        // that cause tar termination. Using standard pipeline for all platforms.
+        gnu_tar = false;
 
         if (gnu_tar) {
         // Build tar command (output to stdout), enable totals on SIGUSR1
@@ -310,7 +325,11 @@ namespace Dvx3 {
             string pending = "";
             while (true) {
                 // Ask tar to print totals so far
-                posix_kill((int)tar_pid, _SIGUSR1);
+                int kill_result = posix_kill((int)tar_pid, _SIGUSR1);
+                if (kill_result != 0) {
+                    // tar has likely exited (ESRCH = no such process)
+                    break;
+                }
                 posix_usleep(200000); // 200ms
                 ssize_t r = posix_read(tar_err_fd, ebuf, (size_t)ebuf.length);
                 if (r > 0) {
@@ -384,7 +403,12 @@ namespace Dvx3 {
         Process.close_pid (zstd_pid);
         Process.close_pid (tar_pid);
 
-        if (st1 != 0 || st2 != 0)
+        // Check exit status properly (POSIX wait status encoding)
+        // WIFEXITED(s) = ((s & 0x7F) == 0), WEXITSTATUS(s) = (s >> 8) & 0xFF
+        bool zstd_ok = ((st1 & 0x7F) == 0) && (((st1 >> 8) & 0xFF) == 0);
+        bool tar_ok = ((st2 & 0x7F) == 0) && (((st2 >> 8) & 0xFF) == 0);
+        
+        if (!zstd_ok || !tar_ok)
             throw new IOError.FAILED ("tar/zstd pipeline failed");
         } else {
             // Fallback: no dynamic totals (e.g., BSD tar)
@@ -502,18 +526,24 @@ namespace Dvx3 {
         root_node.set_object(final_header);
         gen.set_root(root_node);
         var final_json_str = gen.to_data (null);
-        uint8[] final_json = new uint8[final_json_str.length];
-        for (int i = 0; i < final_json_str.length; i++) {
+        
+        // Pad to same fixed size
+        uint8[] final_json = new uint8[HEADER_RESERVE];
+        size_t final_actual_len = final_json_str.length;
+        if (final_actual_len >= HEADER_RESERVE)
+            throw new IOError.FAILED ("Final header JSON too large (%zu bytes, max %zu)".printf(final_actual_len, HEADER_RESERVE));
+        
+        for (int i = 0; i < (int)final_actual_len; i++) {
             final_json[i] = (uint8) final_json_str[i];
         }
-        uint32 final_len = (uint32) final_json.length;
-
-        if (final_len != placeholder_len)
-            throw new IOError.FAILED ("Header size changed unexpectedly");
+        // Zero-pad remaining
+        for (int i = (int)final_actual_len; i < (int)HEADER_RESERVE; i++) {
+            final_json[i] = 0;
+        }
 
         /* Rewind and overwrite header */
         fout.seek (0, SeekType.SET);
-        fout.write_all (uint32_to_be (final_len), out written);
+        fout.write_all (uint32_to_be (header_size), out written);
         fout.write_all (final_json, out written);
         fout.flush ();
         fout.close ();
@@ -544,7 +574,19 @@ namespace Dvx3 {
             throw new IOError.FAILED("Missing header length");
         
         uint32 hlen = be_to_uint32(len_buf);
-        uint8[] hdr_json = fin.read_bytes((size_t)hlen).get_data();
+        uint8[] hdr_json_raw = fin.read_bytes((size_t)hlen).get_data();
+        
+        // Header is zero-padded; find actual JSON end (first null byte)
+        size_t actual_json_len = 0;
+        for (size_t i = 0; i < hdr_json_raw.length; i++) {
+            if (hdr_json_raw[i] == 0) {
+                actual_json_len = i;
+                break;
+            }
+        }
+        if (actual_json_len == 0) actual_json_len = hdr_json_raw.length;
+        
+        uint8[] hdr_json = hdr_json_raw[0:actual_json_len];
 
         var parser = new Json.Parser();
         parser.load_from_data ((string) hdr_json, (ssize_t) hdr_json.length);
