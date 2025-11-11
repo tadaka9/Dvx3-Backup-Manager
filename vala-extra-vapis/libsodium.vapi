@@ -20,7 +20,7 @@ namespace Sodium {
 
     namespace Random {
         [CCode (cname = "randombytes_buf")]
-        public static void buffer ([CCode (array_length = false)] uint8[] buf);
+        public static void buffer ([CCode (array_length = false)] uint8[] buf, size_t size);
     }
 
     namespace Symmetric {

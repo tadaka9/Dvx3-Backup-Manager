@@ -73,7 +73,7 @@ namespace Dvx3 {
 
     private uint8[] random_bytes (size_t len) {
         uint8[] buf = new uint8[len];
-        Sodium.Random.buffer (buf);
+        Sodium.Random.buffer (buf, len);
         return buf;
     }
 
