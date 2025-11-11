@@ -103,7 +103,14 @@ fi
 $MOC backup-manager-gui.hpp -o backup-manager-gui.moc.cpp
 
 echo "[4b/5] Compiling resources..."
-if [ -f resources.qrc ]; then
+if [ -f resources.qrc ] && [ -f icon.png ]; then
+    echo "Using icon.png for resources"
+    $RCC resources.qrc -o resources.rcc.cpp
+elif [ -f resources.qrc ] && [ -f dvx3-backup.png ]; then
+    echo "Using dvx3-backup.png for resources"
+    $RCC resources.qrc -o resources.rcc.cpp
+elif [ -f resources.qrc ]; then
+    echo "Warning: icon.png or dvx3-backup.png not found; compiling resources anyway"
     $RCC resources.qrc -o resources.rcc.cpp
 else
     echo "Warning: resources.qrc not found; icon will not be embedded"

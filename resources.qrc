@@ -1,0 +1,6 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+<qresource>
+    <file alias="icon.png">dvx3-backup.png</file>
+</qresource>
+</RCC>

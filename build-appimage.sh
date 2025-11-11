@@ -63,9 +63,14 @@ Categories=System;Utility;Archiving;
 Terminal=false
 EOF
 
-# Create simple icon (placeholder - 16x16 cyan square)
-convert -size 256x256 xc:'#00ffff' "$APPDIR/usr/share/icons/hicolor/256x256/apps/dvx3-backup.png" 2>/dev/null || \
-    echo -e "\x89PNG\x0D\x0A\x1A\x0A" > "$APPDIR/usr/share/icons/hicolor/256x256/apps/dvx3-backup.png"
+# Copy icon
+if [ -f dvx3-backup.png ]; then
+    cp dvx3-backup.png "$APPDIR/usr/share/icons/hicolor/256x256/apps/dvx3-backup.png"
+else
+    echo "Warning: dvx3-backup.png not found; using placeholder"
+    convert -size 256x256 xc:'#00ffff' "$APPDIR/usr/share/icons/hicolor/256x256/apps/dvx3-backup.png" 2>/dev/null || \
+        echo -e "\x89PNG\x0D\x0A\x1A\x0A" > "$APPDIR/usr/share/icons/hicolor/256x256/apps/dvx3-backup.png"
+fi
 
 # Create AppRun script
 cat > "$APPDIR/AppRun" << 'EOF'

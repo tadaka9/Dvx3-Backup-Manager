@@ -57,7 +57,7 @@ jobs:
           retention-days: 90
 
   build-macos-universal:
-    name: macOS Universal (Intel + Apple Silicon)
+    name: macOS (Apple Silicon)
     runs-on: macos-latest
     steps:
       - name: Checkout code
@@ -78,50 +78,11 @@ jobs:
           ls -la vala-extra-vapis/libsodium.vapi
           echo "libsodium.vapi found and ready"
 
-      - name: Build for Intel (x86_64)
-        run: |
-          valac --pkg glib-2.0 --pkg gio-2.0 --pkg gio-unix-2.0 --pkg json-glib-1.0 --pkg posix \
-            --vapidir=vala-extra-vapis --pkg libsodium \
-            libdvx3.vala -C -d gen-c-x86_64
-
-          gcc -c -fPIC gen-c-x86_64/libdvx3.c -o libdvx3-x86_64.o \
-            $(pkg-config --cflags glib-2.0 gio-2.0 json-glib-1.0 libsodium) \
-            -arch x86_64
-
-          gcc -dynamiclib -o libdvx3-x86_64.dylib libdvx3-x86_64.o \
-            $(pkg-config --libs glib-2.0 gio-2.0 json-glib-1.0 libsodium) \
-            -arch x86_64
-
-      - name: Build for Apple Silicon (arm64)
-        run: |
-          valac --pkg glib-2.0 --pkg gio-2.0 --pkg gio-unix-2.0 --pkg json-glib-1.0 --pkg posix \
-            --vapidir=vala-extra-vapis --pkg libsodium \
-            libdvx3.vala -C -d gen-c-arm64
-
-          gcc -c -fPIC gen-c-arm64/libdvx3.c -o libdvx3-arm64.o \
-            $(pkg-config --cflags glib-2.0 gio-2.0 json-glib-1.0 libsodium) \
-            -arch arm64
-
-          gcc -dynamiclib -o libdvx3-arm64.dylib libdvx3-arm64.o \
-            $(pkg-config --libs glib-2.0 gio-2.0 json-glib-1.0 libsodium) \
-            -arch arm64
-
-      - name: Create Universal Binary
-        run: lipo -create libdvx3-x86_64.dylib libdvx3-arm64.dylib -output libdvx3.dylib
+      - name: Build library and CLI
+        run: bash ./build.sh
 
       - name: Build Qt GUI
-        run: |
-          $(brew --prefix qt@6)/bin/moc backup-manager-gui.hpp -o backup-manager-gui.moc.cpp
-          # Compile resources (icon)
-          if [ -f resources.qrc ]; then
-            $(brew --prefix qt@6)/bin/rcc resources.qrc -o resources.rcc.cpp
-          fi
-
-          g++ -fPIC backup-manager-gui.cpp backup-manager-gui.moc.cpp resources.rcc.cpp \
-            -o backup-manager-gui \
-            -std=c++17 \
-            $(pkg-config --cflags --libs Qt6Widgets glib-2.0 gio-2.0 json-glib-1.0 libsodium) \
-            -L. -ldvx3 -Wl,-rpath,@executable_path
+        run: bash ./build_gui.sh
 
       - name: Create App Bundle
         run: |
@@ -161,19 +122,19 @@ jobs:
             --window-size 600 400 \
             --icon-size 100 \
             --app-drop-link 425 120 \
-            "DVX3-BackupManager-${VERSION}-macOS-Universal.dmg" \
+            "DVX3-BackupManager-macOS-ARM64.dmg" \
             "DVX3 Backup Manager.app" || true
 
-          if [ ! -f "DVX3-BackupManager-${VERSION}-macOS-Universal.dmg" ]; then
+          if [ ! -f "DVX3-BackupManager-macOS-ARM64.dmg" ]; then
             hdiutil create -volname "DVX3 Backup Manager" \
               -srcfolder "DVX3 Backup Manager.app" \
-              -ov -format UDZO "DVX3-BackupManager-${VERSION}-macOS-Universal.dmg"
+              -ov -format UDZO "DVX3-BackupManager-macOS-ARM64.dmg"
           fi
 
       - name: Upload DMG
         uses: actions/upload-artifact@v4
         with:
-          name: DVX3-BackupManager-macOS-Universal
+          name: DVX3-BackupManager-macOS-ARM64
           path: '*.dmg'
           retention-days: 90
 
