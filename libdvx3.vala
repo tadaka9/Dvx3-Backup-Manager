@@ -242,19 +242,17 @@ namespace Dvx3 {
             out pipe_stdout,
             null);
 
-#if WINDOWS
-        var pipe_in = new Win32InputStream (pipe_stdout, true);
-#else
-        var pipe_in = new UnixInputStream (pipe_stdout, true);
-#endif
         uint64 compressed_bytes = 0;
 
         /* Read from pipeline, encrypt and write chunks */
+        uint8[] buffer = new uint8[CHUNK_SIZE];
         while (true) {
-            uint8[] blk = pipe_in.read_bytes (CHUNK_SIZE).get_data ();
-            if (blk.length == 0)
+            ssize_t bytes_read = Posix.read (pipe_stdout, buffer, CHUNK_SIZE);
+            if (bytes_read <= 0)
                 break;
-            compressed_bytes += (uint64) blk.length;
+            
+            uint8[] blk = buffer[0:bytes_read];
+            compressed_bytes += (uint64) bytes_read;
             encoder.write (blk);
             
             if (progress != null)
@@ -269,7 +267,7 @@ namespace Dvx3 {
         if (child_status != 0)
             throw new IOError.FAILED ("tar|zstd pipeline failed");
 
-        pipe_in.close ();
+        Posix.close (pipe_stdout);
         encoder.close ();
 
         /* Rewrite header with correct chunk count */
@@ -365,12 +363,6 @@ namespace Dvx3 {
             null,
             null);
 
-#if WINDOWS
-        var pipe_out = new Win32OutputStream (pipe_stdin, true);
-#else
-        var pipe_out = new UnixOutputStream (pipe_stdin, true);
-#endif
-
         for (uint64 i = 0; i < chunks; i++) {
             uint8[] nonce = fin.read_bytes((uint)Sodium.Symmetric.NONCE_BYTES).get_data();
             if (nonce.length != Sodium.Symmetric.NONCE_BYTES)
@@ -393,8 +385,9 @@ namespace Dvx3 {
             if (ret != 0)
                 throw new IOError.FAILED ("Decryption failed at chunk %llu (wrong password?)".printf(i));
 
-            size_t written_to_pipe;
-            pipe_out.write_all (plain, out written_to_pipe);
+            ssize_t written = Posix.write (pipe_stdin, plain, plain.length);
+            if (written != plain.length)
+                throw new IOError.FAILED ("Failed to write decrypted data to pipe");
 
             processed_cipher += (uint64)(nonce.length + ct.length);
             plain_emitted += (uint64)plain.length;
@@ -403,7 +396,7 @@ namespace Dvx3 {
                 progress (processed_cipher, cipher_total, plain_emitted);
         }
 
-        pipe_out.close ();
+        Posix.close (pipe_stdin);
         fin.close ();
 
         /* Wait for extraction */
