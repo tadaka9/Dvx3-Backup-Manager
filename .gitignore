@@ -1,0 +1,31 @@
+# Build artifacts
+*.o
+*.so
+*.dll
+*.dylib
+*.exe
+*.a
+*.moc.cpp
+*.rcc.cpp
+gen-c/
+backup-manager-gui
+Dvx3
+libDvx3.*
+*.AppImage
+*.dmg
+*.tar.gz
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.bak
+*.backup
