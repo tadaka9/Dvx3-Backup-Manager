@@ -4,10 +4,10 @@ set -e
 VERSION="1.0.0"
 APPDIR="DVX3BackupManager.AppDir"
 
-echo "Building DVX3 Backup Manager AppImage..."
+echo "Building Dvx3 Backup Manager AppImage..."
 
 # Clean previous build
-rm -rf "$APPDIR" DVX3-BackupManager-*.AppImage
+rm -rf "$APPDIR" Dvx3-BackupManager-*.AppImage
 
 # Build the application
 ./build_gui.sh
@@ -55,7 +55,7 @@ copy_deps "$APPDIR/usr/bin/backup-manager-gui"
 cat > "$APPDIR/usr/share/applications/dvx3-backup.desktop" << 'EOF'
 [Desktop Entry]
 Type=Application
-Name=DVX3 Backup Manager
+Name=Dvx3 Backup Manager
 Comment=Quantum Backup System with Encryption
 Exec=backup-manager-gui
 Icon=dvx3-backup
@@ -91,8 +91,13 @@ if [ ! -f appimagetool-x86_64.AppImage ]; then
     chmod +x appimagetool-x86_64.AppImage
 fi
 
-# Build AppImage
-ARCH=x86_64 ./appimagetool-x86_64.AppImage "$APPDIR" "DVX3-BackupManager-${VERSION}-x86_64.AppImage"
+# Build AppImage (use --appimage-extract-and-run if FUSE is not available)
+if [ -e /dev/fuse ]; then
+    ARCH=x86_64 ./appimagetool-x86_64.AppImage "$APPDIR" "DVX3-BackupManager-${VERSION}-x86_64.AppImage"
+else
+    echo "FUSE not available, using --appimage-extract-and-run"
+    ARCH=x86_64 ./appimagetool-x86_64.AppImage --appimage-extract-and-run "$APPDIR" "Dvx3-BackupManager-${VERSION}-x86_64.AppImage"
+fi
 
 echo ""
 echo "✓ AppImage created successfully!"
