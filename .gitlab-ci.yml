@@ -1,0 +1,404 @@
+stages:
+  - build
+  - package
+  - release
+
+variables:
+  VERSION: "0.0.3a101125"
+  GIT_SUBMODULE_STRATEGY: recursive
+
+# Linux x86_64 - Debian
+build-debian-x86_64:
+  stage: build
+  image: debian:bookworm
+  tags:
+    - docker
+  before_script:
+    - apt-get update
+    - apt-get install -y valac gcc g++ make cmake pkg-config
+      libglib2.0-dev libjson-glib-dev libsodium-dev
+      qt6-base-dev qt6-base-dev-tools qt6-tools-dev
+      tar zstd file
+  script:
+    - ls -la vala-extra-vapis/libsodium.vapi
+    - tar --version
+    - chmod +x build_gui.sh || true
+    - bash ./build_gui.sh
+  artifacts:
+    paths:
+      - backup-manager-gui
+      - libdvx3.so
+      - dvx3
+      - dvx3.h
+      - dvx3.vapi
+    expire_in: 1 week
+
+# Linux x86_64 - Arch
+build-arch-x86_64:
+  stage: build
+  image: archlinux:latest
+  tags:
+    - docker
+  before_script:
+    - pacman -Syu --noconfirm
+    - pacman -S --noconfirm vala gcc make cmake pkg-config
+      glib2 json-glib libsodium qt6-base qt6-tools tar zstd
+  script:
+    - ls -la vala-extra-vapis/libsodium.vapi
+    - tar --version
+    - chmod +x build_gui.sh || true
+    - bash ./build_gui.sh
+  artifacts:
+    paths:
+      - backup-manager-gui
+      - libdvx3.so
+      - dvx3
+    expire_in: 1 week
+
+# Linux ARM64 - Debian
+build-debian-arm64:
+  stage: build
+  image: debian:bookworm
+  tags:
+    - docker
+    - arm64
+  before_script:
+    - apt-get update
+    - apt-get install -y valac gcc g++ make cmake pkg-config
+      libglib2.0-dev libjson-glib-dev libsodium-dev
+      qt6-base-dev qt6-base-dev-tools qt6-tools-dev
+      tar zstd file
+  script:
+    - ls -la vala-extra-vapis/libsodium.vapi
+    - tar --version
+    - chmod +x build_gui.sh build-raspberry.sh || true
+    - bash ./build_gui.sh
+    - bash ./build-raspberry.sh
+  artifacts:
+    paths:
+      - "*.tar.gz"
+      - backup-manager-gui
+      - libdvx3.so
+    expire_in: 1 week
+
+# Linux ARM64 - Arch
+build-arch-arm64:
+  stage: build
+  image: archlinux:latest
+  tags:
+    - docker
+    - arm64
+  before_script:
+    - pacman -Syu --noconfirm
+    - pacman -S --noconfirm vala gcc make cmake pkg-config
+      glib2 json-glib libsodium qt6-base qt6-tools tar zstd
+  script:
+    - ls -la vala-extra-vapis/libsodium.vapi
+    - tar --version
+    - chmod +x build_gui.sh || true
+    - bash ./build_gui.sh
+  artifacts:
+    paths:
+      - backup-manager-gui
+      - libdvx3.so
+    expire_in: 1 week
+
+# Raspberry Pi ARMv7 (armhf) .deb package
+build-raspberry-armhf:
+  stage: build
+  image: arm32v7/debian:bookworm
+  tags:
+    - docker
+    - arm
+  before_script:
+    - dpkg --add-architecture armhf || true
+    - apt-get update
+    - apt-get install -y valac gcc g++ make cmake pkg-config
+      libglib2.0-dev libjson-glib-dev libsodium-dev
+      qt6-base-dev qt6-base-dev-tools qt6-tools-dev
+      tar zstd file dpkg-dev fakeroot
+  script:
+    - ls -la vala-extra-vapis/libsodium.vapi
+    - tar --version
+    - chmod +x build_gui.sh build-raspberry.sh || true
+    - bash ./build_gui.sh
+    - bash ./build-raspberry.sh
+    # Create .deb package structure
+    - mkdir -p dvx3-backup-manager_${VERSION}_armhf/DEBIAN
+    - mkdir -p dvx3-backup-manager_${VERSION}_armhf/usr/bin
+    - mkdir -p dvx3-backup-manager_${VERSION}_armhf/usr/lib
+    - mkdir -p dvx3-backup-manager_${VERSION}_armhf/usr/share/applications
+    - mkdir -p dvx3-backup-manager_${VERSION}_armhf/usr/share/pixmaps
+    - cp backup-manager-gui dvx3-backup-manager_${VERSION}_armhf/usr/bin/
+    - cp dvx3 dvx3-backup-manager_${VERSION}_armhf/usr/bin/
+    - cp libdvx3.so dvx3-backup-manager_${VERSION}_armhf/usr/lib/
+    - cp dvx3-backup.png dvx3-backup-manager_${VERSION}_armhf/usr/share/pixmaps/ || true
+    - |
+      cat > dvx3-backup-manager_${VERSION}_armhf/DEBIAN/control <<EOF
+      Package: dvx3-backup-manager
+      Version: ${VERSION}
+      Section: utils
+      Priority: optional
+      Architecture: armhf
+      Depends: libglib2.0-0, libjson-glib-1.0-0, libsodium23, libqt6widgets6, libqt6core6, tar, zstd
+      Maintainer: CryptoWave Team <info@cryptowave.org>
+      Description: Encrypted backup manager with Qt6 GUI
+       Dvx3 Backup Manager provides secure encrypted backups using
+       Argon2id key derivation and XSalsa20-Poly1305 encryption.
+      EOF
+    - dpkg-deb --build dvx3-backup-manager_${VERSION}_armhf
+  artifacts:
+    paths:
+      - "*.deb"
+      - "*.tar.gz"
+    expire_in: 1 week
+
+# Raspberry Pi ARM64 (aarch64) .deb package
+build-raspberry-arm64:
+  stage: build
+  image: arm64v8/debian:bookworm
+  tags:
+    - docker
+    - arm64
+  before_script:
+    - apt-get update
+    - apt-get install -y valac gcc g++ make cmake pkg-config
+      libglib2.0-dev libjson-glib-dev libsodium-dev
+      qt6-base-dev qt6-base-dev-tools qt6-tools-dev
+      tar zstd file dpkg-dev fakeroot
+  script:
+    - ls -la vala-extra-vapis/libsodium.vapi
+    - tar --version
+    - chmod +x build_gui.sh build-raspberry.sh || true
+    - bash ./build_gui.sh
+    - bash ./build-raspberry.sh
+    # Create .deb package structure
+    - mkdir -p dvx3-backup-manager_${VERSION}_arm64/DEBIAN
+    - mkdir -p dvx3-backup-manager_${VERSION}_arm64/usr/bin
+    - mkdir -p dvx3-backup-manager_${VERSION}_arm64/usr/lib
+    - mkdir -p dvx3-backup-manager_${VERSION}_arm64/usr/share/applications
+    - mkdir -p dvx3-backup-manager_${VERSION}_arm64/usr/share/pixmaps
+    - cp backup-manager-gui dvx3-backup-manager_${VERSION}_arm64/usr/bin/
+    - cp dvx3 dvx3-backup-manager_${VERSION}_arm64/usr/bin/
+    - cp libdvx3.so dvx3-backup-manager_${VERSION}_arm64/usr/lib/
+    - cp dvx3-backup.png dvx3-backup-manager_${VERSION}_arm64/usr/share/pixmaps/ || true
+    - |
+      cat > dvx3-backup-manager_${VERSION}_arm64/DEBIAN/control <<EOF
+      Package: dvx3-backup-manager
+      Version: ${VERSION}
+      Section: utils
+      Priority: optional
+      Architecture: arm64
+      Depends: libglib2.0-0, libjson-glib-1.0-0, libsodium23, libqt6widgets6, libqt6core6, tar, zstd
+      Maintainer: CryptoWave Team <info@cryptowave.org>
+      Description: Encrypted backup manager with Qt6 GUI
+       Dvx3 Backup Manager provides secure encrypted backups using
+       Argon2id key derivation and XSalsa20-Poly1305 encryption.
+      EOF
+    - dpkg-deb --build dvx3-backup-manager_${VERSION}_arm64
+  artifacts:
+    paths:
+      - "*.deb"
+      - "*.tar.gz"
+    expire_in: 1 week
+
+# macOS Intel x86_64
+build-macos-intel:
+  stage: build
+  tags:
+    - macos
+    - x86_64
+  before_script:
+    - brew update || true
+    - brew install vala glib json-glib libsodium qt@6 cmake pkg-config create-dmg || brew upgrade vala glib json-glib libsodium qt@6 cmake pkg-config create-dmg || true
+    - export PATH="$(brew --prefix qt@6)/bin:$PATH"
+  script:
+    - ls -la vala-extra-vapis/libsodium.vapi
+    - tar --version
+    - chmod +x build.sh build_gui.sh || true
+    - bash ./build.sh
+    - bash ./build_gui.sh
+    # Create App Bundle
+    - mkdir -p "Dvx3 Backup Manager.app/Contents/MacOS"
+    - mkdir -p "Dvx3 Backup Manager.app/Contents/Resources"
+    - mkdir -p "Dvx3 Backup Manager.app/Contents/Frameworks"
+    - cp backup-manager-gui "Dvx3 Backup Manager.app/Contents/MacOS/"
+    - cp libDvx3.dylib "Dvx3 Backup Manager.app/Contents/Frameworks/" || cp libdvx3.so "Dvx3 Backup Manager.app/Contents/Frameworks/libDvx3.dylib" || true
+    - cp dvx3-backup.png "Dvx3 Backup Manager.app/Contents/Resources/" || true
+    - |
+      cat > "Dvx3 Backup Manager.app/Contents/Info.plist" <<EOF
+      <?xml version="1.0" encoding="UTF-8"?>
+      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+      <plist version="1.0">
+      <dict>
+          <key>CFBundleExecutable</key>
+          <string>backup-manager-gui</string>
+          <key>CFBundleIdentifier</key>
+          <string>com.cryptowave.dvx3backupmanager</string>
+          <key>CFBundleName</key>
+          <string>Dvx3 Backup Manager</string>
+          <key>CFBundleVersion</key>
+          <string>${VERSION}</string>
+          <key>CFBundleShortVersionString</key>
+          <string>${VERSION}</string>
+          <key>NSHighResolutionCapable</key>
+          <true/>
+      </dict>
+      </plist>
+      EOF
+    - $(brew --prefix qt@6)/bin/macdeployqt "Dvx3 Backup Manager.app" -verbose=2
+    - tar -czf Dvx3-BackupManager-macOS-Intel-x86_64.tar.gz "Dvx3 Backup Manager.app"
+  artifacts:
+    paths:
+      - "*.tar.gz"
+      - "Dvx3 Backup Manager.app"
+    expire_in: 1 week
+
+# macOS Apple Silicon ARM64
+build-macos-arm64:
+  stage: build
+  tags:
+    - macos
+    - arm64
+  before_script:
+    - brew update || true
+    - brew install vala glib json-glib libsodium qt@6 cmake pkg-config create-dmg || brew upgrade vala glib json-glib libsodium qt@6 cmake pkg-config create-dmg || true
+    - export PATH="$(brew --prefix qt@6)/bin:$PATH"
+  script:
+    - ls -la vala-extra-vapis/libsodium.vapi
+    - tar --version
+    - chmod +x build.sh build_gui.sh || true
+    - bash ./build.sh
+    - bash ./build_gui.sh
+    # Create App Bundle
+    - mkdir -p "Dvx3 Backup Manager.app/Contents/MacOS"
+    - mkdir -p "Dvx3 Backup Manager.app/Contents/Resources"
+    - mkdir -p "Dvx3 Backup Manager.app/Contents/Frameworks"
+    - cp backup-manager-gui "Dvx3 Backup Manager.app/Contents/MacOS/"
+    - cp libDvx3.dylib "Dvx3 Backup Manager.app/Contents/Frameworks/" || cp libdvx3.so "Dvx3 Backup Manager.app/Contents/Frameworks/libDvx3.dylib" || true
+    - cp dvx3-backup.png "Dvx3 Backup Manager.app/Contents/Resources/" || true
+    - |
+      cat > "Dvx3 Backup Manager.app/Contents/Info.plist" <<EOF
+      <?xml version="1.0" encoding="UTF-8"?>
+      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+      <plist version="1.0">
+      <dict>
+          <key>CFBundleExecutable</key>
+          <string>backup-manager-gui</string>
+          <key>CFBundleIdentifier</key>
+          <string>com.cryptowave.dvx3backupmanager</string>
+          <key>CFBundleName</key>
+          <string>Dvx3 Backup Manager</string>
+          <key>CFBundleVersion</key>
+          <string>${VERSION}</string>
+          <key>CFBundleShortVersionString</key>
+          <string>${VERSION}</string>
+          <key>NSHighResolutionCapable</key>
+          <true/>
+      </dict>
+      </plist>
+      EOF
+    - $(brew --prefix qt@6)/bin/macdeployqt "Dvx3 Backup Manager.app" -verbose=2
+    - tar -czf Dvx3-BackupManager-macOS-AppleSilicon-ARM64.tar.gz "Dvx3 Backup Manager.app"
+  artifacts:
+    paths:
+      - "*.tar.gz"
+      - "Dvx3 Backup Manager.app"
+    expire_in: 1 week
+
+# macOS Universal DMG (combines Intel + ARM64)
+package-macos-dmg:
+  stage: package
+  needs:
+    - build-macos-intel
+    - build-macos-arm64
+  tags:
+    - macos
+  before_script:
+    - brew install create-dmg || brew upgrade create-dmg || true
+  script:
+    - mkdir -p universal
+    - tar -xzf Dvx3-BackupManager-macOS-Intel-x86_64.tar.gz -C universal/
+    - tar -xzf Dvx3-BackupManager-macOS-AppleSilicon-ARM64.tar.gz -C universal/
+    # Create universal binary
+    - lipo -create -output "universal/Dvx3 Backup Manager.app/Contents/MacOS/backup-manager-gui" 
+        "universal/Dvx3 Backup Manager.app/Contents/MacOS/backup-manager-gui"
+        "universal/Dvx3 Backup Manager.app/Contents/MacOS/backup-manager-gui"
+    - |
+      create-dmg \
+        --volname "Dvx3 Backup Manager" \
+        --window-pos 200 120 \
+        --window-size 600 400 \
+        --icon-size 100 \
+        --app-drop-link 425 120 \
+        "Dvx3-BackupManager-macOS-Universal.dmg" \
+        "universal/Dvx3 Backup Manager.app" || \
+      hdiutil create -volname "Dvx3 Backup Manager" \
+        -srcfolder "universal/Dvx3 Backup Manager.app" \
+        -ov -format UDZO "Dvx3-BackupManager-macOS-Universal.dmg"
+  artifacts:
+    paths:
+      - "*.dmg"
+    expire_in: 1 week
+
+# Windows 11 x64 with MSYS2
+build-windows-x64:
+  stage: build
+  tags:
+    - windows
+    - shell
+  before_script:
+    - $env:PATH = "C:\msys64\mingw64\bin;C:\msys64\usr\bin;$env:PATH"
+    - C:\msys64\usr\bin\bash.exe -lc "pacman -Syu --noconfirm"
+    - C:\msys64\usr\bin\bash.exe -lc "pacman -S --noconfirm mingw-w64-x86_64-toolchain mingw-w64-x86_64-vala mingw-w64-x86_64-glib2 mingw-w64-x86_64-json-glib mingw-w64-x86_64-libsodium mingw-w64-x86_64-pkgconf mingw-w64-x86_64-qt6-base mingw-w64-x86_64-qt6-tools curl zip"
+  script:
+    - C:\msys64\usr\bin\bash.exe -lc "cd '$PWD' && ls -la vala-extra-vapis/libsodium.vapi"
+    - C:\msys64\usr\bin\bash.exe -lc "cd '$PWD' && tar --version"
+    - C:\msys64\usr\bin\bash.exe -lc "cd '$PWD' && chmod +x build.sh build_gui.sh || true"
+    - C:\msys64\usr\bin\bash.exe -lc "cd '$PWD' && bash ./build.sh"
+    - C:\msys64\usr\bin\bash.exe -lc "cd '$PWD' && bash ./build_gui.sh"
+    # Package with required DLLs
+    - mkdir dvx3-backup-manager-windows
+    - cp backup-manager-gui.exe dvx3-backup-manager-windows/
+    - cp Dvx3.exe dvx3-backup-manager-windows/ || cp dvx3.exe dvx3-backup-manager-windows/Dvx3.exe || true
+    - cp libDvx3.dll dvx3-backup-manager-windows/ || true
+    - cp C:\msys64\mingw64\bin\libglib-2.0-0.dll dvx3-backup-manager-windows/ || true
+    - cp C:\msys64\mingw64\bin\libgobject-2.0-0.dll dvx3-backup-manager-windows/ || true
+    - cp C:\msys64\mingw64\bin\libjson-glib-1.0-0.dll dvx3-backup-manager-windows/ || true
+    - cp C:\msys64\mingw64\bin\libsodium-*.dll dvx3-backup-manager-windows/ || true
+    - cp C:\msys64\mingw64\bin\Qt6*.dll dvx3-backup-manager-windows/ || true
+    - Compress-Archive -Path dvx3-backup-manager-windows -DestinationPath Dvx3-BackupManager-Windows-x64.zip
+  artifacts:
+    paths:
+      - "*.zip"
+      - "*.exe"
+      - "*.dll"
+    expire_in: 1 week
+
+# Create release when tagged
+release:
+  stage: release
+  image: alpine:latest
+  only:
+    - tags
+  needs:
+    - build-debian-x86_64
+    - build-arch-x86_64
+    - build-debian-arm64
+    - build-arch-arm64
+    - build-raspberry-armhf
+    - build-raspberry-arm64
+    - package-macos-dmg
+    - build-windows-x64
+  before_script:
+    - apk add --no-cache curl jq
+  script:
+    - echo "Creating release for $CI_COMMIT_TAG"
+    - ls -lR
+  artifacts:
+    paths:
+      - "*.deb"
+      - "*.tar.gz"
+      - "*.dmg"
+      - "*.zip"
+    expire_in: never
