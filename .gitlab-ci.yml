@@ -9,6 +9,7 @@ variables:
   GIT_SUBMODULE_STRATEGY: recursive
 
 # Test on local k8s runner
+# Triggering a new pipeline run
 k8s-test:
   stage: test
   image: debian:trixie
