@@ -1,4 +1,5 @@
 stages:
+  - test
   - build
   - package
   - release
@@ -6,6 +7,19 @@ stages:
 variables:
   VERSION: "0.0.3a101125"
   GIT_SUBMODULE_STRATEGY: recursive
+
+# Test on local k8s runner
+k8s-test:
+  stage: test
+  image: debian:trixie
+  tags:
+    - local
+    - k8s
+  script:
+    - echo "Running on Kubernetes"
+    - uname -a
+    - apt-get update && apt-get install -y --no-install-recommends build-essential
+    - gcc --version
 
 # Linux x86_64 - Debian
 build-debian-x86_64:
