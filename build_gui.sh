@@ -80,8 +80,22 @@ g++ -c -fPIC backup-manager.hpp -o backup-manager-lib.o \
 # 4. Run MOC on GUI header
 echo "[4/5] Running Qt MOC..."
 # Find moc and rcc (works on Linux, macOS, Windows/MSYS2)
-MOC=$(command -v moc6 2>/dev/null || command -v moc 2>/dev/null || command -v moc-qt6 2>/dev/null || echo /usr/lib/qt6/bin/moc)
-RCC=$(command -v rcc6 2>/dev/null || command -v rcc 2>/dev/null || command -v rcc-qt6 2>/dev/null || echo /usr/lib/qt6/bin/rcc)
+if command -v moc6 >/dev/null 2>&1; then
+    MOC=moc6
+    RCC=rcc6
+elif command -v moc-qt6 >/dev/null 2>&1; then
+    MOC=moc-qt6
+    RCC=rcc-qt6
+elif command -v moc >/dev/null 2>&1; then
+    MOC=moc
+    RCC=rcc
+elif [ -x /usr/lib/qt6/libexec/moc ]; then
+    MOC=/usr/lib/qt6/libexec/moc
+    RCC=/usr/lib/qt6/libexec/rcc
+else
+    echo "Error: moc not found. Install Qt6 development tools."
+    exit 1
+fi
 
 $MOC backup-manager-gui.hpp -o backup-manager-gui.moc.cpp
 
