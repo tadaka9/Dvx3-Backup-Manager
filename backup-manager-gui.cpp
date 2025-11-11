@@ -463,6 +463,10 @@ void BackupManagerWindow::setup_ui() {
         "}"
     );
     history_table->horizontalHeader()->setStretchLastSection(true);
+    history_table->setColumnWidth(0, 160);  // Date/Time column
+    history_table->setColumnWidth(1, 150);  // Job column
+    history_table->setColumnWidth(2, 100);  // Size column
+    history_table->setColumnWidth(3, 80);   // Ratio column
     history_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     history_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     
