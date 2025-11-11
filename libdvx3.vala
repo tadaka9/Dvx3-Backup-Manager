@@ -21,6 +21,12 @@ extern int posix_close (int fd);
 #if POSIX
 [CCode (cname = "waitpid", cheader_filename = "sys/wait.h")]
 extern int posix_waitpid (int pid, out int status, int options);
+[CCode (cname = "kill", cheader_filename = "signal.h")]
+extern int posix_kill (int pid, int sig);
+[CCode (cname = "SIGUSR1", cheader_filename = "signal.h")]
+private const int _SIGUSR1 = 10; // Fallback value; actual from header when compiled
+[CCode (cname = "usleep", cheader_filename = "unistd.h")]
+extern int posix_usleep (uint usec);
 #endif
 
 namespace Dvx3 {
@@ -179,7 +185,7 @@ namespace Dvx3 {
         
         /* Calculate source size for progress estimation (compressed will be ~30-50% of this) */
         uint64 source_size = compute_directory_size (src_dir, exclude_path);
-        uint64 estimated_compressed = source_size / 2; // Rough estimate: 50% compression
+        uint64 estimated_compressed = source_size / 2; // Initial estimate: 50% compression
         
         /* Generate salt and derive key */
         var salt = random_bytes (Sodium.CRYPTO_PWHASH_SALTBYTES);
@@ -218,7 +224,157 @@ namespace Dvx3 {
         /* Create chunk encoder */
         var encoder = new ChunkEncoder (fout, master);
 
-        /* Launch tar | zstd pipeline */
+        /* Launch tar and zstd as separate processes to refine estimates dynamically */
+        uint64 compressed_bytes = 0;
+        uint64 original_processed = 0;
+
+#if POSIX
+        // Build tar command (output to stdout), enable totals on SIGUSR1
+        string tar_cmd;
+        if (exclude_path != null) {
+            var exclude_rel = exclude_path.has_prefix(src_path + "/") 
+                ? exclude_path.substring(src_path.length + 1) 
+                : exclude_path;
+            tar_cmd = "tar -c --totals=USR1 --exclude='%s' -C '%s' .".printf(
+                exclude_rel.replace("'", "'\\''"),
+                src_path.replace("'", "'\\''")
+            );
+        } else {
+            tar_cmd = "tar -c --totals=USR1 -C '%s' .".printf(
+                src_path.replace("'", "'\\''")
+            );
+        }
+
+        // Spawn tar with stdout and stderr pipes
+        int tar_out_fd; int tar_err_fd; Pid tar_pid;
+        Process.spawn_async_with_pipes(
+            null,
+            { "sh", "-c", tar_cmd },
+            null,
+            SpawnFlags.SEARCH_PATH | SpawnFlags.DO_NOT_REAP_CHILD,
+            null,
+            out tar_pid,
+            null,
+            out tar_out_fd,
+            out tar_err_fd
+        );
+
+        // Spawn zstd with stdin and stdout pipes
+        int zstd_in_fd; int zstd_out_fd; Pid zstd_pid;
+        Process.spawn_async_with_pipes(
+            null,
+            { "sh", "-c", "zstd -T16 -22 -c" },
+            null,
+            SpawnFlags.SEARCH_PATH | SpawnFlags.DO_NOT_REAP_CHILD,
+            null,
+            out zstd_pid,
+            out zstd_in_fd,
+            out zstd_out_fd,
+            null
+        );
+
+        // Relay thread: tar stdout -> zstd stdin
+        Thread<void*> relay = Thread.create<void*>(() => {
+            uint8[] rbuf = new uint8[CHUNK_SIZE];
+            while (true) {
+                ssize_t r = posix_read(tar_out_fd, rbuf, CHUNK_SIZE);
+                if (r <= 0) break;
+                ssize_t off = 0;
+                while (off < r) {
+                    ssize_t w = posix_write(zstd_in_fd, rbuf[off:(int)r], (size_t)(r - off));
+                    if (w <= 0) break;
+                    off += w;
+                }
+            }
+            posix_close(tar_out_fd);
+            posix_close(zstd_in_fd);
+            return null;
+        }, false);
+
+        // Monitor thread: periodically query tar totals via SIGUSR1 and parse stderr
+        Thread<void*> monitor = Thread.create<void*>(() => {
+            uint8[] ebuf = new uint8[4096];
+            string pending = "";
+            while (true) {
+                // Ask tar to print totals so far
+                posix_kill((int)tar_pid, _SIGUSR1);
+                posix_usleep(200000); // 200ms
+                ssize_t r = posix_read(tar_err_fd, ebuf, (size_t)ebuf.length);
+                if (r > 0) {
+                    string chunk = (string) ebuf[0:(int)r];
+                    pending += chunk;
+                    int nl;
+                    while ((nl = pending.index_of("\n")) >= 0) {
+                        string line = pending.substring(0, nl);
+                        pending = pending.substring(nl + 1);
+                        // Example line: "Total bytes written: 123456"
+                        if (line.down().contains("total bytes written")) {
+                            // Extract number at end
+                            string[] parts = line.split(":");
+                            if (parts.length >= 2) {
+                                string num = parts[parts.length - 1].strip();
+                                // Remove non-digits
+                                string digits = "";
+                                for (int ci = 0; ci < num.length; ci++) {
+                                    char c = num[ci];
+                                    if (c >= '0' && c <= '9') digits += c.to_string();
+                                }
+                                if (digits.length > 0) {
+                                    try {
+                                        uint64 v = (uint64) int64.parse(digits);
+                                        original_processed = v;
+                                    } catch (Error e) {
+                                        // ignore parse errors
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                // Exit condition: tar likely finished and no more output; we'll break after zstd finishes outside
+                // Keep looping; thread will end when fds closed by parent on cleanup
+            }
+            return null;
+        }, false);
+
+        // Read from zstd stdout, encrypt and write
+        uint8[] buffer = new uint8[CHUNK_SIZE];
+        while (true) {
+            ssize_t bytes_read = posix_read (zstd_out_fd, buffer, CHUNK_SIZE);
+            if (bytes_read <= 0)
+                break;
+            uint8[] blk = buffer[0:bytes_read];
+            compressed_bytes += (uint64) bytes_read;
+            encoder.write (blk);
+
+            if (progress != null) {
+                // Refine estimated total based on observed ratio so far
+                uint64 dyn_total = estimated_compressed;
+                if (original_processed > 0) {
+                    double ratio = (double) compressed_bytes / (double) original_processed; // compressed/original
+                    uint64 pred = (uint64) Math.ceil(ratio * (double) source_size);
+                    if (pred < compressed_bytes) pred = compressed_bytes;
+                    dyn_total = pred;
+                }
+                progress (compressed_bytes, dyn_total, encoder.cipher_bytes);
+            }
+        }
+
+        // Close zstd out and finish encoder
+        posix_close (zstd_out_fd);
+        encoder.close ();
+
+        // Wait for children
+        int st1; int st2;
+        posix_waitpid (zstd_pid, out st1, 0);
+        posix_waitpid (tar_pid, out st2, 0);
+        Process.close_pid (zstd_pid);
+        Process.close_pid (tar_pid);
+
+        if (st1 != 0 || st2 != 0)
+            throw new IOError.FAILED ("tar/zstd pipeline failed");
+#else
+        /* Non-POSIX fallback: original shell pipeline with static estimate */
         string[] pipeline_cmd;
         if (exclude_path != null) {
             var exclude_rel = exclude_path.has_prefix(src_path + "/") 
@@ -252,35 +408,20 @@ namespace Dvx3 {
             null,
             out pipe_stdout,
             null);
-
-        uint64 compressed_bytes = 0;
-
-        /* Read from pipeline, encrypt and write chunks */
-        uint8[] buffer = new uint8[CHUNK_SIZE];
+        uint8[] buffer2 = new uint8[CHUNK_SIZE];
         while (true) {
-            ssize_t bytes_read = posix_read (pipe_stdout, buffer, CHUNK_SIZE);
+            ssize_t bytes_read = posix_read (pipe_stdout, buffer2, CHUNK_SIZE);
             if (bytes_read <= 0)
                 break;
-            
-            uint8[] blk = buffer[0:bytes_read];
+            uint8[] blk = buffer2[0:bytes_read];
             compressed_bytes += (uint64) bytes_read;
             encoder.write (blk);
-            
             if (progress != null)
                 progress (compressed_bytes, estimated_compressed, encoder.cipher_bytes);
         }
-
         posix_close (pipe_stdout);
         encoder.close ();
-
-        /* Wait for pipeline to complete */
-#if POSIX
-        int child_status;
-        posix_waitpid (child_pid, out child_status, 0);
-        if (child_status != 0)
-            throw new IOError.FAILED ("tar|zstd pipeline failed");
 #endif
-        Process.close_pid (child_pid);
 
         /* Rewrite header with correct chunk count */
         var final_header = new Json.Object();
