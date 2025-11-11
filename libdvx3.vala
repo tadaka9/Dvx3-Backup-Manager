@@ -12,11 +12,15 @@ using Json;
 using Sodium;
 
 /* Direct C bindings for low-level POSIX I/O */
-extern ssize_t read (int fd, void* buf, size_t count);
-extern ssize_t write (int fd, void* buf, size_t count);
-extern int close (int fd);
+[CCode (cname = "read")]
+extern ssize_t posix_read (int fd, void* buf, size_t count);
+[CCode (cname = "write")]
+extern ssize_t posix_write (int fd, void* buf, size_t count);
+[CCode (cname = "close")]
+extern int posix_close (int fd);
 #if POSIX
-extern int waitpid (int pid, out int status, int options);
+[CCode (cname = "waitpid")]
+extern int posix_waitpid (int pid, out int status, int options);
 #endif
 
 namespace Dvx3 {
@@ -254,7 +258,7 @@ namespace Dvx3 {
         /* Read from pipeline, encrypt and write chunks */
         uint8[] buffer = new uint8[CHUNK_SIZE];
         while (true) {
-            ssize_t bytes_read = read (pipe_stdout, buffer, CHUNK_SIZE);
+            ssize_t bytes_read = posix_read (pipe_stdout, buffer, CHUNK_SIZE);
             if (bytes_read <= 0)
                 break;
             
@@ -266,13 +270,13 @@ namespace Dvx3 {
                 progress (compressed_bytes, estimated_compressed, encoder.cipher_bytes);
         }
 
-        close (pipe_stdout);
+        posix_close (pipe_stdout);
         encoder.close ();
 
         /* Wait for pipeline to complete */
 #if POSIX
         int child_status;
-        waitpid (child_pid, out child_status, 0);
+        posix_waitpid (child_pid, out child_status, 0);
         if (child_status != 0)
             throw new IOError.FAILED ("tar|zstd pipeline failed");
 #endif
@@ -393,7 +397,7 @@ namespace Dvx3 {
             if (ret != 0)
                 throw new IOError.FAILED ("Decryption failed at chunk %llu (wrong password?)".printf(i));
 
-            ssize_t written = write (pipe_stdin, plain, plain.length);
+            ssize_t written = posix_write (pipe_stdin, plain, plain.length);
             if (written != plain.length)
                 throw new IOError.FAILED ("Failed to write decrypted data to pipe");
 
@@ -404,13 +408,13 @@ namespace Dvx3 {
                 progress (processed_cipher, cipher_total, plain_emitted);
         }
 
-        close (pipe_stdin);
+        posix_close (pipe_stdin);
         fin.close ();
 
         /* Wait for extraction to complete */
 #if POSIX
         int child_status;
-        waitpid (child_pid, out child_status, 0);
+        posix_waitpid (child_pid, out child_status, 0);
         if (child_status != 0)
             throw new IOError.FAILED ("Extraction pipeline failed");
 #endif
