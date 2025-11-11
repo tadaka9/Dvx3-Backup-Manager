@@ -50,7 +50,7 @@
 
 namespace backup_gui {
 
-// Animated gradient background widget
+// Animated gradient background widget with particles and orbital motion
 class PsychedelicBackground : public QWidget {
     Q_OBJECT
 public:
@@ -60,7 +60,20 @@ protected:
     void paintEvent(QPaintEvent*) override;
     
 private:
+    struct Particle {
+        double x, y;
+        double vx, vy;
+        int hue;
+        double size;
+        double alpha;
+    };
+    
     int hue_offset;
+    double time;
+    std::vector<Particle> particles;
+    
+    void init_particles();
+    void update_particles();
 };
 
 // Configuration for compression and archiving

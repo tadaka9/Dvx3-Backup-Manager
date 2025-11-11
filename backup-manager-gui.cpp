@@ -15,56 +15,134 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <cmath>
+#include <ctime>
+#include <vector>
 #include <sstream>
 
 namespace backup_gui {
 
-// Animated gradient background implementation
-PsychedelicBackground::PsychedelicBackground(QWidget* parent) : QWidget(parent), hue_offset(0) {
+// Animated gradient background implementation with particles
+PsychedelicBackground::PsychedelicBackground(QWidget* parent) : QWidget(parent), hue_offset(0), time(0.0) {
     setAttribute(Qt::WA_StyledBackground, false);
     setAttribute(Qt::WA_OpaquePaintEvent, false);
     
-    // Animation timer
+    init_particles();
+    
+    // Smooth animation timer (30 FPS - safe for all users)
     auto* timer = new QTimer(this);
     connect(timer, &QTimer::timeout, this, [this]() {
-        hue_offset = (hue_offset + 2) % 360;
+        hue_offset = (hue_offset + 1) % 360;  // Slower color shift
+        time += 0.033;  // ~30ms per frame
+        update_particles();
         update();
     });
-    timer->start(50); // 20 FPS
+    timer->start(33);  // 30 FPS for smooth, safe animation
+}
+
+void PsychedelicBackground::init_particles() {
+    particles.clear();
+    std::srand(static_cast<unsigned>(std::time(nullptr)));
+    
+    // Create 50 floating particles
+    for (int i = 0; i < 50; i++) {
+        Particle p;
+        p.x = std::rand() % 1400;
+        p.y = std::rand() % 900;
+        p.vx = (std::rand() % 40 - 20) / 20.0;  // -1 to +1
+        p.vy = (std::rand() % 40 - 20) / 20.0;
+        p.hue = std::rand() % 360;
+        p.size = 2.0 + (std::rand() % 6);
+        p.alpha = 0.3 + (std::rand() % 70) / 100.0;  // 0.3-1.0
+        particles.push_back(p);
+    }
+}
+
+void PsychedelicBackground::update_particles() {
+    for (auto& p : particles) {
+        p.x += p.vx;
+        p.y += p.vy;
+        
+        // Wrap around screen edges
+        if (p.x < 0) p.x = width();
+        if (p.x > width()) p.x = 0;
+        if (p.y < 0) p.y = height();
+        if (p.y > height()) p.y = 0;
+    }
 }
 
 void PsychedelicBackground::paintEvent(QPaintEvent*) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
+    p.setRenderHint(QPainter::SmoothPixmapTransform);
     
-    // Multi-layer animated gradient
-    QLinearGradient grad1(0, 0, width(), height());
-    grad1.setColorAt(0.0, QColor::fromHsv((hue_offset + 280) % 360, 200, 40));
-    grad1.setColorAt(0.5, QColor::fromHsv((hue_offset + 320) % 360, 180, 25));
-    grad1.setColorAt(1.0, QColor::fromHsv((hue_offset + 200) % 360, 190, 35));
+    // Deep space background - dark purple/blue base
+    QLinearGradient base_grad(0, 0, width(), height());
+    base_grad.setColorAt(0.0, QColor(10, 0, 25));      // Deep purple
+    base_grad.setColorAt(0.5, QColor(0, 10, 30));      // Deep blue
+    base_grad.setColorAt(1.0, QColor(15, 0, 20));      // Dark purple
+    p.fillRect(rect(), base_grad);
     
-    p.fillRect(rect(), grad1);
+    // Orbital radial gradients with time-based motion
+    double orbit1_x = width() * (0.5 + 0.3 * std::sin(time * 0.3));
+    double orbit1_y = height() * (0.5 + 0.3 * std::cos(time * 0.3));
+    QRadialGradient orbit1(orbit1_x, orbit1_y, width() * 0.5);
+    orbit1.setColorAt(0.0, QColor::fromHsv((hue_offset + 280) % 360, 220, 60, 50));
+    orbit1.setColorAt(0.5, QColor::fromHsv((hue_offset + 280) % 360, 180, 30, 20));
+    orbit1.setColorAt(1.0, QColor(0, 0, 0, 0));
+    p.fillRect(rect(), orbit1);
     
-    // Overlay radial gradients for depth
-    QRadialGradient rad1(width() * 0.3, height() * 0.3, width() * 0.6);
-    rad1.setColorAt(0.0, QColor::fromHsv((hue_offset + 180) % 360, 255, 80, 30));
-    rad1.setColorAt(1.0, QColor(0, 0, 0, 0));
-    p.fillRect(rect(), rad1);
+    double orbit2_x = width() * (0.5 + 0.35 * std::cos(time * 0.4 + 1.5));
+    double orbit2_y = height() * (0.5 + 0.35 * std::sin(time * 0.4 + 1.5));
+    QRadialGradient orbit2(orbit2_x, orbit2_y, width() * 0.45);
+    orbit2.setColorAt(0.0, QColor::fromHsv((hue_offset + 180) % 360, 240, 70, 45));
+    orbit2.setColorAt(0.6, QColor::fromHsv((hue_offset + 180) % 360, 200, 25, 15));
+    orbit2.setColorAt(1.0, QColor(0, 0, 0, 0));
+    p.fillRect(rect(), orbit2);
     
-    QRadialGradient rad2(width() * 0.7, height() * 0.7, width() * 0.5);
-    rad2.setColorAt(0.0, QColor::fromHsv((hue_offset + 60) % 360, 255, 100, 40));
-    rad2.setColorAt(1.0, QColor(0, 0, 0, 0));
-    p.fillRect(rect(), rad2);
+    double orbit3_x = width() * (0.5 + 0.25 * std::sin(time * 0.25 + 3.0));
+    double orbit3_y = height() * (0.5 + 0.25 * std::cos(time * 0.25 + 3.0));
+    QRadialGradient orbit3(orbit3_x, orbit3_y, width() * 0.4);
+    orbit3.setColorAt(0.0, QColor::fromHsv((hue_offset + 60) % 360, 255, 80, 40));
+    orbit3.setColorAt(0.7, QColor::fromHsv((hue_offset + 60) % 360, 220, 20, 10));
+    orbit3.setColorAt(1.0, QColor(0, 0, 0, 0));
+    p.fillRect(rect(), orbit3);
     
-    // Animated grid overlay
-    p.setPen(QPen(QColor(0, 255, 255, 15), 1));
-    int grid_size = 40;
+    // Render particles with glow
+    p.setCompositionMode(QPainter::CompositionMode_Plus);  // Additive blending for glow
+    for (const auto& particle : particles) {
+        QRadialGradient glow(particle.x, particle.y, particle.size * 3);
+        int part_hue = (particle.hue + hue_offset) % 360;
+        glow.setColorAt(0.0, QColor::fromHsv(part_hue, 255, 255, particle.alpha * 255 * 0.8));
+        glow.setColorAt(0.5, QColor::fromHsv(part_hue, 200, 200, particle.alpha * 255 * 0.3));
+        glow.setColorAt(1.0, QColor(0, 0, 0, 0));
+        
+        p.setBrush(glow);
+        p.setPen(Qt::NoPen);
+        p.drawEllipse(QPointF(particle.x, particle.y), particle.size * 3, particle.size * 3);
+    }
+    p.setCompositionMode(QPainter::CompositionMode_SourceOver);
+    
+    // Holographic grid with shimmer (subtle, non-strobing)
+    int shimmer = (int)(20 + 10 * std::sin(time * 2.0));  // 20-30 alpha
+    p.setPen(QPen(QColor(0, 255, 255, shimmer), 1));
+    int grid_size = 50;
     for (int x = 0; x < width(); x += grid_size) {
         p.drawLine(x, 0, x, height());
     }
     for (int y = 0; y < height(); y += grid_size) {
         p.drawLine(0, y, width(), y);
     }
+    
+    // Corner accent lines (cyberpunk aesthetic)
+    p.setPen(QPen(QColor::fromHsv((hue_offset + 180) % 360, 200, 255, 120), 2));
+    p.drawLine(0, 0, 100, 0);
+    p.drawLine(0, 0, 0, 100);
+    p.drawLine(width() - 100, 0, width(), 0);
+    p.drawLine(width(), 0, width(), 100);
+    p.drawLine(0, height(), 100, height());
+    p.drawLine(0, height() - 100, 0, height());
+    p.drawLine(width() - 100, height(), width(), height());
+    p.drawLine(width(), height() - 100, width(), height());
 }
 
 // CompressionConfig implementation
