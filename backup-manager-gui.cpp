@@ -448,11 +448,12 @@ void BackupManagerWindow::setup_ui() {
         "  color: #666;"
         "  border: none;"
         "  border-bottom: 1px solid #ddd;"
-        "  padding: 8px;"
+        "  padding: 12px 8px;"
         "  font-weight: 600;"
+        "  min-height: 36px;"
         "}"
         "QTableWidget::item {"
-        "  padding: 6px;"
+        "  padding: 10px 6px;"
         "}"
         "QTableWidget::item:hover {"
         "  background: #f5f5f5;"
@@ -463,6 +464,9 @@ void BackupManagerWindow::setup_ui() {
         "}"
     );
     history_table->horizontalHeader()->setStretchLastSection(true);
+    history_table->horizontalHeader()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    history_table->verticalHeader()->setVisible(false);
+    history_table->verticalHeader()->setDefaultSectionSize(40);  // Row height
     history_table->setColumnWidth(0, 200);  // Date/Time column (wider for full timestamp)
     history_table->setColumnWidth(1, 140);  // Job column
     history_table->setColumnWidth(2, 90);   // Size column
