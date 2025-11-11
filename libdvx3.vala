@@ -12,14 +12,14 @@ using Json;
 using Sodium;
 
 /* Direct C bindings for low-level POSIX I/O */
-[CCode (cname = "read")]
+[CCode (cname = "read", cheader_filename = "unistd.h")]
 extern ssize_t posix_read (int fd, void* buf, size_t count);
-[CCode (cname = "write")]
+[CCode (cname = "write", cheader_filename = "unistd.h")]
 extern ssize_t posix_write (int fd, void* buf, size_t count);
-[CCode (cname = "close")]
+[CCode (cname = "close", cheader_filename = "unistd.h")]
 extern int posix_close (int fd);
 #if POSIX
-[CCode (cname = "waitpid")]
+[CCode (cname = "waitpid", cheader_filename = "sys/wait.h")]
 extern int posix_waitpid (int pid, out int status, int options);
 #endif
 

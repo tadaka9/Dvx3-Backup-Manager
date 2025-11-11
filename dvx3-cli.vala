@@ -11,7 +11,7 @@ using GLib;
 using Dvx3;
 
 /* POSIX bindings for isatty */
-[CCode (cname = "isatty")]
+[CCode (cname = "isatty", cheader_filename = "unistd.h")]
 extern int posix_isatty (int fd);
 private const int STDOUT_FILENO = 1;
 
