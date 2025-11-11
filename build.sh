@@ -34,7 +34,7 @@ case "$PLATFORM" in
         SHARED_EXT="dylib"
         LIB_OUT="libdvx3.$SHARED_EXT"
         PIC_FLAG="-X -fPIC"
-        SHARED_LINK_FLAGS=(-X -dynamiclib)
+        SHARED_LINK_FLAGS=(-X -dynamiclib -X -lm)
         # Use @loader_path so CLI finds library in same directory
         RPATH_FLAG=(-X -Wl,-rpath,@loader_path)
         EXE_EXT=""
@@ -44,7 +44,7 @@ case "$PLATFORM" in
         SHARED_EXT="so"
         LIB_OUT="libdvx3.$SHARED_EXT"
         PIC_FLAG="-X -fPIC"
-        SHARED_LINK_FLAGS=(-X -shared)
+        SHARED_LINK_FLAGS=(-X -shared -X -lm)
         RPATH_FLAG=(-X -Wl,-rpath,'$ORIGIN')
         EXE_EXT=""
         VALA_DEFINES=(-D POSIX)

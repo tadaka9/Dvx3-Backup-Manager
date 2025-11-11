@@ -212,10 +212,37 @@ private:
         save_history();
     }
 
-    uint64_t calculate_directory_size(const std::string& path) {
+    static bool is_subpath(const std::filesystem::path& child, const std::filesystem::path& parent) {
+        auto pit = parent.begin();
+        auto cit = child.begin();
+        for (; pit != parent.end() && cit != child.end(); ++pit, ++cit) {
+            if (*pit != *cit) return false;
+        }
+        return pit == parent.end();
+    }
+
+    uint64_t calculate_directory_size(const std::string& path, const std::string& exclude = "") {
         uint64_t total = 0;
         try {
+            fs::path base = fs::path(path).lexically_normal();
+            fs::path excl;
+            bool has_excl = false;
+            if (!exclude.empty()) {
+                excl = fs::path(exclude).lexically_normal();
+                has_excl = true;
+            }
             for (const auto& entry : fs::recursive_directory_iterator(path)) {
+                if (has_excl) {
+                    fs::path p = entry.path().lexically_normal();
+                    if (is_subpath(p, excl)) {
+                        if (entry.is_directory()) {
+                            // Skip recursion into excluded directory
+                            continue;
+                        }
+                        // Skip files under excluded path
+                        continue;
+                    }
+                }
                 if (entry.is_regular_file()) {
                     total += entry.file_size();
                 }
@@ -290,11 +317,23 @@ public:
         record.success = false;
 
         try {
-            // Calculate original size
-            record.original_size = calculate_directory_size(it->source_path);
+            // Determine exclusion: if backup_dir is inside source_path, exclude it
+            std::string exclude_under;
+            try {
+                fs::path srcp = fs::path(it->source_path).lexically_normal();
+                fs::path backp = fs::path(it->backup_dir).lexically_normal();
+                if (is_subpath(backp, srcp)) {
+                    exclude_under = backp.string();
+                }
+            } catch (...) {
+                // If path normalization fails, ignore exclusion
+            }
+
+            // Calculate original size excluding backup_dir if applicable
+            record.original_size = calculate_directory_size(it->source_path, exclude_under);
 
             // Perform backup
-            dvx3::encrypt(it->source_path, record.archive_path, it->password, "", progress);
+            dvx3::encrypt(it->source_path, record.archive_path, it->password, exclude_under, progress);
 
             // Get compressed size
             record.compressed_size = fs::file_size(record.archive_path);

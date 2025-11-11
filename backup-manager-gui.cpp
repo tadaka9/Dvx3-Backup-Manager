@@ -8,6 +8,7 @@
 #include <QSplitter>
 #include <QHeaderView>
 #include <QDateTime>
+#include <QIcon>
 #include <QStandardPaths>
 #include <QDir>
 #include <QGraphicsDropShadowEffect>
@@ -236,7 +237,7 @@ CompressionConfig JobConfigDialog::get_compression_config() const {
 // BackupManagerWindow implementation
 BackupManagerWindow::BackupManagerWindow(QWidget* parent)
     : QMainWindow(parent) {
-    setWindowTitle("DVX3 Backup Manager");
+    setWindowTitle("Dvx3 Backup Manager");
     resize(1400, 900);
     
     // Psychedelic background
@@ -818,9 +819,9 @@ void BackupManagerWindow::run_backup() {
                     
                     QMetaObject::invokeMethod(this, [this, pct_scaled, pct_double, proc, tot, out, speed_str, eta_str, elapsed_str]() {
                         progress_bar->setValue(pct_scaled);
-                        progress_bar->setFormat(QString("%1%").arg(pct_double, 0, 'f', 2));
+                        progress_bar->setFormat(QString("%1% (approx)").arg(pct_double, 0, 'f', 2));
                         
-                        QString status = QString("%1 / %2 → %3 | %4 | Elapsed: %5")
+                        QString status = QString("Compressed: %1 | Predicted Final: ~%2 | Encrypted Output: %3 | Speed: %4 | Elapsed: %5")
                             .arg(QString::fromStdString(dvx3::format_size(proc)))
                             .arg(QString::fromStdString(dvx3::format_size(tot)))
                             .arg(QString::fromStdString(dvx3::format_size(out)))
@@ -984,7 +985,7 @@ void BackupManagerWindow::restore_backup() {
     // Connect browse buttons
     connect(browse_btn, &QPushButton::clicked, [&]() {
         QString file = QFileDialog::getOpenFileName(&dialog, "Select Backup Archive",
-                                                     QString(), "DVX3 Archives (*.dvx3);;All Files (*)");
+                                                     QString(), "Dvx3 Archives (*.dvx3);;All Files (*)");
         if (!file.isEmpty()) {
             archive_edit->setText(file);
         }
@@ -1313,6 +1314,8 @@ int main(int argc, char** argv) {
     
     app.setApplicationName("Backup Manager");
     app.setOrganizationName("BackupManager");
+    // Set application icon from Qt resource (resources.qrc -> alias icon.png)
+    QApplication::setWindowIcon(QIcon(":/icon.png"));
     
     // Set config directory
     QString config_dir = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + "/backup-manager";
@@ -1320,6 +1323,7 @@ int main(int argc, char** argv) {
     QDir::setCurrent(config_dir);
     
     backup_gui::BackupManagerWindow window;
+    window.setWindowIcon(QIcon(":/icon.png"));
     window.show();
     
     return app.exec();
