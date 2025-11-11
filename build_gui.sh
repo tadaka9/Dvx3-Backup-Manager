@@ -80,8 +80,8 @@ g++ -c -fPIC backup-manager.hpp -o backup-manager-lib.o \
 # 4. Run MOC on GUI header
 echo "[4/5] Running Qt MOC..."
 # Find moc and rcc (works on Linux, macOS, Windows/MSYS2)
-MOC=$(command -v moc6 || command -v moc || command -v moc-qt6 || echo /usr/lib/qt6/bin/moc)
-RCC=$(command -v rcc6 || command -v rcc || command -v rcc-qt6 || echo /usr/lib/qt6/bin/rcc)
+MOC=$(command -v moc6 2>/dev/null || command -v moc 2>/dev/null || command -v moc-qt6 2>/dev/null || echo /usr/lib/qt6/bin/moc)
+RCC=$(command -v rcc6 2>/dev/null || command -v rcc 2>/dev/null || command -v rcc-qt6 2>/dev/null || echo /usr/lib/qt6/bin/rcc)
 
 $MOC backup-manager-gui.hpp -o backup-manager-gui.moc.cpp
 
