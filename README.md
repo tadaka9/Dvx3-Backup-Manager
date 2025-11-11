@@ -11,6 +11,7 @@ A high-performance encrypted archive library for Vala/C using:
 - ✅ **Zero intermediate files** - streaming pipeline from start to finish
 - ✅ **Memory efficient** - 1 MiB chunk processing
 - ✅ **Progress callbacks** - track encryption/decryption progress
+    - Encryption: reports compressed-bytes processed and a dynamically predicted final compressed size when GNU tar is available; falls back to a static estimate otherwise
 - ✅ **Strong security** - Argon2id KDF + authenticated encryption
 - ✅ **C/Vala API** - use as library or CLI tool
 
@@ -173,8 +174,21 @@ void decrypt_example(void) {
 - GIO Unix 2.0
 - JSON-GLib 1.0
 - libsodium
-- tar (command-line tool)
+- tar (command-line tool) — GNU tar recommended for dynamic progress
 - zstd (command-line tool)
+
+## Dynamic Progress Estimation
+
+When encrypting, the library streams `tar | zstd` and encrypts on the fly. To provide meaningful progress:
+- On systems with GNU tar, we send `SIGUSR1` to tar and parse its running totals (original bytes processed). From the observed compressed/original ratio so far, we predict the final compressed size and update the progress bar accordingly.
+- On systems without GNU tar (e.g., BSD tar on macOS), the library falls back to a static estimate (initially ~50% of original size). The GUI labels such progress as approximate.
+
+Notes:
+- Actual final compressed size may vary depending on content and zstd level.
+- The progress callback signature is `(processed, total, output)` where:
+    - `processed` = compressed bytes produced so far
+    - `total` = predicted final compressed size (dynamic if GNU tar is present, heuristic otherwise)
+    - `output` = encrypted bytes written to the archive so far
 
 ## File Structure
 

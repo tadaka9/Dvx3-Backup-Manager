@@ -6,7 +6,7 @@ on:
     tags:
       - 'v*'
   pull_request:
-    branches: [main, master]
+    branches: [main, master, develop]  # Added 'develop' to match push branches
   workflow_dispatch:
 
 env:
@@ -28,6 +28,16 @@ jobs:
             libglib2.0-dev libjson-glib-dev libsodium-dev \
             qt6-base-dev qt6-base-dev-tools qt6-tools-dev \
             tar zstd file wget
+
+      - name: Ensure GNU tar available
+        run: |
+          set -e
+          tar --version || (echo "tar not found" && exit 1)
+          if ! tar --version | head -n1 | grep -qi "GNU tar"; then
+            echo "Error: GNU tar is required for dynamic progress estimation."
+            echo "Install GNU tar or accept static estimate fallback."
+            exit 1
+          fi
 
       - name: Verify VAPI
         run: |
@@ -55,15 +65,21 @@ jobs:
           retention-days: 90
 
   build-macos-universal:
-    name: macOS (Apple Silicon)
-    runs-on: macos-latest
+    name: macOS Universal (Intel + Apple Silicon)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-12, macos-latest]  # macos-12 for Intel, macos-latest for Apple Silicon
+        include:
+          - os: macos-12
+            arch: x86_64
+          - os: macos-latest
+            arch: arm64
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
-      
 
       - name: Install dependencies
         run: |
@@ -111,6 +127,46 @@ jobs:
 
           $(brew --prefix qt@6)/bin/macdeployqt "Dvx3 Backup Manager.app" -verbose=2
 
+      - name: Upload App Bundle for ${{ matrix.arch }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dvx3-BackupManager-macOS-${{ matrix.arch }}-AppBundle
+          path: 'Dvx3 Backup Manager.app'
+          retention-days: 90
+
+  build-macos-universal-dmg:
+    name: macOS Universal DMG
+    needs: build-macos-universal
+    runs-on: macos-latest
+    steps:
+      - name: Download x86_64 App Bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: Dvx3-BackupManager-macOS-x86_64-AppBundle
+          path: x86_64/
+
+      - name: Download arm64 App Bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: Dvx3-BackupManager-macOS-arm64-AppBundle
+          path: arm64/
+
+      - name: Create Universal Binary
+        run: |
+          # Combine binaries into universal
+          lipo -create -output "Dvx3 Backup Manager.app/Contents/MacOS/backup-manager-gui" \
+            x86_64/"Dvx3 Backup Manager.app/Contents/MacOS/backup-manager-gui" \
+            arm64/"Dvx3 Backup Manager.app/Contents/MacOS/backup-manager-gui"
+          lipo -create -output "Dvx3 Backup Manager.app/Contents/Frameworks/libDvx3.dylib" \
+            x86_64/"Dvx3 Backup Manager.app/Contents/Frameworks/libDvx3.dylib" \
+            arm64/"Dvx3 Backup Manager.app/Contents/Frameworks/libDvx3.dylib"
+
+          # Copy the Info.plist and other files from one (assuming identical)
+          cp -r x86_64/"Dvx3 Backup Manager.app" .
+
+          # Run macdeployqt on the universal app
+          $(brew --prefix qt@6)/bin/macdeployqt "Dvx3 Backup Manager.app" -verbose=2
+
       - name: Create DMG
         run: |
           create-dmg \
@@ -119,19 +175,19 @@ jobs:
             --window-size 600 400 \
             --icon-size 100 \
             --app-drop-link 425 120 \
-            "Dvx3-BackupManager-macOS-ARM64.dmg" \
+            "Dvx3-BackupManager-macOS-Universal.dmg" \
             "Dvx3 Backup Manager.app" || true
 
-          if [ ! -f "Dvx3-BackupManager-macOS-ARM64.dmg" ]; then
+          if [ ! -f "Dvx3-BackupManager-macOS-Universal.dmg" ]; then
             hdiutil create -volname "Dvx3 Backup Manager" \
               -srcfolder "Dvx3 Backup Manager.app" \
-              -ov -format UDZO "Dvx3-BackupManager-macOS-ARM64.dmg"
+              -ov -format UDZO "Dvx3-BackupManager-macOS-Universal.dmg"
           fi
 
-      - name: Upload DMG
+      - name: Upload Universal DMG
         uses: actions/upload-artifact@v4
         with:
-          name: Dvx3-BackupManager-macOS-ARM64
+          name: Dvx3-BackupManager-macOS-Universal
           path: '*.dmg'
           retention-days: 90
 
@@ -239,6 +295,8 @@ jobs:
                 qt6-base-dev qt6-base-dev-tools qt6-tools-dev tar zstd file && \
               echo "Verifying VAPI in container..." && \
               ls -la vala-extra-vapis/libsodium.vapi && \
+              tar --version | head -n1 && \
+              if ! tar --version | head -n1 | grep -qi "GNU tar"; then echo "Error: GNU tar required"; exit 1; fi && \
               chmod +x build_gui.sh build-raspberry.sh || true && \
               bash ./build_gui.sh && bash ./build-raspberry.sh && ls -lh *.tar.gz || echo "No tarball found"
             '
@@ -276,6 +334,8 @@ jobs:
                 qt6-base-dev qt6-base-dev-tools qt6-tools-dev tar zstd file && \
               echo "Verifying VAPI in container..." && \
               ls -la vala-extra-vapis/libsodium.vapi && \
+              tar --version | head -n1 && \
+              if ! tar --version | head -n1 | grep -qi "GNU tar"; then echo "Error: GNU tar required"; exit 1; fi && \
               chmod +x build_gui.sh build-raspberry.sh || true && \
               bash ./build_gui.sh && bash ./build-raspberry.sh && ls -lh *.tar.gz || echo "No tarball found"
             '
@@ -289,7 +349,7 @@ jobs:
 
   create-release:
     name: Create GitHub Release
-    needs: [build-linux-x86_64, build-macos-universal, build-arm32-debian13, build-arm64-debian13, build-windows-msys2]
+    needs: [build-linux-x86_64, build-macos-universal-dmg, build-arm32-debian13, build-arm64-debian13, build-windows-msys2]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -306,7 +366,7 @@ jobs:
       - name: Generate checksums
         run: |
           cd artifacts
-          find . -type f \( -name "*.AppImage" -o -name "*.dmg" -o -name "*.tar.gz" -o -name "*.exe" \) -print0 | \
+          find . -type f \$ -name "*.AppImage" -o -name "*.dmg" -o -name "*.tar.gz" -o -name "*.exe" -o -name "*.dll" -o -name "*.vapi" -o -name "*.h" \$ -print0 | \
             xargs -0 -I {} sh -c 'sha256sum "$1" >> CHECKSUMS.txt' -- {}
           echo "Generated checksums:" && cat CHECKSUMS.txt
 
@@ -318,6 +378,9 @@ jobs:
             artifacts/**/*.dmg
             artifacts/**/*.tar.gz
             artifacts/**/*.exe
+            artifacts/**/*.dll
+            artifacts/**/*.vapi
+            artifacts/**/*.h
             artifacts/CHECKSUMS.txt
           draft: false
           prerelease: false

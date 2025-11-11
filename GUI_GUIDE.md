@@ -7,7 +7,10 @@ A graphical user interface for the Backup Manager with configurable tar and zstd
 - **Visual job management**: Add, edit, and remove backup jobs through dialogs
 - **Configurable compression**: Adjust zstd compression level (1-22) and thread count
 - **Tar options**: Configure permissions, ownership, symlinks, and exclusion patterns
-- **Real-time progress**: Visual progress bar with size and compression ratio display
+- **Real-time progress**: Visual progress bar with clear labels:
+   - Compressed: bytes produced by zstd so far
+   - Predicted Final: dynamically estimated final compressed size (when GNU tar is available; otherwise an approximation)
+   - Encrypted Output: bytes written to the encrypted archive
 - **History view**: Table showing all backup operations with timestamps and status
 - **Settings persistence**: All compression settings saved between sessions
 
@@ -150,6 +153,7 @@ pkg-config --modversion Qt6Widgets
 - Lower zstd level (try 1-3)
 - Reduce thread count if system becomes unresponsive
 - Add more exclusion patterns to skip unnecessary files
+- Ensure GNU tar is installed on Linux for best progress estimation. Without it, the GUI shows an approximate prediction.
 
 ## Comparison: CLI vs GUI
 

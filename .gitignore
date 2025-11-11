@@ -9,11 +9,14 @@
 *.rcc.cpp
 gen-c/
 backup-manager-gui
+backup-manager-gui.exe
 Dvx3
 libDvx3.*
+libdvx3.*
 *.AppImage
 *.dmg
 *.tar.gz
+*.zip
 
 # IDE
 .vscode/

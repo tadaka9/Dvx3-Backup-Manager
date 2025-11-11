@@ -229,6 +229,19 @@ namespace Dvx3 {
         uint64 original_processed = 0;
 
 #if POSIX
+        // Detect GNU tar for --totals=USR1 support
+        bool gnu_tar = false;
+        try {
+            string? outv; string? errv; int estatus = 0;
+            Process.spawn_command_line_sync("tar --version", out outv, out errv, out estatus);
+            if (estatus == 0 && outv != null && outv.index_of("GNU tar") >= 0) {
+                gnu_tar = true;
+            }
+        } catch (Error e) {
+            gnu_tar = false;
+        }
+
+        if (gnu_tar) {
         // Build tar command (output to stdout), enable totals on SIGUSR1
         string tar_cmd;
         if (exclude_path != null) {
@@ -274,7 +287,7 @@ namespace Dvx3 {
         );
 
         // Relay thread: tar stdout -> zstd stdin
-        Thread<void*> relay = Thread.create<void*>(() => {
+        Thread<void*> relay = new Thread<void*>("dvx3-relay", () => {
             uint8[] rbuf = new uint8[CHUNK_SIZE];
             while (true) {
                 ssize_t r = posix_read(tar_out_fd, rbuf, CHUNK_SIZE);
@@ -289,10 +302,10 @@ namespace Dvx3 {
             posix_close(tar_out_fd);
             posix_close(zstd_in_fd);
             return null;
-        }, false);
+        });
 
         // Monitor thread: periodically query tar totals via SIGUSR1 and parse stderr
-        Thread<void*> monitor = Thread.create<void*>(() => {
+        Thread<void*> monitor = new Thread<void*>("dvx3-monitor", () => {
             uint8[] ebuf = new uint8[4096];
             string pending = "";
             while (true) {
@@ -335,7 +348,7 @@ namespace Dvx3 {
                 // Keep looping; thread will end when fds closed by parent on cleanup
             }
             return null;
-        }, false);
+        });
 
         // Read from zstd stdout, encrypt and write
         uint8[] buffer = new uint8[CHUNK_SIZE];
@@ -373,6 +386,60 @@ namespace Dvx3 {
 
         if (st1 != 0 || st2 != 0)
             throw new IOError.FAILED ("tar/zstd pipeline failed");
+        } else {
+            // Fallback: no dynamic totals (e.g., BSD tar)
+            string[] pipeline_cmd2;
+            if (exclude_path != null) {
+                var exclude_rel2 = exclude_path.has_prefix(src_path + "/") 
+                    ? exclude_path.substring(src_path.length + 1) 
+                    : exclude_path;
+                pipeline_cmd2 = {
+                    "sh", "-c",
+                    "tar -c --exclude='%s' -C '%s' . | zstd -T16 -22 -c".printf(
+                        exclude_rel2.replace("'", "'\\''"),
+                        src_path.replace("'", "'\\''")
+                    )
+                };
+            } else {
+                pipeline_cmd2 = {
+                    "sh", "-c",
+                    "tar -c -C '%s' . | zstd -T16 -22 -c".printf(
+                        src_path.replace("'", "'\\''")
+                    )
+                };
+            }
+
+            int pipe_stdout2;
+            Pid child_pid2;
+            Process.spawn_async_with_pipes (
+                null,
+                pipeline_cmd2,
+                null,
+                SpawnFlags.SEARCH_PATH | SpawnFlags.DO_NOT_REAP_CHILD,
+                null,
+                out child_pid2,
+                null,
+                out pipe_stdout2,
+                null);
+            uint8[] buffer_f = new uint8[CHUNK_SIZE];
+            while (true) {
+                ssize_t br = posix_read (pipe_stdout2, buffer_f, CHUNK_SIZE);
+                if (br <= 0)
+                    break;
+                uint8[] blk = buffer_f[0:br];
+                compressed_bytes += (uint64) br;
+                encoder.write (blk);
+                if (progress != null)
+                    progress (compressed_bytes, estimated_compressed, encoder.cipher_bytes);
+            }
+            posix_close (pipe_stdout2);
+            encoder.close ();
+            int stf;
+            posix_waitpid (child_pid2, out stf, 0);
+            Process.close_pid (child_pid2);
+            if (stf != 0)
+                throw new IOError.FAILED ("tar|zstd pipeline failed");
+        }
 #else
         /* Non-POSIX fallback: original shell pipeline with static estimate */
         string[] pipeline_cmd;
