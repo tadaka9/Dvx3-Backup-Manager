@@ -19,8 +19,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Install dependencies
         run: |
@@ -52,7 +50,7 @@ jobs:
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
         with:
-          name: DVX3-BackupManager-Linux-x86_64-AppImage
+          name: Dvx3-BackupManager-Linux-x86_64-AppImage
           path: '*.AppImage'
           retention-days: 90
 
@@ -63,7 +61,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          submodules: recursive
           fetch-depth: 0
       
       
@@ -86,12 +83,12 @@ jobs:
 
       - name: Create App Bundle
         run: |
-          mkdir -p "DVX3 Backup Manager.app/Contents/MacOS" "DVX3 Backup Manager.app/Contents/Resources" "DVX3 Backup Manager.app/Contents/Frameworks"
+          mkdir -p "Dvx3 Backup Manager.app/Contents/MacOS" "Dvx3 Backup Manager.app/Contents/Resources" "Dvx3 Backup Manager.app/Contents/Frameworks"
 
-          cp backup-manager-gui "DVX3 Backup Manager.app/Contents/MacOS/"
-          cp libdvx3.dylib "DVX3 Backup Manager.app/Contents/Frameworks/"
+          cp backup-manager-gui "Dvx3 Backup Manager.app/Contents/MacOS/"
+          cp libDvx3.dylib "Dvx3 Backup Manager.app/Contents/Frameworks/"
 
-          cat > "DVX3 Backup Manager.app/Contents/Info.plist" <<EOF
+          cat > "Dvx3 Backup Manager.app/Contents/Info.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -99,9 +96,9 @@ jobs:
               <key>CFBundleExecutable</key>
               <string>backup-manager-gui</string>
               <key>CFBundleIdentifier</key>
-              <string>com.dvx3.backupmanager</string>
+              <string>com.Dvx3.backupmanager</string>
               <key>CFBundleName</key>
-              <string>DVX3 Backup Manager</string>
+              <string>Dvx3 Backup Manager</string>
               <key>CFBundleVersion</key>
               <string>1.0.0</string>
               <key>CFBundleShortVersionString</key>
@@ -112,29 +109,29 @@ jobs:
           </plist>
           EOF
 
-          $(brew --prefix qt@6)/bin/macdeployqt "DVX3 Backup Manager.app" -verbose=2
+          $(brew --prefix qt@6)/bin/macdeployqt "Dvx3 Backup Manager.app" -verbose=2
 
       - name: Create DMG
         run: |
           create-dmg \
-            --volname "DVX3 Backup Manager" \
+            --volname "Dvx3 Backup Manager" \
             --window-pos 200 120 \
             --window-size 600 400 \
             --icon-size 100 \
             --app-drop-link 425 120 \
-            "DVX3-BackupManager-macOS-ARM64.dmg" \
-            "DVX3 Backup Manager.app" || true
+            "Dvx3-BackupManager-macOS-ARM64.dmg" \
+            "Dvx3 Backup Manager.app" || true
 
-          if [ ! -f "DVX3-BackupManager-macOS-ARM64.dmg" ]; then
-            hdiutil create -volname "DVX3 Backup Manager" \
-              -srcfolder "DVX3 Backup Manager.app" \
-              -ov -format UDZO "DVX3-BackupManager-macOS-ARM64.dmg"
+          if [ ! -f "Dvx3-BackupManager-macOS-ARM64.dmg" ]; then
+            hdiutil create -volname "Dvx3 Backup Manager" \
+              -srcfolder "Dvx3 Backup Manager.app" \
+              -ov -format UDZO "Dvx3-BackupManager-macOS-ARM64.dmg"
           fi
 
       - name: Upload DMG
         uses: actions/upload-artifact@v4
         with:
-          name: DVX3-BackupManager-macOS-ARM64
+          name: Dvx3-BackupManager-macOS-ARM64
           path: '*.dmg'
           retention-days: 90
 
@@ -144,8 +141,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
@@ -203,19 +198,19 @@ jobs:
             -o backup-manager-gui.exe \
             -std=c++17 \
             $(pkg-config --cflags --libs Qt6Widgets glib-2.0 gio-2.0 json-glib-1.0 libsodium) \
-            -L. -ldvx3
+            -L. -lDvx3
           ls -lh *.exe *.dll || true
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: DVX3-BackupManager-Windows-x64
+          name: Dvx3-BackupManager-Windows-x64
           path: |
-            dvx3.exe
+            Dvx3.exe
             backup-manager-gui.exe
-            libdvx3.dll
-            dvx3.vapi
-            dvx3.h
+            libDvx3.dll
+            Dvx3.vapi
+            Dvx3.h
           retention-days: 90
 
   build-arm32-debian13:
@@ -224,8 +219,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -253,7 +246,7 @@ jobs:
       - name: Upload ARMv7 package
         uses: actions/upload-artifact@v4
         with:
-          name: DVX3-BackupManager-RaspberryPi-ARMv7
+          name: Dvx3-BackupManager-RaspberryPi-ARMv7
           path: '*.tar.gz'
           retention-days: 90
 
@@ -263,8 +256,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -292,7 +283,7 @@ jobs:
       - name: Upload ARM64 package
         uses: actions/upload-artifact@v4
         with:
-          name: DVX3-BackupManager-RaspberryPi-ARM64
+          name: Dvx3-BackupManager-RaspberryPi-ARM64
           path: '*.tar.gz'
           retention-days: 90
 

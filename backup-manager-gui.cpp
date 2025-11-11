@@ -14,9 +14,6 @@
 #include <QPropertyAnimation>
 #include <QPainter>
 #include <QPainterPath>
-#include <cmath>
-#include <ctime>
-#include <vector>
 #include <sstream>
 
 namespace backup_gui {
