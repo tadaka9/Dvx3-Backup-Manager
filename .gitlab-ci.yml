@@ -101,7 +101,7 @@ build-debian-arm64:
 # Linux ARM64 - Arch
 build-arch-arm64:
   stage: build
-  image: lscr.io/linuxserver/archlinux
+  image: agners/archlinuxarm-arm64:latest
   tags:
     - docker
     - arm64
@@ -186,9 +186,10 @@ build-raspberry-arm64:
   script:
     - ls -la vala-extra-vapis/libsodium.vapi
     - tar --version
-    - chmod +x build_gui.sh build-raspberry.sh || true
+    - chmod +x build_gui.sh build-raspberry.sh build_cpp.sh || true
     - bash ./build_gui.sh
     - bash ./build-raspberry.sh
+    - bash ./build_cpp.sh
     # Create .deb package structure
     - mkdir -p dvx3-backup-manager_${VERSION}_arm64/DEBIAN
     - mkdir -p dvx3-backup-manager_${VERSION}_arm64/usr/bin
