@@ -85,6 +85,20 @@ runners:
     FF_NETWORK_PER_BUILD: "true"
     FF_USE_LEGACY_KUBERNETES_EXECUTION_STRATEGY: "false"
 
+    # Custom pod spec to force IPv4 preference
+    podSpec:
+      dnsPolicy: "None"
+      dnsConfig:
+        nameservers:
+          - "8.8.8.8" # Google's Public DNS
+          - "1.1.1.1" # Cloudflare's Public DNS
+        options:
+          - name: "ndots"
+            value: "1"
+          # This option forces the resolver to wait for A (IPv4) records
+          # before trying AAAA (IPv6) records, effectively preferring IPv4.
+          - name: "single-request"
+
 # Metrics (optional)
 metrics:
   enabled: false
