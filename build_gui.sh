@@ -107,17 +107,15 @@ fi
 $MOC backup-manager-gui.hpp -o backup-manager-gui.moc.cpp
 
 echo "[4b/5] Compiling resources..."
-if [ -f resources.qrc ] && [ -f icon.png ]; then
-    echo "Using icon.png for resources"
-    $RCC resources.qrc -o resources.rcc.cpp
-elif [ -f resources.qrc ] && [ -f dvx3-backup.png ]; then
+if [ -f resources.qrc ] && [ -f dvx3-backup.png ]; then
     echo "Using dvx3-backup.png for resources"
     $RCC resources.qrc -o resources.rcc.cpp
 elif [ -f resources.qrc ]; then
-    echo "Warning: icon.png or dvx3-backup.png not found; compiling resources anyway"
+    echo "Warning: dvx3-backup.png not found; compiling resources without icon."
     $RCC resources.qrc -o resources.rcc.cpp
 else
-    echo "Warning: resources.qrc not found; icon will not be embedded"
+    echo "Warning: resources.qrc not found; icon will not be embedded."
+    # Create an empty file to prevent the build from failing
     touch resources.rcc.cpp
 fi
 
@@ -148,8 +146,8 @@ echo "✓ Build complete!"
 echo ""
 echo "Run with: ./backup-manager-gui"
 echo ""
-if [ -f icon.png ]; then
-    echo "Icon embedded from icon.png"
+if [ -f dvx3-backup.png ]; then
+    echo "Icon embedded from dvx3-backup.png"
 else
-    echo "No icon.png found; place one in project root to customize icon."
+    echo "No icon found; place dvx3-backup.png in project root to customize icon."
 fi
