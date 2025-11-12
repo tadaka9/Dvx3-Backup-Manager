@@ -23,7 +23,7 @@ k8s-test:
     - gcc --version
 
 # Linux x86_64 - Debian
-build-debian-x86_64:
+.build-debian-x86_64:
   stage: build
   image: debian:bookworm
   tags:
@@ -49,7 +49,7 @@ build-debian-x86_64:
     expire_in: 1 week
 
 # Linux x86_64 - Arch
-build-arch-x86_64:
+.build-arch-x86_64:
   stage: build
   image: archlinux:latest
   tags:
@@ -71,7 +71,7 @@ build-arch-x86_64:
     expire_in: 1 week
 
 # Linux ARM64 - Debian
-build-debian-arm64:
+.build-debian-arm64:
   stage: build
   image: debian:bookworm
   tags:
@@ -97,7 +97,7 @@ build-debian-arm64:
     expire_in: 1 week
 
 # Linux ARM64 - Arch
-build-arch-arm64:
+.build-arch-arm64:
   stage: build
   image: archlinux:latest
   tags:
@@ -119,7 +119,7 @@ build-arch-arm64:
     expire_in: 1 week
 
 # Raspberry Pi ARMv7 (armhf) .deb package
-build-raspberry-armhf:
+.build-raspberry-armhf:
   stage: build
   image: arm32v7/debian:bookworm
   tags:
@@ -169,7 +169,7 @@ build-raspberry-armhf:
     expire_in: 1 week
 
 # Raspberry Pi ARM64 (aarch64) .deb package
-build-raspberry-arm64:
+.build-raspberry-arm64:
   stage: build
   image: arm64v8/debian:bookworm
   tags:
@@ -218,7 +218,7 @@ build-raspberry-arm64:
     expire_in: 1 week
 
 # macOS Intel x86_64
-build-macos-intel:
+.build-macos-intel:
   stage: build
   tags:
     - macos
@@ -270,7 +270,7 @@ build-macos-intel:
     expire_in: 1 week
 
 # macOS Apple Silicon ARM64
-build-macos-arm64:
+.build-macos-arm64:
   stage: build
   tags:
     - macos
@@ -322,7 +322,7 @@ build-macos-arm64:
     expire_in: 1 week
 
 # macOS Universal DMG (combines Intel + ARM64)
-package-macos-dmg:
+.package-macos-dmg:
   stage: package
   needs:
     - build-macos-intel
@@ -357,7 +357,7 @@ package-macos-dmg:
     expire_in: 1 week
 
 # Windows 11 x64 with MSYS2
-build-windows-x64:
+.build-windows-x64:
   stage: build
   tags:
     - windows
@@ -391,7 +391,7 @@ build-windows-x64:
     expire_in: 1 week
 
 # Create release when tagged
-release:
+.release:
   stage: release
   image: alpine:latest
   only:
