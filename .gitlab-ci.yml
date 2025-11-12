@@ -23,9 +23,9 @@ k8s-test:
     - gcc --version
 
 # Linux x86_64 - Debian
-.build-debian-x86_64:
+build-debian-x86_64:
   stage: build
-  image: debian:bookworm
+  image: debian:trixie
   tags:
     - docker
   before_script:
@@ -71,9 +71,9 @@ k8s-test:
     expire_in: 1 week
 
 # Linux ARM64 - Debian
-.build-debian-arm64:
+build-debian-arm64:
   stage: build
-  image: debian:bookworm
+  image: debian:trixie
   tags:
     - docker
     - arm64
@@ -97,7 +97,7 @@ k8s-test:
     expire_in: 1 week
 
 # Linux ARM64 - Arch
-.build-arch-arm64:
+build-arch-arm64:
   stage: build
   image: archlinux:latest
   tags:
@@ -121,7 +121,7 @@ k8s-test:
 # Raspberry Pi ARMv7 (armhf) .deb package
 .build-raspberry-armhf:
   stage: build
-  image: arm32v7/debian:bookworm
+  image: arm32v7/debian:trixie
   tags:
     - docker
     - arm
@@ -156,7 +156,7 @@ k8s-test:
       Priority: optional
       Architecture: armhf
       Depends: libglib2.0-0, libjson-glib-1.0-0, libsodium23, libqt6widgets6, libqt6core6, tar, zstd
-      Maintainer: CryptoWave Team <info@cryptowave.org>
+      Maintainer: CryptoWave Team <trapdoorfunction@gmail.com>
       Description: Encrypted backup manager with Qt6 GUI
        Dvx3 Backup Manager provides secure encrypted backups using
        Argon2id key derivation and XSalsa20-Poly1305 encryption.
@@ -169,9 +169,9 @@ k8s-test:
     expire_in: 1 week
 
 # Raspberry Pi ARM64 (aarch64) .deb package
-.build-raspberry-arm64:
+build-raspberry-arm64:
   stage: build
-  image: arm64v8/debian:bookworm
+  image: arm64v8/debian:trixie
   tags:
     - docker
     - arm64

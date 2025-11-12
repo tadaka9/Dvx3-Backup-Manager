@@ -1,0 +1,97 @@
+# GitLab Runner Helm values for local Kubernetes (kind/minikube/k3d)
+# Minimal but production-influenced configuration.
+# IMPORTANT: Replace PLACEHOLDER_REGISTRATION_TOKEN with your real runner registration token
+# (NOT a Personal Access Token). Obtain from: Project or Group -> Settings -> CI/CD -> Runners.
+
+gitlabUrl: https://gitlab.com
+runnerRegistrationToken: glrt-fm6pZDNPz0VXA6CEvmHCp286MQpwOjE5OTJ1ZAp0OjMKdTpjbGNlNBg.01.1j0qseeqv
+# Set a descriptive name; tags allow selecting this runner in .gitlab-ci.yml
+runnerToken: ""  # Left empty; will be auto-populated after successful registration.
+rbac:
+  create: true
+
+# Limit concurrency so local machine isn't overloaded.
+concurrent: 2
+checkInterval: 3
+
+## Runner executors
+runners:
+  name: "local-k8s-runner"
+  tags: "local,k8s"
+  executor: kubernetes
+  # Whether jobs are locked to current project only (false allows reuse across projects when using group token)
+  # locked: false  # (Helm chart handles this at registration level; optional)
+  outputLimit: 4096
+  # Timeout on each job (seconds) can be increased for builds needing more time.
+  ## jobTimeout: 3600
+
+  kubernetes:
+    # Namespace where build pods run (default: same as runner). You can isolate with a separate namespace.
+    # namespace: ci-builds
+    imagePullPolicy: IfNotPresent
+    # Build container image (defaults to registry.gitlab.com/gitlab-org/gitlab-runner:alpine)
+    # image: registry.gitlab.com/gitlab-org/gitlab-runner:alpine
+
+    # Service Account used by build pods; auto-created if not existing.
+    serviceAccount: gitlab-runner
+
+    # Disable privileged unless you need Docker-in-Docker.
+    privileged: false
+
+    # Helper image (auto-managed) - keep default.
+    helperImage: registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:x86_64-latest
+
+    # Set custom pod annotations if needed (e.g., for metrics collection).
+    annotations: {}
+    # Pod labels for builds.
+    podLabels:
+      runner: local-k8s
+
+    # Configure CPU/memory requests & limits for job build containers (default uses none).
+    # Each job's main build container will inherit these if specified.
+    resources:
+      requests:
+        cpu: "250m"
+        memory: "256Mi"
+      limits:
+        cpu: "1000m"
+        memory: "1Gi"
+
+    # Optional nodeSelector / tolerations if you have special nodes.
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+
+    # PVC-based cache (simple). For higher performance use a local path or object storage.
+    # This speeds up dependency caching across jobs.
+    cache:
+      cacheType: pvc
+      pvcCache:
+        accessModes: ["ReadWriteOnce"]
+        size: 5Gi
+        storageClass: ""  # Leave blank to use default SC
+      # Set 'cacheShared: true' if multiple runners share the same cache PVC.
+      cacheShared: false
+
+    # Optional custom pod template (e.g., add sidecars). Left empty for simplicity.
+    # buildContainerRegistryCredentials: false
+
+    # DNS config example (leave default normally)
+    # dnsConfig:
+    #   nameservers: ["8.8.8.8"]
+
+  # Environment variables exposed to all jobs; keep minimal.
+  env:
+    FF_NETWORK_PER_BUILD: "true"
+    FF_USE_LEGACY_KUBERNETES_EXECUTION_STRATEGY: "false"
+
+# Metrics (optional)
+metrics:
+  enabled: false
+
+# ServiceMonitor for Prometheus (if you run kube-prometheus-stack)
+serviceMonitor:
+  enabled: false
+
+# Logging level (debug | info | warn | error | fatal | panic)
+logLevel: info
