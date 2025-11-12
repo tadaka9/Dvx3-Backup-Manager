@@ -1,6 +1,6 @@
-# Guide: Setting Up a GitLab Runner on Raspberry Pi (ARM64)
+# Guide: Setting Up a GitLab Runner on Raspberry Pi (32-bit / armhf)
 
-This guide walks you through installing and registering a GitLab Runner on a Raspberry Pi 4 or newer running a 64-bit OS (like Raspberry Pi OS 64-bit). This runner will be configured to handle your `docker` and `arm64` tagged jobs.
+This guide walks you through installing and registering a GitLab Runner on a Raspberry Pi 1, 2, or Zero (armhf/32-bit). This runner will be configured to handle your `docker` and `arm` tagged jobs.
 
 ---
 
@@ -32,10 +32,10 @@ Run these commands in the terminal on your Raspberry Pi.
 
 ### **Part 2: Install the GitLab Runner**
 
-1.  **Download the Runner Binary for ARM64:**
-    This command downloads the latest GitLab Runner executable and places it where it can be run from anywhere.
+1.  **Download the Runner Binary for 32-bit ARM (armhf):**
+    This command downloads the latest GitLab Runner executable for your Raspberry Pi 1.
     ```bash
-    sudo curl -L --output /usr/local/bin/gitlab-runner "https://gitlab-runner-downloads.s3.amazonaws.com/latest/binaries/gitlab-runner-linux-arm64"
+    sudo curl -L --output /usr/local/bin/gitlab-runner "https://gitlab-runner-downloads.s3.amazonaws.com/latest/binaries/gitlab-runner-linux-arm"
     ```
 
 2.  **Make it Executable:**
@@ -86,12 +86,12 @@ This step links your new runner to your GitLab project.
         *Paste the new token you copied from GitLab.*
     *   **Enter a description for the runner:**
         ```
-        Raspberry Pi ARM64 Runner
+        Raspberry Pi 1 (armhf) Runner
         ```
     *   **Enter tags for the runner (comma-separated):**
         *This is the most important step!*
         ```
-        docker,arm64
+        docker,arm
         ```
     *   **Enter optional maintenance note for the runner:**
         *Just press Enter to leave it blank.*
@@ -117,13 +117,13 @@ This step links your new runner to your GitLab project.
 
 2.  **Enable the ARM Build Job:**
     *   On your main computer, open `.gitlab-ci.yml`.
-    *   Find the `.build-raspberry-arm64` job.
+    *   Find the `.build-raspberry-armhf` job.
     *   **Remove the dot (`.`)** from the beginning of its name to re-enable it. It should look like this:
         ```yaml
-        # Raspberry Pi ARM64 (aarch64) .deb package
-        build-raspberry-arm64:
+        # Raspberry Pi ARMv7 (armhf) .deb package
+        build-raspberry-armhf:
           stage: build
-          image: arm64v8/debian:trixie
+          image: arm32v7/debian:trixie
           # ... rest of the job
         ```
 
@@ -132,8 +132,8 @@ This step links your new runner to your GitLab project.
     *   Commit and push the change.
         ```bash
         git add .gitlab-ci.yml
-        git commit -m "ci: Enable ARM64 build job for Raspberry Pi runner"
+        git commit -m "ci: Enable armhf build job for Raspberry Pi 1 runner"
         git push
         ```
 
-A new pipeline will start. Your local Kubernetes runner will run the `k8s-test` job, and your **new Raspberry Pi runner** should pick up and run the `build-raspberry-arm64` job. You've now got a multi-platform CI setup!
+A new pipeline will start. Your local Kubernetes runner will run the `k8s-test` job, and your **new Raspberry Pi runner** should pick up and run the `build-raspberry-armhf` job. You've now got a multi-platform CI setup!

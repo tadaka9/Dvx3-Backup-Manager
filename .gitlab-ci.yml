@@ -101,7 +101,7 @@ build-debian-arm64:
 # Linux ARM64 - Arch
 build-arch-arm64:
   stage: build
-  image: archlinuxarm/aarch64
+  image: lscr.io/linuxserver/archlinux
   tags:
     - docker
     - arm64
