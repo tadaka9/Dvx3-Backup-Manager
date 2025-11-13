@@ -141,7 +141,6 @@ build-raspberry-armhf:
       libjson-glib-dev:armhf
       libsodium-dev:armhf
       qt6-base-dev:armhf
-      qt6-base-dev-tools:armhf
       qt6-tools-dev:armhf
       tar zstd file dpkg-dev fakeroot
   script:
