@@ -101,7 +101,7 @@ build-debian-arm64:
 # Linux ARM64 - Arch
 build-arch-arm64:
   stage: build
-  image: agners/archlinuxarm-arm64:latest
+  image: ghcr.io/baerenbude-org/archlinuxarm-arm64v8:latest
   tags:
     - docker
     - arm64
