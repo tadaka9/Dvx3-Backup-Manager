@@ -120,21 +120,37 @@ build-arch-arm64:
       - libdvx3.so
     expire_in: 1 week
 
-# Raspberry Pi ARMv7 (armhf) .deb package
+# Raspberry Pi ARMv7 (armhf) .deb package - CROSS-COMPILATION
 build-raspberry-armhf:
   stage: build
+  image: debian:trixie
   tags:
-    - shell
-    - armhf
+    - docker
+    - x86_64 # Or use 'arm64' if you prefer
   before_script:
-    - sudo apt-get update
-    - sudo apt-get install -y valac gcc g++ make cmake pkg-config
-      libglib2.0-dev libjson-glib-dev libsodium-dev
-      qt6-base-dev qt6-base-dev-tools qt6-tools-dev
+    # Add armhf architecture and update
+    - dpkg --add-architecture armhf
+    - apt-get update
+    # Install cross-compilation toolchain and armhf build dependencies
+    - apt-get install -y --no-install-recommends
+      crossbuild-essential-armhf
+      valac
+      pkg-config
+      libglib2.0-dev:armhf
+      libjson-glib-dev:armhf
+      libsodium-dev:armhf
+      qt6-base-dev:armhf
+      qt6-base-dev-tools:armhf
+      qt6-tools-dev:armhf
       tar zstd file dpkg-dev fakeroot
   script:
+    - echo "Cross-compiling for armhf..."
     - ls -la vala-extra-vapis/libsodium.vapi
     - tar --version
+    # Set environment variables for cross-compilation
+    - export PKG_CONFIG_PATH=/usr/lib/arm-linux-gnueabihf/pkgconfig
+    - export CC=arm-linux-gnueabihf-gcc
+    - export CXX=arm-linux-gnueabihf-g++
     - chmod +x build_gui.sh build-raspberry.sh || true
     - bash ./build_gui.sh
     - bash ./build-raspberry.sh
