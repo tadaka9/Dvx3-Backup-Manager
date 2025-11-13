@@ -101,7 +101,7 @@ build-debian-arm64:
 # Linux ARM64 - Arch
 build-arch-arm64:
   stage: build
-  image: ghcr.io/baerenbude-org/archlinuxarm-arm64v8:latest
+  image: agners/archlinuxarm
   tags:
     - docker
     - arm64
@@ -123,7 +123,7 @@ build-arch-arm64:
 # Raspberry Pi ARMv7 (armhf) .deb package
 build-raspberry-armhf:
   stage: build
-  image: arm32v7/debian:trixie
+  image: agners/archlinuxarm-arm32v7
   tags:
     - docker
     - armhf
