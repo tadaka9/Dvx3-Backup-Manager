@@ -3,6 +3,10 @@
 
 set -e
 
+# Use CC/CXX environment variables if set, otherwise default to gcc/g++
+CC_COMPILER=${CC:-gcc}
+CXX_COMPILER=${CXX:-g++}
+
 echo "Building Backup Manager GUI..."
 
 # Check for Qt6
@@ -50,7 +54,7 @@ case "$UNAME_OUT" in
         ;;
 esac
 
-gcc -c -fPIC gen-c/libdvx3.c -o libdvx3.o \
+"$CC_COMPILER" -c -fPIC gen-c/libdvx3.c -o libdvx3.o \
     $(pkg-config --cflags glib-2.0 $GIO_LIBS json-glib-1.0 libsodium) \
     -I.
 
@@ -70,12 +74,12 @@ case "$UNAME_OUT" in
         ;;
 esac
 
-gcc $SHARED_FLAGS -o libdvx3.$SHARED_EXT libdvx3.o \
+"$CC_COMPILER" $SHARED_FLAGS -o libdvx3.$SHARED_EXT libdvx3.o \
     $(pkg-config --libs glib-2.0 $GIO_LIBS json-glib-1.0 libsodium)
 
 # 3. Compile backup-manager implementation
 echo "[3/5] Compiling backup manager library..."
-g++ -c -fPIC backup-manager.hpp -o backup-manager-lib.o \
+"$CXX_COMPILER" -c -fPIC backup-manager.hpp -o backup-manager-lib.o \
     -std=c++17 \
     $(pkg-config --cflags glib-2.0 $GIO_LIBS json-glib-1.0 libsodium) \
     -I.
@@ -134,7 +138,7 @@ case "$UNAME_OUT" in
         ;;
 esac
 
-g++ -fPIC backup-manager-gui.cpp backup-manager-gui.moc.cpp resources.rcc.cpp \
+"$CXX_COMPILER" -fPIC backup-manager-gui.cpp backup-manager-gui.moc.cpp resources.rcc.cpp \
     -o backup-manager-gui \
     -std=c++17 \
     $(pkg-config --cflags --libs Qt6Widgets glib-2.0 $GIO_LIBS json-glib-1.0 libsodium) \
