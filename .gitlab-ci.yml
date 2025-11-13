@@ -123,14 +123,12 @@ build-arch-arm64:
 # Raspberry Pi ARMv7 (armhf) .deb package
 build-raspberry-armhf:
   stage: build
-  image: agners/archlinuxarm-arm32v7
   tags:
-    - docker
+    - shell
     - armhf
   before_script:
-    - dpkg --add-architecture armhf || true
-    - apt-get update
-    - apt-get install -y valac gcc g++ make cmake pkg-config
+    - sudo apt-get update
+    - sudo apt-get install -y valac gcc g++ make cmake pkg-config
       libglib2.0-dev libjson-glib-dev libsodium-dev
       qt6-base-dev qt6-base-dev-tools qt6-tools-dev
       tar zstd file dpkg-dev fakeroot
