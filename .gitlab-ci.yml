@@ -136,6 +136,7 @@ build-raspberry-armhf:
       crossbuild-essential-armhf
       valac
       pkg-config
+      qt6-base-dev-tools
       libglib2.0-dev:armhf
       libjson-glib-dev:armhf
       libsodium-dev:armhf
@@ -151,6 +152,7 @@ build-raspberry-armhf:
     - export PKG_CONFIG_PATH=/usr/lib/arm-linux-gnueabihf/pkgconfig
     - export CC=arm-linux-gnueabihf-gcc
     - export CXX=arm-linux-gnueabihf-g++
+    - export QT_MOC_NATIVE=/usr/lib/x86_64-linux-gnu/qt6/libexec/moc
     - chmod +x build_gui.sh build-raspberry.sh || true
     - bash ./build_gui.sh
     - bash ./build-raspberry.sh

@@ -88,7 +88,15 @@ echo "[3/5] Compiling backup manager library..."
 echo "[4/5] Running Qt MOC..."
 # Find moc and rcc (works on Linux, macOS, Windows/MSYS2)
 # Prioritize Qt6-specific tools to avoid Qt5/Qt6 mismatch
-if [ -x /usr/lib/qt6/moc ]; then
+if [ -n "$QT_MOC_NATIVE" ] && [ -x "$QT_MOC_NATIVE" ]; then
+    MOC="$QT_MOC_NATIVE"
+    RCC_DIR=$(dirname "$QT_MOC_NATIVE")
+    if [ -x "$RCC_DIR/rcc" ]; then
+        RCC="$RCC_DIR/rcc"
+    else
+        RCC=rcc # Fallback to searching in PATH
+    fi
+elif [ -x /usr/lib/qt6/moc ]; then
     MOC=/usr/lib/qt6/moc
     RCC=/usr/lib/qt6/rcc
 elif [ -x /usr/lib/qt6/libexec/moc ]; then
