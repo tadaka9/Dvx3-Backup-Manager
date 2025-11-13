@@ -152,7 +152,8 @@ build-raspberry-armhf:
     - export CC=arm-linux-gnueabihf-gcc
     - export CXX=arm-linux-gnueabihf-g++
     - export QT_MOC_NATIVE=/usr/lib/x86_64-linux-gnu/qt6/libexec/moc
-    - chmod +x build_gui.sh build-raspberry.sh || true
+    - chmod +x build_gui.sh build-raspberry.sh build.sh || true
+    - bash ./build.sh
     - bash ./build_gui.sh
     - bash ./build-raspberry.sh
     # Create .deb package structure
