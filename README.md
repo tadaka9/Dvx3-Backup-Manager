@@ -1,138 +1,224 @@
-# dvx3 - Encrypted Archive Library
+[![pipeline status](https://gitlab.com/cryptoware/Dvx3-backup-manager/badges/master/pipeline.svg)](https://gitlab.com/cryptoware/Dvx3-backup-manager/pipelines)
+[![coverage report](https://gitlab.com/cryptoware/Dvx3-backup-manager/badges/master/coverage.svg)](https://gitlab.com/cryptoware/Dvx3-backup-manager/commits/master)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![platforms](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows%20%7C%20raspberry--pi-blue)](BUILD_MULTIPLATFORM.md)
+[![Qt6 GUI](https://img.shields.io/badge/GUI-Qt6-informational)](GUI_GUIDE.md)
+[![Vala](https://img.shields.io/badge/language-vala-blueviolet)](https://vala.dev/)
+[![C++](https://img.shields.io/badge/language-c++-blue)](CPP_USAGE.md)
+[![Security: Argon2id+XSalsa20](https://img.shields.io/badge/security-argon2id%20%2B%20xsalsa20--poly1305-brightgreen)](SECURITY.md)
+[![Last Commit](https://img.shields.io/github/last-commit/cryptoware/Dvx3-backup-manager?label=last%20commit)](https://gitlab.com/cryptoware/Dvx3-backup-manager/-/commits/master)
 
-A high-performance encrypted archive library for Vala/C using:
-- **tar** for archiving
-- **zstd** for compression (level 22, 16 threads)
-- **Argon2id** for key derivation
-- **XSalsa20-Poly1305** (Secretbox) for authenticated encryption
+# Dvx3 Backup Manager
+
+> **Encrypted, compressed, and cross-platform backup system with CLI, GUI, and C++/Vala/C API**
+
+---
+
+## Overview
+
+Dvx3 Backup Manager is a secure, high-performance backup solution for Linux, macOS, Windows, and Raspberry Pi. It features:
+
+- **Encrypted archives**: Argon2id KDF + XSalsa20-Poly1305 (libsodium)
+- **Compression**: zstd (configurable level, multi-threaded)
+- **Streaming pipeline**: No intermediate files, efficient memory usage
+- **Multiple interfaces**: CLI, interactive TUI, Qt6 GUI, C++/Vala/C API
+- **Backup job management**: Retention, history, automation, and more
+
+---
+
+## Table of Contents
+
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Installation](#installation)
+- [Building](#building)
+- [CLI Usage](#cli-usage)
+- [Interactive Backup Manager](#interactive-backup-manager)
+- [Qt6 GUI](#qt6-gui)
+- [C++/Vala API Usage](#cppvala-api-usage)
+- [Archive Format](#archive-format)
+- [Configuration & Files](#configuration--files)
+- [Multi-Platform Builds](#multi-platform-builds)
+- [Security](#security)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
+
+---
 
 ## Features
 
-- ✅ **Zero intermediate files** - streaming pipeline from start to finish
-- ✅ **Memory efficient** - 1 MiB chunk processing
-- ✅ **Progress callbacks** - track encryption/decryption progress
-    - Encryption: reports compressed-bytes processed and a dynamically predicted final compressed size when GNU tar is available; falls back to a static estimate otherwise
-- ✅ **Strong security** - Argon2id KDF + authenticated encryption
-- ✅ **C/Vala API** - use as library or CLI tool
+- **End-to-end encryption**: Argon2id KDF, XSalsa20-Poly1305 authenticated encryption
+- **zstd compression**: Level 1-22, multi-threaded
+- **No intermediate files**: Streams tar | zstd | encrypt
+- **Progress tracking**: Dynamic (GNU tar) or static estimation
+- **Multiple backup jobs**: Each with retention, password, and history
+- **Backup history**: Track all operations, sizes, and status
+- **Retention policies**: Automatic cleanup of old backups
+- **Cross-platform**: Linux, macOS, Windows, Raspberry Pi
+- **Qt6 GUI**: Visual job management, progress, and history
+- **C++/Vala/C API**: Use as a library in your own apps
 
-## Build
+---
+
+## Quick Start
 
 ```bash
-./build.sh
+# Build everything (CLI, GUI, library)
+./build-all.sh
+
+# Run the interactive backup manager
+./backup-manager
+
+# Or launch the GUI
+./backup-manager-gui
+
+# Or use the CLI directly
+./dvx3 encrypt /path/to/folder -p "password" -o backup.dvx3
+./dvx3 decrypt backup.dvx3 -p "password" -o /restore/to
 ```
 
-This creates:
-- `libdvx3.so` - Shared library
-- `dvx3.vapi` - Vala API bindings
-- `dvx3.h` - C header file
-- `dvx3` - CLI executable
+---
+
+## Installation
+
+See [INSTALL.md](INSTALL.md) for full details.
+
+**System-wide:**
+```bash
+sudo ./install.sh
+```
+
+**User-only:**
+```bash
+PREFIX=~/.local ./install.sh
+```
+
+**Standalone:**
+```bash
+./build_backup_manager.sh
+./backup-manager
+```
+
+---
+
+## Building
+
+See [BUILD_MULTIPLATFORM.md](BUILD_MULTIPLATFORM.md) for platform-specific instructions.
+
+**Linux:**
+```bash
+./build_gui.sh
+```
+
+**macOS:**
+```bash
+./build-macos.sh
+```
+
+**Windows (cross-compile):**
+```bash
+./build-windows.sh
+```
+
+**Raspberry Pi:**
+```bash
+./build-raspberry.sh
+```
+
+---
 
 ## CLI Usage
 
-### Encrypt
+### Encrypt a folder
 ```bash
 ./dvx3 encrypt /path/to/folder -p "password" -o backup.dvx3
 ```
 
-Options:
-- `-p, --password` - Encryption password (required)
-- `-o, --output` - Output file (auto-adds `.dvx3` extension)
-- `-i, --in-place` - Allow output inside source folder (will be excluded)
-
-### Decrypt
+### Decrypt an archive
 ```bash
 ./dvx3 decrypt backup.dvx3 -p "password" -o /restore/to
 ```
 
-Options:
-- `-p, --password` - Decryption password (required)
-- `-o, --output` - Output directory (default: strips `.dvx3` from filename)
+**Options:**
+- `-p, --password`   Password for encryption/decryption (required)
+- `-o, --output`     Output file or directory
+- `-i, --in-place`   Allow output inside source folder (excluded from archive)
 
-## Library API (Vala)
+---
 
+## Interactive Backup Manager
+
+Run `./backup-manager` for a menu-driven TUI:
+
+1. List backup jobs
+2. Add new backup job
+3. Remove backup job
+4. Run backup
+5. View backup history
+6. Restore from backup
+7. Cleanup old backups
+8. Show status
+0. Exit
+
+**Non-interactive mode:**
+```bash
+./backup-manager list
+./backup-manager run "Job Name"
+./backup-manager cleanup
+```
+
+See [BACKUP_MANAGER_GUIDE.md](BACKUP_MANAGER_GUIDE.md) for full details.
+
+---
+
+## Qt6 GUI
+
+Run `./backup-manager-gui` for a modern graphical interface:
+
+- Add/edit/remove backup jobs
+- Configure compression, tar, and exclusion options
+- Visual progress bar and log
+- Backup history table
+- Settings persistence
+
+See [GUI_GUIDE.md](GUI_GUIDE.md) for screenshots and usage.
+
+---
+
+## C++/Vala API Usage
+
+### C++ Example
+```cpp
+#include "dvx3.hpp"
+#include <iostream>
+
+int main() {
+    try {
+        dvx3::encrypt("/path/to/folder", "backup.dvx3", "password");
+        dvx3::decrypt("backup.dvx3", "/restore/to", "password");
+        std::cout << "Success!\n";
+    } catch (const dvx3::Exception& e) {
+        std::cerr << "Error: " << e.what() << "\n";
+        return 1;
+    }
+    return 0;
+}
+```
+
+### Vala Example
 ```vala
 using Dvx3;
 
-// Encrypt a directory
 void encrypt_example () {
     var src = File.new_for_path("/my/folder");
     var dst = File.new_for_path("backup.dvx3");
-    
-    try {
-        Dvx3.encrypt(
-            src,
-            dst,
-            "my-password",
-            null,  // exclude_path (optional)
-            (processed, total, output) => {
-                // Progress callback
-                stdout.printf("%.1f%%\n", (double)processed / total * 100);
-            }
-        );
-    } catch (Error e) {
-        stderr.printf("Error: %s\n", e.message);
-    }
-}
-
-// Decrypt an archive
-void decrypt_example () {
-    var enc = File.new_for_path("backup.dvx3");
-    var dst = File.new_for_path("/restore/to");
-    
-    try {
-        Dvx3.decrypt(
-            enc,
-            dst,
-            "my-password",
-            (processed, total, output) => {
-                // Progress callback
-                stdout.printf("%.1f%%\n", (double)processed / total * 100);
-            }
-        );
-    } catch (Error e) {
-        stderr.printf("Error: %s\n", e.message);
-    }
+    Dvx3.encrypt(src, dst, "password");
 }
 ```
 
-## Library API (C)
+See [CPP_USAGE.md](CPP_USAGE.md) for more.
 
-```c
-#include <dvx3.h>
-#include <gio/gio.h>
-
-void encrypt_example(void) {
-    GFile *src = g_file_new_for_path("/my/folder");
-    GFile *dst = g_file_new_for_path("backup.dvx3");
-    GError *error = NULL;
-    
-    dvx3_encrypt(src, dst, "my-password", NULL, NULL, &error);
-    
-    if (error) {
-        g_printerr("Error: %s\n", error->message);
-        g_error_free(error);
-    }
-    
-    g_object_unref(src);
-    g_object_unref(dst);
-}
-
-void decrypt_example(void) {
-    GFile *enc = g_file_new_for_path("backup.dvx3");
-    GFile *dst = g_file_new_for_path("/restore/to");
-    GError *error = NULL;
-    
-    dvx3_decrypt(enc, dst, "my-password", NULL, &error);
-    
-    if (error) {
-        g_printerr("Error: %s\n", error->message);
-        g_error_free(error);
-    }
-    
-    g_object_unref(enc);
-    g_object_unref(dst);
-}
-```
+---
 
 ## Archive Format
 
@@ -155,48 +241,60 @@ void decrypt_example(void) {
 └─────────────────────────────────────────┘
 ```
 
-## Security Parameters
+**Security parameters:**
+- Argon2id: 2 iterations, 64MB, 4 threads
+- XSalsa20-Poly1305: 256-bit key, 192-bit nonce, 128-bit MAC
 
-- **Argon2id**:
-  - Time cost: 2 iterations
-  - Memory: 64 MB
-  - Parallelism: 4 threads
-  
-- **XSalsa20-Poly1305**:
-  - 256-bit key (derived from password)
-  - 192-bit nonce (random per chunk)
-  - 128-bit MAC
+---
 
-## Dependencies
+## Configuration & Files
 
-- Vala 0.56+
-- GLib 2.0
-- GIO Unix 2.0
-- JSON-GLib 1.0
-- libsodium
-- tar (command-line tool) — GNU tar recommended for dynamic progress
-- zstd (command-line tool)
+- `backup-manager.conf`: Backup job definitions
+- `backup-history.log`: Backup operation history
+- `libdvx3.vala`, `dvx3-cli.vala`, `dvx3.h`, `dvx3.hpp`: Library sources and headers
+- `build*.sh`: Build scripts for all platforms
+- `vala-extra-vapis/libsodium.vapi`: Vala bindings for libsodium
 
-## Dynamic Progress Estimation
+See [BACKUP_MANAGER_GUIDE.md](BACKUP_MANAGER_GUIDE.md) and [GUI_GUIDE.md](GUI_GUIDE.md) for details.
 
-When encrypting, the library streams `tar | zstd` and encrypts on the fly. To provide meaningful progress:
-- On systems with GNU tar, we send `SIGUSR1` to tar and parse its running totals (original bytes processed). From the observed compressed/original ratio so far, we predict the final compressed size and update the progress bar accordingly.
-- On systems without GNU tar (e.g., BSD tar on macOS), the library falls back to a static estimate (initially ~50% of original size). The GUI labels such progress as approximate.
+---
 
-Notes:
-- Actual final compressed size may vary depending on content and zstd level.
-- The progress callback signature is `(processed, total, output)` where:
-    - `processed` = compressed bytes produced so far
-    - `total` = predicted final compressed size (dynamic if GNU tar is present, heuristic otherwise)
-    - `output` = encrypted bytes written to the archive so far
+## Multi-Platform Builds
 
-## File Structure
+See [BUILD_MULTIPLATFORM.md](BUILD_MULTIPLATFORM.md) for full cross-platform build instructions (Linux, macOS, Windows, Raspberry Pi, Docker, CI/CD).
 
-- `libdvx3.vala` - Core library implementation
-- `dvx3-cli.vala` - Command-line interface
-- `build.sh` - Build script
-- `vala-extra-vapis/libsodium.vapi` - libsodium bindings
+---
+
+## Security
+
+- Passwords are stored in plaintext in config files. **Set file permissions!**
+  ```bash
+  chmod 600 ~/.config/backup-manager/backup-manager.conf
+  ```
+- Use strong passwords (12+ chars recommended)
+- All encryption uses Argon2id KDF and XSalsa20-Poly1305
+- See [SECURITY.md](SECURITY.md) for policy and reporting
+
+---
+
+## Troubleshooting
+
+- See [BACKUP_MANAGER_GUIDE.md](BACKUP_MANAGER_GUIDE.md) and [GUI_GUIDE.md](GUI_GUIDE.md) for common issues
+- Ensure all dependencies are installed (see [INSTALL.md](INSTALL.md))
+- For build errors, check Vala, GLib, JSON-GLib, libsodium, zstd, Qt6, and compiler versions
+- For runtime errors, run from terminal to see logs
+- For CLI/GUI password errors, verify you are using the correct password
+
+---
 
 ## License
 
-See project license file.
+MIT License (c) 2025 tadaka9
+
+See [LICENSE](LICENSE) for details.
+
+---
+
+## Repository
+
+This project is hosted at: [https://gitlab.com/cryptoware/Dvx3-backup-manager.git](https://gitlab.com/cryptoware/Dvx3-backup-manager.git)
