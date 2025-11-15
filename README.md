@@ -5,7 +5,6 @@
 [![Vala](https://img.shields.io/badge/language-vala-blueviolet)](https://vala.dev/)
 [![C++](https://img.shields.io/badge/language-c++-blue)](CPP_USAGE.md)
 [![Security: Argon2id+XSalsa20](https://img.shields.io/badge/security-argon2id%20%2B%20xsalsa20--poly1305-brightgreen)](SECURITY.md)
-[![Last Commit](https://img.shields.io/github/last-commit/cryptoware/Dvx3-backup-manager?label=last%20commit)](https://gitlab.com/cryptoware/Dvx3-backup-manager/-/commits/clean-version)
 
 # Dvx3 Backup Manager
 
