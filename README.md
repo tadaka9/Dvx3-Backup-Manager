@@ -1,12 +1,12 @@
-[![pipeline status](https://gitlab.com/cryptoware/Dvx3-backup-manager/badges/master/pipeline.svg)](https://gitlab.com/cryptoware/Dvx3-backup-manager/pipelines)
-[![coverage report](https://gitlab.com/cryptoware/Dvx3-backup-manager/badges/master/coverage.svg)](https://gitlab.com/cryptoware/Dvx3-backup-manager/commits/master)
+[![pipeline status](https://gitlab.com/cryptoware/Dvx3-backup-manager/badges/clean-version/pipeline.svg)](https://gitlab.com/cryptoware/Dvx3-backup-manager/pipelines)
+[![coverage report](https://gitlab.com/cryptoware/Dvx3-backup-manager/badges/clean-version/coverage.svg)](https://gitlab.com/cryptoware/Dvx3-backup-manager/commits/clean-version)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![platforms](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows%20%7C%20raspberry--pi-blue)](BUILD_MULTIPLATFORM.md)
 [![Qt6 GUI](https://img.shields.io/badge/GUI-Qt6-informational)](GUI_GUIDE.md)
 [![Vala](https://img.shields.io/badge/language-vala-blueviolet)](https://vala.dev/)
 [![C++](https://img.shields.io/badge/language-c++-blue)](CPP_USAGE.md)
 [![Security: Argon2id+XSalsa20](https://img.shields.io/badge/security-argon2id%20%2B%20xsalsa20--poly1305-brightgreen)](SECURITY.md)
-[![Last Commit](https://img.shields.io/github/last-commit/cryptoware/Dvx3-backup-manager?label=last%20commit)](https://gitlab.com/cryptoware/Dvx3-backup-manager/-/commits/master)
+[![Last Commit](https://img.shields.io/github/last-commit/cryptoware/Dvx3-backup-manager?label=last%20commit)](https://gitlab.com/cryptoware/Dvx3-backup-manager/-/commits/clean-version)
 
 # Dvx3 Backup Manager
 
