@@ -1,5 +1,4 @@
 [![pipeline status](https://gitlab.com/cryptoware/Dvx3-backup-manager/badges/clean-version/pipeline.svg)](https://gitlab.com/cryptoware/Dvx3-backup-manager/pipelines)
-[![coverage report](https://gitlab.com/cryptoware/Dvx3-backup-manager/badges/clean-version/coverage.svg)](https://gitlab.com/cryptoware/Dvx3-backup-manager/commits/clean-version)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![platforms](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows%20%7C%20raspberry--pi-blue)](BUILD_MULTIPLATFORM.md)
 [![Qt6 GUI](https://img.shields.io/badge/GUI-Qt6-informational)](GUI_GUIDE.md)
