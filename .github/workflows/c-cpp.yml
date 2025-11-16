@@ -73,7 +73,9 @@ jobs:
             export LD_LIBRARY_PATH=/usr/lib/qt6/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
             export QT_PLUGIN_PATH=/usr/lib/qt6/plugins${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}
             # Bundle Qt, ICU, and plugins using linuxdeployqt
-            ./linuxdeployqt-continuous-x86_64.AppImage backup-manager-gui.desktop -appimage -bundle-non-qt-libs -extra-plugins=iconengines,platforms || true
+            ./linuxdeployqt-continuous-x86_64.AppImage backup-manager-gui.desktop -appimage -bundle-non-qt-libs -extra-plugins=iconengines,platforms -verbose=2 | tee linuxdeployqt.log || true
+            echo "\nlinuxdeployqt log:" && cat linuxdeployqt.log
+            echo "\nAppDir usr/lib contents after linuxdeployqt:" && ls -lhR ./usr/lib || true
           fi
 
       - name: Upload AppImage
@@ -102,7 +104,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew install vala glib json-glib libsodium qt@6 qttools cmake pkg-config create-dmg
+          brew install vala glib json-glib libsodium qt@6 qt6-base qttools cmake pkg-config create-dmg
           echo "$(brew --prefix qt@6)/bin" >> $GITHUB_PATH
 
       - name: Verify VAPI
@@ -117,16 +119,18 @@ jobs:
 
       - name: Build Qt GUI
         run: |
-          export PATH="/opt/homebrew/bin:$(brew --prefix qt@6)/bin:$PATH"
+          export PATH="/opt/homebrew/opt/qt6-base/bin:/opt/homebrew/bin:$(brew --prefix qt@6)/bin:$PATH"
           echo "PATH is: $PATH"
           echo "Qt6 bin dir: $(brew --prefix qt@6)/bin"
           ls -l $(brew --prefix qt@6)/bin || true
+          echo "Qt6-base bin dir: /opt/homebrew/opt/qt6-base/bin"
+          ls -l /opt/homebrew/opt/qt6-base/bin || true
           # Symlink moc6 to moc if only moc6 is present
           if command -v moc6 >/dev/null 2>&1 && ! command -v moc >/dev/null 2>&1; then
-            ln -sf "$(command -v moc6)" "$(brew --prefix qt@6)/bin/moc"
+            ln -sf "$(command -v moc6)" "/opt/homebrew/opt/qt6-base/bin/moc"
           fi
           if ! command -v moc >/dev/null 2>&1; then
-            echo "Error: moc not found in PATH after exporting Qt6 bin and /opt/homebrew/bin."
+            echo "Error: moc not found in PATH after exporting Qt6 bin, qt6-base bin, and /opt/homebrew/bin."
             exit 1
           else
             echo "moc found: $(command -v moc)"
