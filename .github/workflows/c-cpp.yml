@@ -342,15 +342,25 @@ jobs:
             exit 1
           fi
 
+          # Debug: List Dvx3 libraries before linking
+          echo "Listing Dvx3 libraries in current and mingw64/lib directories:"
+          ls -l libDvx3* libdvx3* /mingw64/lib/libDvx3* /mingw64/lib/libdvx3* 2>/dev/null || true
+
           $MOC backup-manager-gui.hpp -o backup-manager-gui.moc.cpp
           if [ -f resources.qrc ]; then
             $RCC resources.qrc -o resources.rcc.cpp
+          fi
+          # Try lowercase -ldvx3 if -lDvx3 fails
+          if ls libdvx3.* 1>/dev/null 2>&1 || ls /mingw64/lib/libdvx3.* 1>/dev/null 2>&1; then
+            LINKNAME=ldvx3
+          else
+            LINKNAME=lDvx3
           fi
           g++ backup-manager-gui.cpp backup-manager-gui.moc.cpp resources.rcc.cpp \
             -o backup-manager-gui.exe \
             -std=c++17 \
             $(pkg-config --cflags --libs Qt6Widgets glib-2.0 gio-2.0 json-glib-1.0 libsodium) \
-            -L. -lDvx3
+            -L. -L/mingw64/lib -$LINKNAME
           ls -lh *.exe *.dll || true
 
       - name: Upload Windows artifacts
