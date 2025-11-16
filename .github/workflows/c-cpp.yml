@@ -163,24 +163,18 @@ jobs:
       - name: Build Qt GUI
         run: |
           # Ensure all Qt6 bin dirs are at front of PATH for moc discovery
-          export PATH="$(brew --prefix qt@6)/bin:$(brew --prefix qt6-tools)/bin:/opt/homebrew/opt/qt/bin:$PATH"
+          export PATH="$(brew --prefix qt@6)/bin:/opt/homebrew/opt/qt/bin:$PATH"
           echo "PATH is: $PATH"
           echo "Qt6 bin dir: $(brew --prefix qt@6)/bin"
-          echo "Qt6-tools bin dir: $(brew --prefix qt6-tools)/bin"
           echo "Listing all files in $(brew --prefix qt@6)/bin:"
           ls -l $(brew --prefix qt@6)/bin || true
-          echo "Listing all files in $(brew --prefix qt6-tools)/bin:"
-          ls -l $(brew --prefix qt6-tools)/bin || true
           echo "Listing all files in /opt/homebrew/opt/qt/bin:"
           ls -l /opt/homebrew/opt/qt/bin || true
           echo "Homebrew info for qt@6:"
           brew info qt@6 || true
-          echo "Homebrew info for qt6-tools:"
-          brew info qt6-tools || true
           # Symlink moc6 to moc in all locations if only moc6 is present
           if command -v moc6 >/dev/null 2>&1 && ! command -v moc >/dev/null 2>&1; then
             ln -sf "$(command -v moc6)" "$(brew --prefix qt@6)/bin/moc"
-            ln -sf "$(command -v moc6)" "$(brew --prefix qt6-tools)/bin/moc"
             ln -sf "$(command -v moc6)" "/opt/homebrew/opt/qt/bin/moc"
           fi
           if ! command -v moc >/dev/null 2>&1; then
