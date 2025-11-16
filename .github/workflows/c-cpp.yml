@@ -32,6 +32,23 @@ jobs:
             qt6-base-dev qt6-base-dev-tools qt6-tools-dev \
             tar zstd file wget
 
+      - name: Debug Qt6 tools in /usr/lib/qt6/bin
+        run: |
+          echo "Listing /usr/lib/qt6/bin:"
+          ls -l /usr/lib/qt6/bin || echo "/usr/lib/qt6/bin not found"
+          echo "Checking for qmake, moc, and other Qt6 tools:"
+          for tool in qmake moc rcc uic lrelease; do
+            if [ -x "/usr/lib/qt6/bin/$tool" ]; then
+              echo "$tool found"
+            else
+              echo "$tool NOT found in /usr/lib/qt6/bin"
+            fi
+          done
+          if [ ! -x /usr/lib/qt6/bin/qmake ]; then
+            echo "ERROR: Qt6 tools not found in /usr/lib/qt6/bin. Check installation."
+            exit 1
+          fi
+
       - name: Verify VAPI
         run: |
           ls -la vala-extra-vapis/libsodium.vapi
