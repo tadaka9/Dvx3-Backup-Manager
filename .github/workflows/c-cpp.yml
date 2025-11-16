@@ -55,9 +55,16 @@ jobs:
         run: |
           wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool-x86_64.AppImage
+          wget -q https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-x86_64.AppImage
+          chmod +x linuxdeployqt-x86_64.AppImage
 
       - name: Create AppImage
-        run: bash ./build-appimage.sh
+        run: |
+          bash ./build-appimage.sh
+          # Bundle Qt and ICU dependencies using linuxdeployqt
+          if [ -f backup-manager-gui ]; then
+            ./linuxdeployqt-x86_64.AppImage backup-manager-gui -appimage || ./linuxdeployqt-x86_64.AppImage ./backup-manager-gui -appimage || true
+          fi
 
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
@@ -101,6 +108,15 @@ jobs:
       - name: Build Qt GUI
         run: |
           export PATH="$(brew --prefix qt@6)/bin:$PATH"
+          echo "PATH is: $PATH"
+          echo "Qt6 bin dir: $(brew --prefix qt@6)/bin"
+          ls -l $(brew --prefix qt@6)/bin || true
+          if ! command -v moc >/dev/null 2>&1; then
+            echo "Error: moc not found in PATH after exporting Qt6 bin."
+            exit 1
+          else
+            echo "moc found: $(command -v moc)"
+          fi
           bash ./build_gui.sh
 
       - name: Create App Bundle
