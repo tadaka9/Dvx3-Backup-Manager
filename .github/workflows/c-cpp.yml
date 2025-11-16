@@ -22,12 +22,14 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          # Install both ICU dev and runtime libraries (libicu-dev and libicu74)
+          # Download and install ICU 74 from .deb package (berkley4/icu-74-debian)
+          wget -O libicu-dev_74.2-2_amd64.deb https://github.com/berkley4/icu-74-debian/releases/download/74.2-2/libicu-dev_74.2-2_amd64.deb
+          sudo dpkg -i libicu-dev_74.2-2_amd64.deb || sudo apt-get -f install -y
+          # Install remaining dependencies
           sudo apt-get install -y \
             valac gcc g++ make cmake pkg-config \
             libglib2.0-dev libjson-glib-dev libsodium-dev \
             qt6-base-dev qt6-base-dev-tools qt6-tools-dev \
-            libicu-dev libicu74 \
             tar zstd file wget
 
       - name: Verify VAPI
