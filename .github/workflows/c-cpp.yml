@@ -61,16 +61,14 @@ jobs:
       - name: Create AppImage
         run: |
           bash ./build-appimage.sh
-          # Create a minimal .desktop file for linuxdeployqt
+          # Create a minimal .desktop file for linuxdeployqt (YAML-safe)
           if [ -f backup-manager-gui ]; then
-            cat > backup-manager-gui.desktop <<EOF
-            [Desktop Entry]
-            Name=Backup Manager GUI
-            Exec=backup-manager-gui
-            Icon=backup-manager
-            Type=Application
-            Categories=Utility;
-            EOF
+            echo '[Desktop Entry]' > backup-manager-gui.desktop
+            echo 'Name=Backup Manager GUI' >> backup-manager-gui.desktop
+            echo 'Exec=backup-manager-gui' >> backup-manager-gui.desktop
+            echo 'Icon=backup-manager' >> backup-manager-gui.desktop
+            echo 'Type=Application' >> backup-manager-gui.desktop
+            echo 'Categories=Utility;' >> backup-manager-gui.desktop
             # Bundle Qt and ICU dependencies using linuxdeployqt
             ./linuxdeployqt-continuous-x86_64.AppImage backup-manager-gui.desktop -appimage || true
           fi
