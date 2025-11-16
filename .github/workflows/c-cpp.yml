@@ -27,7 +27,7 @@ jobs:
             valac gcc g++ make cmake pkg-config \
             libglib2.0-dev libjson-glib-dev libsodium-dev \
             qt6-base-dev qt6-base-dev-tools qt6-tools-dev \
-            libicu-dev libicu72 \
+            libicu-dev \
             tar zstd file wget
 
       - name: Verify VAPI
