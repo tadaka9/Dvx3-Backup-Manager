@@ -69,8 +69,11 @@ jobs:
             echo 'Icon=backup-manager' >> backup-manager-gui.desktop
             echo 'Type=Application' >> backup-manager-gui.desktop
             echo 'Categories=Utility;' >> backup-manager-gui.desktop
-            # Bundle Qt and ICU dependencies using linuxdeployqt
-            ./linuxdeployqt-continuous-x86_64.AppImage backup-manager-gui.desktop -appimage || true
+            # Set Qt6 library and plugin paths for linuxdeployqt
+            export LD_LIBRARY_PATH=/usr/lib/qt6/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+            export QT_PLUGIN_PATH=/usr/lib/qt6/plugins${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}
+            # Bundle Qt, ICU, and plugins using linuxdeployqt
+            ./linuxdeployqt-continuous-x86_64.AppImage backup-manager-gui.desktop -appimage -bundle-non-qt-libs -extra-plugins=iconengines,platforms || true
           fi
 
       - name: Upload AppImage
