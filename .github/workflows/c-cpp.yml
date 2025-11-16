@@ -63,6 +63,9 @@ jobs:
           bash ./build-appimage.sh
           # Create a minimal .desktop file for linuxdeployqt (YAML-safe)
           if [ -f backup-manager-gui ]; then
+            # Explicitly copy ICU libraries into AppDir/usr/lib
+            mkdir -p usr/lib
+            cp /usr/lib/x86_64-linux-gnu/libicu*.so.* usr/lib/ || true
             echo '[Desktop Entry]' > backup-manager-gui.desktop
             echo 'Name=Backup Manager GUI' >> backup-manager-gui.desktop
             echo 'Exec=backup-manager-gui' >> backup-manager-gui.desktop
@@ -104,7 +107,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew install vala glib json-glib libsodium qt@6 qt6-base qttools cmake pkg-config create-dmg
+          brew install vala glib json-glib libsodium qt@6 qtbase qttools cmake pkg-config create-dmg
           echo "$(brew --prefix qt@6)/bin" >> $GITHUB_PATH
 
       - name: Verify VAPI
