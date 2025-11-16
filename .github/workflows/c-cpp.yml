@@ -171,12 +171,17 @@ jobs:
           ls -l /opt/homebrew/opt/qt/bin || true
           echo "Homebrew info for qt@6:"
           brew info qt@6 || true
+          # Debug: Show all possible moc binaries
+          echo "which moc: $(which moc || echo not found)"
+          echo "which moc-qt6: $(which moc-qt6 || echo not found)"
+          echo "which moc6: $(which moc6 || echo not found)"
           # Symlink moc6 or moc-qt6 to moc in all locations if only those are present
           if ! command -v moc >/dev/null 2>&1; then
             if command -v moc-qt6 >/dev/null 2>&1; then
               ln -sf "$(command -v moc-qt6)" "$(brew --prefix qt@6)/bin/moc"
               ln -sf "$(command -v moc-qt6)" "/opt/homebrew/opt/qt/bin/moc"
-            elif command -v moc6 >/dev/null 2>&1; then
+            fi
+            if command -v moc6 >/dev/null 2>&1; then
               ln -sf "$(command -v moc6)" "$(brew --prefix qt@6)/bin/moc"
               ln -sf "$(command -v moc6)" "/opt/homebrew/opt/qt/bin/moc"
             fi
