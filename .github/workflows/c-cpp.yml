@@ -66,6 +66,12 @@ jobs:
             # Explicitly copy ICU libraries into AppDir/usr/lib
             mkdir -p usr/lib
             cp /usr/lib/x86_64-linux-gnu/libicu*.so.* usr/lib/ || true
+            # Create symlinks for ICU libraries (e.g., libicui18n.so -> libicui18n.so.74)
+            for lib in usr/lib/libicu*.so.*; do
+              base=$(basename "$lib")
+              soname=$(echo "$base" | sed 's/\(libicu[a-z]*\)\.so\..*/\1.so/')
+              ln -sf "$base" "usr/lib/$soname"
+            done
             echo '[Desktop Entry]' > backup-manager-gui.desktop
             echo 'Name=Backup Manager GUI' >> backup-manager-gui.desktop
             echo 'Exec=backup-manager-gui' >> backup-manager-gui.desktop
@@ -122,33 +128,29 @@ jobs:
 
       - name: Build Qt GUI
         run: |
-          export PATH="/opt/homebrew/opt/qt6-base/bin:/opt/homebrew/bin:$(brew --prefix qt@6)/bin:$PATH"
+          export PATH="/opt/homebrew/bin:$(brew --prefix qt@6)/bin:$PATH"
           echo "PATH is: $PATH"
           echo "Qt6 bin dir: $(brew --prefix qt@6)/bin"
           ls -l $(brew --prefix qt@6)/bin || true
-          echo "Qt6-base bin dir: /opt/homebrew/opt/qt6-base/bin"
-          ls -l /opt/homebrew/opt/qt6-base/bin || true
           # Symlink moc6 to moc if only moc6 is present
           if command -v moc6 >/dev/null 2>&1 && ! command -v moc >/dev/null 2>&1; then
-            ln -sf "$(command -v moc6)" "/opt/homebrew/opt/qt6-base/bin/moc"
-          fi
-          if ! command -v moc >/dev/null 2>&1; then
-            echo "Error: moc not found in PATH after exporting Qt6 bin, qt6-base bin, and /opt/homebrew/bin."
-            exit 1
-          else
-            echo "moc found: $(command -v moc)"
-          fi
-          bash ./build_gui.sh
-
-      - name: Create App Bundle
-        run: |
-          set -e
-          export PATH="$(brew --prefix qt@6)/bin:$PATH"
-          mkdir -p "Dvx3 Backup Manager.app/Contents/MacOS" "Dvx3 Backup Manager.app/Contents/Resources" "Dvx3 Backup Manager.app/Contents/Frameworks"
-
-          cp backup-manager-gui "Dvx3 Backup Manager.app/Contents/MacOS/"
-          cp libDvx3.dylib "Dvx3 Backup Manager.app/Contents/Frameworks/"
-
+            ln -sf "$(command -v moc6)" "$(brew --prefix qt@6)/bin/moc"
+          run: |
+            export PATH="/opt/homebrew/bin:$(brew --prefix qt@6)/bin:$PATH"
+            echo "PATH is: $PATH"
+            echo "Qt6 bin dir: $(brew --prefix qt@6)/bin"
+            ls -l $(brew --prefix qt@6)/bin || true
+            # Symlink moc6 to moc if only moc6 is present
+            if command -v moc6 >/dev/null 2>&1 && ! command -v moc >/dev/null 2>&1; then
+              ln -sf "$(command -v moc6)" "$(brew --prefix qt@6)/bin/moc"
+            fi
+            if ! command -v moc >/dev/null 2>&1; then
+              echo "Error: moc not found in PATH after exporting Qt6 bin and /opt/homebrew/bin."
+              exit 1
+            else
+              echo "moc found: $(command -v moc)"
+            fi
+            bash ./build_gui.sh
           cat > "Dvx3 Backup Manager.app/Contents/Info.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
