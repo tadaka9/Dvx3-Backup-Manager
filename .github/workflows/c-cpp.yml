@@ -41,6 +41,7 @@ jobs:
             echo "Error: GNU tar is required for dynamic progress."
             exit 1
           fi
+
       - name: Install FUSE2 for AppImage
         run: sudo apt-get install -y libfuse2
 
@@ -66,7 +67,7 @@ jobs:
             # Explicitly copy ICU libraries into AppDir/usr/lib
             mkdir -p usr/lib
             cp /usr/lib/x86_64-linux-gnu/libicu*.so.* usr/lib/ || true
-            # Create symlinks for ICU libraries (e.g., libicui18n.so -> libicui18n.so.74)
+            # Create soname symlinks for ICU libraries (e.g., libicui18n.so -> libicui18n.so.74)
             for lib in usr/lib/libicu*.so.*; do
               base=$(basename "$lib")
               soname=$(echo "$base" | sed 's/\(libicu[a-z]*\)\.so\..*/\1.so/')
@@ -128,11 +129,12 @@ jobs:
 
       - name: Build Qt GUI
         run: |
-          export PATH="/opt/homebrew/bin:$(brew --prefix qt@6)/bin:$PATH"
+          # Ensure Qt6 bin is at front of PATH for moc discovery
+          export PATH="$(brew --prefix qt@6)/bin:/opt/homebrew/bin:$PATH"
           echo "PATH is: $PATH"
           echo "Qt6 bin dir: $(brew --prefix qt@6)/bin"
           ls -l $(brew --prefix qt@6)/bin || true
-          # Symlink moc6 to moc if only moc6 is present
+          # Symlink moc6 to moc if moc not already found
           if command -v moc6 >/dev/null 2>&1 && ! command -v moc >/dev/null 2>&1; then
             ln -sf "$(command -v moc6)" "$(brew --prefix qt@6)/bin/moc"
           fi
@@ -144,25 +146,25 @@ jobs:
           fi
           bash ./build_gui.sh
           cat > "Dvx3 Backup Manager.app/Contents/Info.plist" <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>CFBundleExecutable</key>
-              <string>backup-manager-gui</string>
-              <key>CFBundleIdentifier</key>
-              <string>com.Dvx3.backupmanager</string>
-              <key>CFBundleName</key>
-              <string>Dvx3 Backup Manager</string>
-              <key>CFBundleVersion</key>
-              <string>1.0.0</string>
-              <key>CFBundleShortVersionString</key>
-              <string>1.0.0</string>
-              <key>NSHighResolutionCapable</key>
-              <true/>
-          </dict>
-          </plist>
-          EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>backup-manager-gui</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.Dvx3.backupmanager</string>
+    <key>CFBundleName</key>
+    <string>Dvx3 Backup Manager</string>
+    <key>CFBundleVersion</key>
+    <string>1.0.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+</dict>
+</plist>
+EOF
 
           macdeployqt "Dvx3 Backup Manager.app" -verbose=2
 
@@ -202,10 +204,8 @@ jobs:
             x86_64/"Dvx3 Backup Manager.app/Contents/Frameworks/libDvx3.dylib" \
             arm64/"Dvx3 Backup Manager.app/Contents/Frameworks/libDvx3.dylib"
 
-          # Copy the Info.plist and other files from one (assuming identical)
           cp -r x86_64/"Dvx3 Backup Manager.app" .
 
-          # Run macdeployqt on the universal app
           macdeployqt "Dvx3 Backup Manager.app" -verbose=2
 
       - name: Create DMG
@@ -251,12 +251,9 @@ jobs:
               # Explicitly copy ICU libraries into AppDir/usr/lib
               mkdir -p usr/lib
               cp /usr/lib/x86_64-linux-gnu/libicu*.so.* usr/lib/ || true
-              # Create robust symlinks for ICU libraries (e.g., libicui18n.so -> libicui18n.so.74)
               for lib in usr/lib/libicu*.so.*; do
                 base=$(basename "$lib")
-                # Extract the soname (e.g., libicui18n.so)
                 soname=$(echo "$base" | sed 's/\(libicu[a-z]*\)\.so\..*/\1.so/')
-                # Only create symlink if it doesn't already exist or points incorrectly
                 if [ ! -e "usr/lib/$soname" ] || [ "$(readlink -f usr/lib/$soname)" != "$(readlink -f usr/lib/$base)" ]; then
                   ln -sf "$base" "usr/lib/$soname"
                 fi
@@ -270,7 +267,6 @@ jobs:
               # Set Qt6 library and plugin paths for linuxdeployqt
               export LD_LIBRARY_PATH=/usr/lib/qt6/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
               export QT_PLUGIN_PATH=/usr/lib/qt6/plugins${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}
-              # Bundle Qt, ICU, and plugins using linuxdeployqt
               ./linuxdeployqt-continuous-x86_64.AppImage backup-manager-gui.desktop -appimage -bundle-non-qt-libs -extra-plugins=iconengines,platforms -verbose=2 | tee linuxdeployqt.log || true
               echo "\nlinuxdeployqt log:" && cat linuxdeployqt.log
               echo "\nAppDir usr/lib contents after linuxdeployqt:" && ls -lhR ./usr/lib || true
@@ -287,7 +283,7 @@ jobs:
         shell: msys2 {0}
         run: |
           set -e
-          export PATH="/mingw64/bin:$PATH"
+          export PATH="/mingw64/share/qt6/bin:/mingw64/bin:$PATH"
           # Find Qt tools in MSYS2/MinGW
           if command -v moc-qt6 >/dev/null 2>&1; then
             MOC=moc-qt6
@@ -342,7 +338,6 @@ jobs:
 
       - name: Build in ARM container
         run: |
-          # Ensure libsodium.vapi is present on host (mounted into container)
           set -e
           ls -la vala-extra-vapis/libsodium.vapi || true
           docker run --rm --platform linux/arm/v7 \
@@ -379,7 +374,6 @@ jobs:
 
       - name: Build in ARM64 container
         run: |
-          # Ensure libsodium.vapi is present on host (mounted into container)
           set -e
           ls -la vala-extra-vapis/libsodium.vapi || true
           docker run --rm --platform linux/arm64 \
@@ -421,8 +415,9 @@ jobs:
       - name: Generate checksums
         run: |
           cd artifacts
-          find . -type f \$ -name "*.AppImage" -o -name "*.dmg" -o -name "*.tar.gz" -o -name "*.exe" -o -name "*.dll" -o -name "*.vapi" -o -name "*.h" \$ -print0 | \
+          find . -type f \( -name "*.AppImage" -o -name "*.dmg" -o -name "*.tar.gz" -o -name "*.exe" -o -name "*.dll" -o -name "*.vapi" -o -name "*.h" \) -print0 | \
             xargs -0 -I {} sh -c 'sha256sum "$1" >> CHECKSUMS.txt' -- {}
+
           echo "Generated checksums:" && cat CHECKSUMS.txt
 
       - name: Create Release
