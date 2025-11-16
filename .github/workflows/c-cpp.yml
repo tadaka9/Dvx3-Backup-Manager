@@ -65,9 +65,9 @@ jobs:
           bash ./build-appimage.sh
           # Create a minimal .desktop file for linuxdeployqt (YAML-safe)
           if [ -f backup-manager-gui ]; then
-            # Explicitly copy ICU libraries into AppDir/usr/lib
+            # Explicitly copy all ICU libraries into AppDir/usr/lib
             mkdir -p usr/lib
-            cp /usr/lib/x86_64-linux-gnu/libicu*.so.* usr/lib/ || true
+            cp /usr/lib/x86_64-linux-gnu/libicu*.so* usr/lib/ || true
             # Create soname symlinks for ICU libraries (e.g., libicui18n.so -> libicui18n.so.74)
             for lib in usr/lib/libicu*.so.*; do
               base=$(basename "$lib")
@@ -131,7 +131,7 @@ jobs:
       - name: Build Qt GUI
         run: |
           # Ensure Qt6 bin is at front of PATH for moc discovery
-          export PATH="$(brew --prefix qt@6)/bin:/opt/homebrew/bin:$PATH"
+          export PATH="$(brew --prefix qt@6)/bin:/opt/homebrew/opt/qt/bin:$PATH"
           echo "PATH is: $PATH"
           echo "Qt6 bin dir: $(brew --prefix qt@6)/bin"
           ls -l $(brew --prefix qt@6)/bin || true
@@ -279,12 +279,16 @@ jobs:
           set -e
           pacman -Syu --noconfirm
           pacman -S --noconfirm mingw-w64-x86_64-qt6-base mingw-w64-x86_64-qt6-tools
+          # Confirm moc location
+          find /mingw64 -name moc.exe || true
 
       - name: Build Windows Qt GUI
         shell: msys2 {0}
         run: |
           set -e
           export PATH="/mingw64/share/qt6/bin:/mingw64/bin:$PATH"
+          echo "PATH is: $PATH"
+          which moc || true
           # Find Qt tools in MSYS2/MinGW
           if command -v moc-qt6 >/dev/null 2>&1; then
             MOC=moc-qt6
