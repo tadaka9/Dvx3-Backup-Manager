@@ -146,8 +146,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew install vala glib json-glib libsodium qt@6 qtbase qttools cmake pkg-config create-dmg
+          brew install vala glib json-glib libsodium qt@6 qtbase qttools qt6-tools cmake pkg-config create-dmg
           echo "$(brew --prefix qt@6)/bin" >> $GITHUB_PATH
+          echo "$(brew --prefix qt6-tools)/bin" >> $GITHUB_PATH
 
       - name: Verify VAPI
         run: |
@@ -161,19 +162,25 @@ jobs:
 
       - name: Build Qt GUI
         run: |
-          # Ensure Qt6 bin is at front of PATH for moc discovery
-          export PATH="$(brew --prefix qt@6)/bin:/opt/homebrew/opt/qt/bin:$PATH"
+          # Ensure all Qt6 bin dirs are at front of PATH for moc discovery
+          export PATH="$(brew --prefix qt@6)/bin:$(brew --prefix qt6-tools)/bin:/opt/homebrew/opt/qt/bin:$PATH"
           echo "PATH is: $PATH"
           echo "Qt6 bin dir: $(brew --prefix qt@6)/bin"
+          echo "Qt6-tools bin dir: $(brew --prefix qt6-tools)/bin"
           echo "Listing all files in $(brew --prefix qt@6)/bin:"
           ls -l $(brew --prefix qt@6)/bin || true
+          echo "Listing all files in $(brew --prefix qt6-tools)/bin:"
+          ls -l $(brew --prefix qt6-tools)/bin || true
           echo "Listing all files in /opt/homebrew/opt/qt/bin:"
           ls -l /opt/homebrew/opt/qt/bin || true
           echo "Homebrew info for qt@6:"
           brew info qt@6 || true
-          # Symlink moc6 to moc in both locations if only moc6 is present
+          echo "Homebrew info for qt6-tools:"
+          brew info qt6-tools || true
+          # Symlink moc6 to moc in all locations if only moc6 is present
           if command -v moc6 >/dev/null 2>&1 && ! command -v moc >/dev/null 2>&1; then
             ln -sf "$(command -v moc6)" "$(brew --prefix qt@6)/bin/moc"
+            ln -sf "$(command -v moc6)" "$(brew --prefix qt6-tools)/bin/moc"
             ln -sf "$(command -v moc6)" "/opt/homebrew/opt/qt/bin/moc"
           fi
           if ! command -v moc >/dev/null 2>&1; then
@@ -310,12 +317,12 @@ jobs:
               echo "\nAppDir usr/lib contents after linuxdeployqt:" && ls -lhR ./usr/lib || true
             fi
 
-      - name: Install Qt6 for MSYS2
+      - name: Install Qt6 and Vala for MSYS2
         shell: msys2 {0}
         run: |
           set -e
           pacman -Syu --noconfirm
-          pacman -S --noconfirm mingw-w64-x86_64-qt6-base mingw-w64-x86_64-qt6-tools mingw-w64-x86_64-toolchain mingw-w64-x86_64-pkg-config mingw-w64-x86_64-json-glib mingw-w64-x86_64-libsodium
+          pacman -S --noconfirm mingw-w64-x86_64-qt6-base mingw-w64-x86_64-qt6-tools mingw-w64-x86_64-toolchain mingw-w64-x86_64-pkg-config mingw-w64-x86_64-json-glib mingw-w64-x86_64-libsodium mingw-w64-x86_64-vala
           # Confirm moc location
           find /mingw64 -name moc.exe || true
 
