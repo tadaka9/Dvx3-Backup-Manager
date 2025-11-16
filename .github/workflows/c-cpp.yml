@@ -162,13 +162,16 @@ jobs:
       - name: Build Qt GUI
         run: |
           # Ensure all Qt6 bin dirs are at front of PATH for moc discovery
-          export PATH="$(brew --prefix qt@6)/bin:/opt/homebrew/opt/qt/bin:$PATH"
+          # Add all possible Homebrew Qt6 bin locations to PATH (Apple Silicon and Intel)
+          export PATH="$(brew --prefix qt@6)/bin:/opt/homebrew/opt/qt/bin:/usr/local/opt/qt/bin:$PATH"
           echo "PATH is: $PATH"
           echo "Qt6 bin dir: $(brew --prefix qt@6)/bin"
           echo "Listing all files in $(brew --prefix qt@6)/bin:"
           ls -l $(brew --prefix qt@6)/bin || true
           echo "Listing all files in /opt/homebrew/opt/qt/bin:"
           ls -l /opt/homebrew/opt/qt/bin || true
+          echo "Listing all files in /usr/local/opt/qt/bin:"
+          ls -l /usr/local/opt/qt/bin || true
           echo "Homebrew info for qt@6:"
           brew info qt@6 || true
           # Debug: Show all possible moc binaries
