@@ -47,6 +47,8 @@ jobs:
       - name: Build application
         run: |
           chmod +x build_gui.sh build-appimage.sh build-raspberry.sh || true
+          # Add Qt6 tools to PATH for Linux
+          export PATH="/usr/lib/qt6/bin:$PATH"
           bash ./build_gui.sh
 
       - name: Download AppImageTool
@@ -92,10 +94,14 @@ jobs:
           echo "libsodium.vapi found and ready"
 
       - name: Build library and CLI
-        run: bash ./build.sh
+        run: |
+          export PATH="$(brew --prefix qt@6)/bin:$PATH"
+          bash ./build.sh
 
       - name: Build Qt GUI
-        run: bash ./build_gui.sh
+        run: |
+          export PATH="$(brew --prefix qt@6)/bin:$PATH"
+          bash ./build_gui.sh
 
       - name: Create App Bundle
         run: |
