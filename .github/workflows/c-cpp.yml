@@ -41,6 +41,8 @@ jobs:
             echo "Error: GNU tar is required for dynamic progress."
             exit 1
           fi
+      - name: Install FUSE2 for AppImage
+        run: sudo apt-get install -y libfuse2
 
       - name: Build application
         run: |
