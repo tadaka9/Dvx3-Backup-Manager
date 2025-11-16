@@ -2,7 +2,7 @@ name: C/C++ CI
 
 on:
   push:
-    branches: [main, master, develop]
+    branches: [main, master, develop, clean-version]
     tags:
       - 'v*'
   pull_request:
