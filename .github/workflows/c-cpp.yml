@@ -69,14 +69,22 @@ jobs:
             # Debug: List ICU files before copying
             echo "Listing ICU files in /usr/lib/x86_64-linux-gnu:"
             ls -l /usr/lib/x86_64-linux-gnu/libicu*.so* || true
-            ICU_COUNT=$(ls /usr/lib/x86_64-linux-gnu/libicu*.so* 2>/dev/null | wc -l)
-            if [ "$ICU_COUNT" -eq 0 ]; then
-              echo "ERROR: No ICU libraries found in /usr/lib/x86_64-linux-gnu. AppImage will not work!"
+            echo "Listing ICU files in /usr/lib:"
+            ls -l /usr/lib/libicu*.so* || true
+            ICU_COUNT1=$(ls /usr/lib/x86_64-linux-gnu/libicu*.so* 2>/dev/null | wc -l)
+            ICU_COUNT2=$(ls /usr/lib/libicu*.so* 2>/dev/null | wc -l)
+            if [ "$ICU_COUNT1" -eq 0 ] && [ "$ICU_COUNT2" -eq 0 ]; then
+              echo "ERROR: No ICU libraries found in /usr/lib/x86_64-linux-gnu or /usr/lib. AppImage will not work!"
               exit 1
             fi
-            # Explicitly copy all ICU libraries into AppDir/usr/lib
+            # Explicitly copy all ICU libraries into AppDir/usr/lib from both locations
             mkdir -p usr/lib
-            cp /usr/lib/x86_64-linux-gnu/libicu*.so* usr/lib/
+            if [ "$ICU_COUNT1" -gt 0 ]; then
+              cp /usr/lib/x86_64-linux-gnu/libicu*.so* usr/lib/
+            fi
+            if [ "$ICU_COUNT2" -gt 0 ]; then
+              cp /usr/lib/libicu*.so* usr/lib/
+            fi
             # Create soname symlinks for ICU libraries (e.g., libicui18n.so -> libicui18n.so.74)
             for lib in usr/lib/libicu*.so.*; do
               base=$(basename "$lib")
