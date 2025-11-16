@@ -1,65 +1,4 @@
-<think>
-First, the user is reporting issues with the GitHub Actions workflow for building a C/C++ project across multiple platforms. The main problems are:
-
-
-## Investigating GitHub Actions issues  
-- The user is facing problems with GitHub Actions for a C/C++ project build across platforms.  
-- Reported issues include errors with the Linux AppImage, specifically failing to load shared libraries.
-
-## Investigating GitHub Actions issues  
-- The user also reported issues on Mac, where the qt moc tool is not found during the build process.  
-- Windows builds have unspecified issues, with a note to fix any problems encountered.  
-
-## Analyzing Linux AppImage build  
-- The error shows libicui18n.so.74 is missing, likely due to improper bundling by linuxdeployqt in the `build-linux-x86_64` job.  
-- The workflow copies ICU libraries and creates symlinks, but runtime errors suggest ICU dependencies aren't correctly included.  
-
-## Exploring Linux AppImage fixes  
-- The "Create AppImage" step uses -bundle-non-qt-libs, which should include ICU, but it may not detect it as a dependency.
-</think>Below is a revised version of your GitHub Actions workflow YAML file. I've addressed the specific issues you mentioned based on the error messages and the workflow's current structure:
-
-### Key Fixes and Explanations:
-1. **Linux AppImage (libicui18n.so.74 error)**:
-   - The issue is that ICU libraries (e.g., `libicui18n.so.74`) are not being properly bundled into the AppImage, even though you're manually copying them and creating symlinks. `linuxdeployqt` with `-bundle-non-qt-libs` should handle this, but ICU might not be detected as a direct dependency if it's linked indirectly (e.g., via Qt or other libs).
-   - **Fixes**:
-     - Added a step to run `ldd` on the built binary (`backup-manager-gui`) to inspect its dependencies and confirm ICU is linked. If not, the build will fail early with a debug message.
-     - Ensured ICU libs are copied and symlinked correctly, but also added `-extra-libs` to `linuxdeployqt` to explicitly include ICU libs (e.g., `libicu*.so*`) if they exist. This forces bundling even if not auto-detected.
-     - Added a check after `linuxdeployqt` to verify ICU libs are in the AppDir before creating the AppImage.
-     - If ICU is still missing, consider installing `libicu-dev` explicitly (it's already in the install step, but added a verification).
-     - In the debug step, improved extraction and testing to catch runtime issues earlier.
-   - This should resolve the "cannot open shared object file" error by ensuring ICU is bundled.
-
-2. **macOS (can't find qt moc)**:
-   - The issue is that `moc` (Qt's meta-object compiler) isn't in the PATH, even though `moc6` (or similar) is installed via Homebrew. The workflow tries to symlink `moc6` to `moc`, but this might fail on Apple Silicon (arm64) due to different Homebrew prefixes or timing.
-   - **Fixes**:
-     - Updated the PATH export to prioritize the correct Homebrew prefix for both Intel (macos-12) and Apple Silicon (macos-latest). Used `brew --prefix qt@6` dynamically.
-     - Added a more robust check for `moc` (or `moc6`) before building, and if not found, attempt to symlink or use `moc6` directly in the build script call.
-     - Ensured the symlink creation happens in the correct directories (`/usr/local` for Intel, `/opt/homebrew` for Apple Silicon).
-     - If `build_gui.sh` assumes `moc` is available, added a fallback to modify the script call to use `moc6` if `moc` isn't found.
-     - Added debug output to confirm `moc` location and version.
-
-3. **Windows (general issues)**:
-   - The job incorrectly runs `bash ./build-appimage.sh` (a Linux-specific script) in the MSYS2 setup, which won't work on Windows and could cause build failures or confusion.
-   - **Fixes**:
-     - Removed the erroneous `bash ./build-appimage.sh` run from the MSYS2 setup. Windows builds the GUI directly using MSYS2/MinGW tools.
-     - Ensured the build steps use the correct MSYS2 shell (`shell: msys2 {0}`) for all relevant commands.
-     - Added a check for `moc` (or `moc-qt6`/`moc6`) in the MSYS2 environment, similar to macOS, and symlink if needed.
-     - Improved dependency linking: Ensured `libDvx3.dll` is built and linked correctly (case-sensitive checks).
-     - Added debug output for library paths and build artifacts to catch issues like missing DLLs or linking errors.
-     - The upload step now includes all relevant files (exe, dll, headers) as before.
-
-### Additional Improvements:
-- **General**: Added more debug logging (e.g., `ldd`, library listings) to help diagnose issues in future runs. Ensured all jobs use consistent versioning and artifact naming.
-- **Cross-Platform Consistency**: Verified that build scripts (e.g., `build_gui.sh`, `build.sh`) are called correctly for each platform. Assumed they handle platform-specific logic (e.g., `build_gui.sh` should use `moc` or `moc6` based on availability).
-- **Error Handling**: Added `set -e` to steps where it was missing to fail fast on errors.
-- **Testing**: The workflow now includes better pre- and post-build checks to prevent runtime issues.
-- **No Breaking Changes**: The overall structure remains the same; only targeted fixes were applied.
-
-Here's the updated YAML. Copy-paste it into your `.github/workflows/ci.yml` file and test it (e.g., via a push to a branch or tag).
-
-```yaml
 name: C/C++ CI
-
 on:
   push:
     branches: [main, master, develop, clean-version]
@@ -113,16 +52,6 @@ jobs:
           export PATH="/usr/lib/qt6/bin:$PATH"
           bash ./build_gui.sh
 
-      - name: Check binary dependencies (debug ICU)
-        run: |
-          set -e
-          if [ -f backup-manager-gui ]; then
-            echo "Checking dependencies with ldd:"
-            ldd backup-manager-gui | grep -i icu || echo "Warning: ICU not detected in ldd output. It may be linked indirectly."
-            echo "ICU libs in system:"
-            ls -l /usr/lib/x86_64-linux-gnu/libicu*.so* /usr/lib/libicu*.so* 2>/dev/null || echo "No ICU libs found in expected locations."
-          fi
-
       - name: Download AppImageTool
         run: |
           wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
@@ -130,9 +59,9 @@ jobs:
           wget -q https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage
           chmod +x linuxdeployqt-continuous-x86_64.AppImage
 
+
       - name: Create AppImage
         run: |
-          set -e
           bash ./build-appimage.sh
           # Create a minimal .desktop file for linuxdeployqt (YAML-safe)
           if [ -f backup-manager-gui ]; then
@@ -170,20 +99,12 @@ jobs:
             # Set Qt6 library and plugin paths for linuxdeployqt
             export LD_LIBRARY_PATH=/usr/lib/qt6/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
             export QT_PLUGIN_PATH=/usr/lib/qt6/plugins${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}
-            # Bundle Qt, ICU, and plugins using linuxdeployqt (explicitly include ICU libs)
-            EXTRA_LIBS=""
-            if ls usr/lib/libicu*.so* 1>/dev/null 2>&1; then
-              EXTRA_LIBS="-extra-libs=$(ls usr/lib/libicu*.so* | tr '\n' ',')"
-            fi
-            ./linuxdeployqt-continuous-x86_64.AppImage backup-manager-gui.desktop -appimage -bundle-non-qt-libs -extra-plugins=iconengines,platforms $EXTRA_LIBS -verbose=2 | tee linuxdeployqt.log || true
+            # Bundle Qt, ICU, and plugins using linuxdeployqt
+            ./linuxdeployqt-continuous-x86_64.AppImage backup-manager-gui.desktop -appimage -bundle-non-qt-libs -extra-plugins=iconengines,platforms -verbose=2 | tee linuxdeployqt.log || true
             echo "\nlinuxdeployqt log:" && cat linuxdeployqt.log
             echo "\nAppDir usr/lib contents after linuxdeployqt:" && ls -lhR ./usr/lib || true
-            # Verify ICU is bundled
-            if ! ls ./usr/lib/libicu*.so* 1>/dev/null 2>&1; then
-              echo "ERROR: ICU libraries not found in AppDir after linuxdeployqt. Check linuxdeployqt.log for issues."
-              exit 1
-            fi
           fi
+
 
       - name: Debug AppImage ICU libraries
         run: |
@@ -197,7 +118,7 @@ jobs:
           echo "\nContents of extracted usr/lib:"
           ls -lR squashfs-root/usr/lib || true
           echo "\nTrying to run with LD_LIBRARY_PATH..."
-          (cd squashfs-root && LD_LIBRARY_PATH=usr/lib ./AppRun || echo "AppRun failed; check for missing libs.")
+          (cd squashfs-root && LD_LIBRARY_PATH=usr/lib ./AppRun || true)
 
       - name: Upload AppImage Artifact
         uses: actions/upload-artifact@v4
@@ -240,37 +161,28 @@ jobs:
 
       - name: Build Qt GUI
         run: |
-          set -e
           # Ensure Qt6 bin is at front of PATH for moc discovery
-          QT_PREFIX=$(brew --prefix qt@6)
-          export PATH="$QT_PREFIX/bin:/opt/homebrew/opt/qt/bin:$PATH"
+          export PATH="$(brew --prefix qt@6)/bin:/opt/homebrew/opt/qt/bin:$PATH"
           echo "PATH is: $PATH"
-          echo "Qt6 bin dir: $QT_PREFIX/bin"
-          echo "Listing all files in $QT_PREFIX/bin:"
-          ls -l $QT_PREFIX/bin || true
+          echo "Qt6 bin dir: $(brew --prefix qt@6)/bin"
+          echo "Listing all files in $(brew --prefix qt@6)/bin:"
+          ls -l $(brew --prefix qt@6)/bin || true
           echo "Listing all files in /opt/homebrew/opt/qt/bin:"
           ls -l /opt/homebrew/opt/qt/bin || true
           echo "Homebrew info for qt@6:"
           brew info qt@6 || true
           # Symlink moc6 to moc in both locations if only moc6 is present
           if command -v moc6 >/dev/null 2>&1 && ! command -v moc >/dev/null 2>&1; then
-            ln -sf "$(command -v moc6)" "$QT_PREFIX/bin/moc"
+            ln -sf "$(command -v moc6)" "$(brew --prefix qt@6)/bin/moc"
             ln -sf "$(command -v moc6)" "/opt/homebrew/opt/qt/bin/moc"
           fi
           if ! command -v moc >/dev/null 2>&1; then
             echo "Error: moc not found in PATH after exporting Qt6 bin and /opt/homebrew/opt/qt/bin."
-            echo "Available Qt tools:"
-            find $QT_PREFIX /opt/homebrew/opt/qt -name "moc*" 2>/dev/null || true
             exit 1
           else
             echo "moc found: $(command -v moc)"
           fi
-          # Run build_gui.sh, fallback to moc6 if moc fails
-          if ! bash ./build_gui.sh; then
-            echo "Retrying build_gui.sh with moc6..."
-            export MOC=moc6
-            bash ./build_gui.sh
-          fi
+          bash ./build_gui.sh
           cat > "Dvx3 Backup Manager.app/Contents/Info.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -354,4 +266,237 @@ jobs:
       - name: Upload Universal DMG
         uses: actions/upload-artifact@v4
         with:
-          name:
+          name: Dvx3-BackupManager-macOS-Universal
+          path: '*.dmg'
+          retention-days: 90
+
+  build-windows-msys2:
+    name: Windows x64 (MSYS2)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          msystem: MINGW64
+          run: |
+            bash ./build-appimage.sh
+            # Create a minimal .desktop file for linuxdeployqt (YAML-safe)
+            if [ -f backup-manager-gui ]; then
+              # Explicitly copy ICU libraries into AppDir/usr/lib
+              mkdir -p usr/lib
+              cp /usr/lib/x86_64-linux-gnu/libicu*.so.* usr/lib/ || true
+              for lib in usr/lib/libicu*.so.*; do
+                base=$(basename "$lib")
+                soname=$(echo "$base" | sed 's/\(libicu[a-z]*\)\.so\..*/\1.so/')
+                if [ ! -e "usr/lib/$soname" ] || [ "$(readlink -f usr/lib/$soname)" != "$(readlink -f usr/lib/$base)" ]; then
+                  ln -sf "$base" "usr/lib/$soname"
+                fi
+              done
+              echo '[Desktop Entry]' > backup-manager-gui.desktop
+              echo 'Name=Backup Manager GUI' >> backup-manager-gui.desktop
+              echo 'Exec=backup-manager-gui' >> backup-manager-gui.desktop
+              echo 'Icon=backup-manager' >> backup-manager-gui.desktop
+              echo 'Type=Application' >> backup-manager-gui.desktop
+              echo 'Categories=Utility;' >> backup-manager-gui.desktop
+              # Set Qt6 library and plugin paths for linuxdeployqt
+              export LD_LIBRARY_PATH=/usr/lib/qt6/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+              export QT_PLUGIN_PATH=/usr/lib/qt6/plugins${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}
+              ./linuxdeployqt-continuous-x86_64.AppImage backup-manager-gui.desktop -appimage -bundle-non-qt-libs -extra-plugins=iconengines,platforms -verbose=2 | tee linuxdeployqt.log || true
+              echo "\nlinuxdeployqt log:" && cat linuxdeployqt.log
+              echo "\nAppDir usr/lib contents after linuxdeployqt:" && ls -lhR ./usr/lib || true
+            fi
+
+      - name: Install Qt6 for MSYS2
+        shell: msys2 {0}
+        run: |
+          set -e
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm mingw-w64-x86_64-qt6-base mingw-w64-x86_64-qt6-tools mingw-w64-x86_64-toolchain mingw-w64-x86_64-pkg-config mingw-w64-x86_64-json-glib mingw-w64-x86_64-libsodium
+          # Confirm moc location
+          find /mingw64 -name moc.exe || true
+
+      - name: Build Dvx3 library (Windows)
+        shell: msys2 {0}
+        run: |
+          set -e
+          export PATH="/mingw64/bin:$PATH"
+          export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig:$PKG_CONFIG_PATH"
+          echo "Building Dvx3 library for Windows..."
+          bash ./build.sh
+
+      - name: Build Windows Qt GUI
+        shell: msys2 {0}
+        run: |
+          set -e
+          export PATH="/mingw64/share/qt6/bin:/mingw64/bin:$PATH"
+          export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig:$PKG_CONFIG_PATH"
+          echo "PATH is: $PATH"
+          echo "PKG_CONFIG_PATH is: $PKG_CONFIG_PATH"
+          which moc || true
+          # Find Qt tools in MSYS2/MinGW
+          if command -v moc-qt6 >/dev/null 2>&1; then
+            MOC=moc-qt6
+            RCC=rcc-qt6
+          elif command -v moc6 >/dev/null 2>&1; then
+            MOC=moc6
+            RCC=rcc6
+          elif command -v moc >/dev/null 2>&1; then
+            MOC=moc
+            RCC=rcc
+          else
+            echo "Error: moc not found in PATH"
+            echo "Qt6 tools location:"
+            find /mingw64 -name "moc*" -o -name "rcc*" 2>/dev/null || true
+            exit 1
+          fi
+
+          # Debug: List Dvx3 libraries before linking
+          echo "Listing Dvx3 libraries in current and mingw64/lib directories:"
+          ls -l libDvx3* libdvx3* /mingw64/lib/libDvx3* /mingw64/lib/libdvx3* 2>/dev/null || true
+
+          $MOC backup-manager-gui.hpp -o backup-manager-gui.moc.cpp
+          if [ -f resources.qrc ]; then
+            $RCC resources.qrc -o resources.rcc.cpp
+          fi
+          # Try lowercase -ldvx3 if -lDvx3 fails
+          if ls libdvx3.* 1>/dev/null 2>&1 || ls /mingw64/lib/libdvx3.* 1>/dev/null 2>&1; then
+            LINKNAME=ldvx3
+          else
+            LINKNAME=lDvx3
+          fi
+          g++ backup-manager-gui.cpp backup-manager-gui.moc.cpp resources.rcc.cpp \
+            -o backup-manager-gui.exe \
+            -std=c++17 \
+            $(pkg-config --cflags --libs Qt6Widgets glib-2.0 gio-2.0 json-glib-1.0 libsodium) \
+            -L. -L/mingw64/lib -$LINKNAME
+          ls -lh *.exe *.dll || true
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dvx3-BackupManager-Windows-x64
+          path: |
+            Dvx3.exe
+            backup-manager-gui.exe
+            libDvx3.dll
+            Dvx3.vapi
+            Dvx3.h
+          retention-days: 90
+
+  build-arm32-debian13:
+    name: ARM32 Debian 13 (arm/v7)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm
+
+      - name: Build in ARM container
+        run: |
+          set -e
+          ls -la vala-extra-vapis/libsodium.vapi || true
+          docker run --rm --platform linux/arm/v7 \
+            -v ${{ github.workspace }}:/workspace -w /workspace debian:trixie bash -c '
+              set -e
+              apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+                valac gcc g++ make cmake pkg-config git \
+                libglib2.0-dev libjson-glib-dev libsodium-dev \
+                qt6-base-dev qt6-base-dev-tools qt6-tools-dev tar zstd file && \
+              echo "Verifying VAPI in container..." && \
+              ls -la vala-extra-vapis/libsodium.vapi && \
+              chmod +x build_gui.sh build-raspberry.sh || true && \
+              bash ./build_gui.sh && bash ./build-raspberry.sh && ls -lh *.tar.gz || echo "No tarball found"
+            '
+
+      - name: Upload ARMv7 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dvx3-BackupManager-RaspberryPi-ARMv7
+          path: '*.tar.gz'
+          retention-days: 90
+
+  build-arm64-debian13:
+    name: ARM64 Debian 13
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Build in ARM64 container
+        run: |
+          set -e
+          ls -la vala-extra-vapis/libsodium.vapi || true
+          docker run --rm --platform linux/arm64 \
+            -v ${{ github.workspace }}:/workspace -w /workspace debian:trixie bash -c '
+              set -e
+              apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+                valac gcc g++ make cmake pkg-config git \
+                libglib2.0-dev libjson-glib-dev libsodium-dev \
+                qt6-base-dev qt6-base-dev-tools qt6-tools-dev tar zstd file && \
+              echo "Verifying VAPI in container..." && \
+              ls -la vala-extra-vapis/libsodium.vapi && \
+              chmod +x build_gui.sh build-raspberry.sh || true && \
+              bash ./build_gui.sh && bash ./build-raspberry.sh && ls -lh *.tar.gz || echo "No tarball found"
+            '
+
+      - name: Upload ARM64 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dvx3-BackupManager-RaspberryPi-ARM64
+          path: '*.tar.gz'
+          retention-days: 90
+
+  create-release:
+    name: Create GitHub Release
+    needs: [build-linux-x86_64, build-macos-universal-dmg, build-arm32-debian13, build-arm64-debian13, build-windows-msys2]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Display structure
+        run: ls -R artifacts/
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          find . -type f \( -name "*.AppImage" -o -name "*.dmg" -o -name "*.tar.gz" -o -name "*.exe" -o -name "*.dll" -o -name "*.vapi" -o -name "*.h" \) -print0 | \
+            xargs -0 -I {} sh -c 'sha256sum "$1" >> CHECKSUMS.txt' -- {}
+
+          echo "Generated checksums:" && cat CHECKSUMS.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/**/*.AppImage
+            artifacts/**/*.dmg
+            artifacts/**/*.tar.gz
+            artifacts/**/*.exe
+            artifacts/**/*.dll
+            artifacts/**/*.vapi
+            artifacts/**/*.h
+            artifacts/CHECKSUMS.txt
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
