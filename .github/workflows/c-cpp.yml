@@ -275,6 +275,10 @@ jobs:
               echo "\nlinuxdeployqt log:" && cat linuxdeployqt.log
               echo "\nAppDir usr/lib contents after linuxdeployqt:" && ls -lhR ./usr/lib || true
             fi
+
+      - name: Build Windows Qt GUI
+        shell: msys2 {0}
+        run: |
           set -e
           # Find Qt tools in MSYS2/MinGW
           if command -v moc-qt6 >/dev/null 2>&1; then
@@ -292,7 +296,7 @@ jobs:
             find /mingw64 -name "moc*" -o -name "rcc*" 2>/dev/null || true
             exit 1
           fi
-          
+
           $MOC backup-manager-gui.hpp -o backup-manager-gui.moc.cpp
           if [ -f resources.qrc ]; then
             $RCC resources.qrc -o resources.rcc.cpp
