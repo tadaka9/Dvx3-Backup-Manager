@@ -117,12 +117,16 @@ jobs:
 
       - name: Build Qt GUI
         run: |
-          export PATH="$(brew --prefix qt@6)/bin:$PATH"
+          export PATH="/opt/homebrew/bin:$(brew --prefix qt@6)/bin:$PATH"
           echo "PATH is: $PATH"
           echo "Qt6 bin dir: $(brew --prefix qt@6)/bin"
           ls -l $(brew --prefix qt@6)/bin || true
+          # Symlink moc6 to moc if only moc6 is present
+          if command -v moc6 >/dev/null 2>&1 && ! command -v moc >/dev/null 2>&1; then
+            ln -sf "$(command -v moc6)" "$(brew --prefix qt@6)/bin/moc"
+          fi
           if ! command -v moc >/dev/null 2>&1; then
-            echo "Error: moc not found in PATH after exporting Qt6 bin."
+            echo "Error: moc not found in PATH after exporting Qt6 bin and /opt/homebrew/bin."
             exit 1
           else
             echo "moc found: $(command -v moc)"
