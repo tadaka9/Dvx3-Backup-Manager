@@ -90,6 +90,35 @@ jobs:
           fi
 
       - name: Upload AppImage
+              - name: Debug AppImage ICU libraries
+                run: |
+                  set -e
+                  # Find the built AppImage
+                  APPIMAGE=$(ls *.AppImage | head -n1)
+                  echo "Testing ICU in $APPIMAGE"
+                  chmod +x "$APPIMAGE"
+                  # Extract AppImage contents for inspection
+                  "./$APPIMAGE" --appimage-extract || true
+                  echo "\nContents of extracted usr/lib:"
+                  ls -lR squashfs-root/usr/lib || true
+                  echo "\nTrying to run with LD_LIBRARY_PATH..."
+                  (cd squashfs-root && LD_LIBRARY_PATH=usr/lib ./AppRun || true)
+
+      - name: Debug AppImage ICU libraries
+        run: |
+          set -e
+          # Find the built AppImage
+          APPIMAGE=$(ls *.AppImage | head -n1)
+          echo "Testing ICU in $APPIMAGE"
+          chmod +x "$APPIMAGE"
+          # Extract AppImage contents for inspection
+          "./$APPIMAGE" --appimage-extract || true
+          echo "\nContents of extracted usr/lib:"
+          ls -lR squashfs-root/usr/lib || true
+          echo "\nTrying to run with LD_LIBRARY_PATH..."
+          (cd squashfs-root && LD_LIBRARY_PATH=usr/lib ./AppRun || true)
+
+      - name: Upload AppImage
         uses: actions/upload-artifact@v4
         with:
           name: Dvx3-BackupManager-Linux-x86_64-AppImage
@@ -278,7 +307,7 @@ jobs:
         run: |
           set -e
           pacman -Syu --noconfirm
-          pacman -S --noconfirm mingw-w64-x86_64-qt6-base mingw-w64-x86_64-qt6-tools
+          pacman -S --noconfirm mingw-w64-x86_64-qt6-base mingw-w64-x86_64-qt6-tools mingw-w64-x86_64-toolchain mingw-w64-x86_64-pkg-config
           # Confirm moc location
           find /mingw64 -name moc.exe || true
 
