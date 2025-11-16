@@ -135,22 +135,14 @@ jobs:
           # Symlink moc6 to moc if only moc6 is present
           if command -v moc6 >/dev/null 2>&1 && ! command -v moc >/dev/null 2>&1; then
             ln -sf "$(command -v moc6)" "$(brew --prefix qt@6)/bin/moc"
-          run: |
-            export PATH="/opt/homebrew/bin:$(brew --prefix qt@6)/bin:$PATH"
-            echo "PATH is: $PATH"
-            echo "Qt6 bin dir: $(brew --prefix qt@6)/bin"
-            ls -l $(brew --prefix qt@6)/bin || true
-            # Symlink moc6 to moc if only moc6 is present
-            if command -v moc6 >/dev/null 2>&1 && ! command -v moc >/dev/null 2>&1; then
-              ln -sf "$(command -v moc6)" "$(brew --prefix qt@6)/bin/moc"
-            fi
-            if ! command -v moc >/dev/null 2>&1; then
-              echo "Error: moc not found in PATH after exporting Qt6 bin and /opt/homebrew/bin."
-              exit 1
-            else
-              echo "moc found: $(command -v moc)"
-            fi
-            bash ./build_gui.sh
+          fi
+          if ! command -v moc >/dev/null 2>&1; then
+            echo "Error: moc not found in PATH after exporting Qt6 bin and /opt/homebrew/bin."
+            exit 1
+          else
+            echo "moc found: $(command -v moc)"
+          fi
+          bash ./build_gui.sh
           cat > "Dvx3 Backup Manager.app/Contents/Info.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -252,33 +244,37 @@ jobs:
         with:
           update: true
           msystem: MINGW64
-          install: >-
-            mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-vala
-            mingw-w64-x86_64-glib2
-            mingw-w64-x86_64-json-glib
-            mingw-w64-x86_64-libsodium
-            mingw-w64-x86_64-pkgconf
-            mingw-w64-x86_64-qt6-base
-            mingw-w64-x86_64-qt6-tools
-            curl
-            zip
-
-      - name: Verify VAPI
-        shell: msys2 {0}
-        run: |
-          ls -la vala-extra-vapis/libsodium.vapi
-          echo "libsodium.vapi found and ready"
-
-      - name: Build library and CLI
-        shell: msys2 {0}
-        run: bash ./build.sh
-
-      - name: Build Qt GUI (Windows)
-        shell: msys2 {0}
-        run: |
-         # Add Qt6 tools to PATH for MSYS2
-         export PATH="/mingw64/share/qt6/bin:$PATH"
+          run: |
+            bash ./build-appimage.sh
+            # Create a minimal .desktop file for linuxdeployqt (YAML-safe)
+            if [ -f backup-manager-gui ]; then
+              # Explicitly copy ICU libraries into AppDir/usr/lib
+              mkdir -p usr/lib
+              cp /usr/lib/x86_64-linux-gnu/libicu*.so.* usr/lib/ || true
+              # Create robust symlinks for ICU libraries (e.g., libicui18n.so -> libicui18n.so.74)
+              for lib in usr/lib/libicu*.so.*; do
+                base=$(basename "$lib")
+                # Extract the soname (e.g., libicui18n.so)
+                soname=$(echo "$base" | sed 's/\(libicu[a-z]*\)\.so\..*/\1.so/')
+                # Only create symlink if it doesn't already exist or points incorrectly
+                if [ ! -e "usr/lib/$soname" ] || [ "$(readlink -f usr/lib/$soname)" != "$(readlink -f usr/lib/$base)" ]; then
+                  ln -sf "$base" "usr/lib/$soname"
+                fi
+              done
+              echo '[Desktop Entry]' > backup-manager-gui.desktop
+              echo 'Name=Backup Manager GUI' >> backup-manager-gui.desktop
+              echo 'Exec=backup-manager-gui' >> backup-manager-gui.desktop
+              echo 'Icon=backup-manager' >> backup-manager-gui.desktop
+              echo 'Type=Application' >> backup-manager-gui.desktop
+              echo 'Categories=Utility;' >> backup-manager-gui.desktop
+              # Set Qt6 library and plugin paths for linuxdeployqt
+              export LD_LIBRARY_PATH=/usr/lib/qt6/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+              export QT_PLUGIN_PATH=/usr/lib/qt6/plugins${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}
+              # Bundle Qt, ICU, and plugins using linuxdeployqt
+              ./linuxdeployqt-continuous-x86_64.AppImage backup-manager-gui.desktop -appimage -bundle-non-qt-libs -extra-plugins=iconengines,platforms -verbose=2 | tee linuxdeployqt.log || true
+              echo "\nlinuxdeployqt log:" && cat linuxdeployqt.log
+              echo "\nAppDir usr/lib contents after linuxdeployqt:" && ls -lhR ./usr/lib || true
+            fi
           set -e
           # Find Qt tools in MSYS2/MinGW
           if command -v moc-qt6 >/dev/null 2>&1; then
