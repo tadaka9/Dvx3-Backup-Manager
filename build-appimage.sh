@@ -1,10 +1,19 @@
 #!/bin/bash
 set -e
 
+# Add Qt6 tools to PATH for Windows/MSYS2
+export PATH="/mingw64/share/qt6/bin:$PATH"
+
 VERSION="1.0.0"
 APPDIR="DVX3BackupManager.AppDir"
 
 echo "Building Dvx3 Backup Manager AppImage..."
+
+# Ensure FUSE or fallback to AppImage extraction
+if ! ldconfig -p 2>/dev/null | grep -q libfuse.so.2; then
+    echo "libfuse2 is not installed. AppImage may not run."
+    echo "Install with: sudo apt-get install -y libfuse2"
+fi
 
 # Clean previous AppDir
 rm -rf "$APPDIR" Dvx3-BackupManager-*.AppImage

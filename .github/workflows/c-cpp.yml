@@ -226,6 +226,8 @@ jobs:
       - name: Build Qt GUI (Windows)
         shell: msys2 {0}
         run: |
+         # Add Qt6 tools to PATH for MSYS2
+         export PATH="/mingw64/share/qt6/bin:$PATH"
           set -e
           # Find Qt tools in MSYS2/MinGW
           if command -v moc-qt6 >/dev/null 2>&1; then
