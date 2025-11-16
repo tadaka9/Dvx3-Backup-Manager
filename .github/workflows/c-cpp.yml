@@ -276,10 +276,18 @@ jobs:
               echo "\nAppDir usr/lib contents after linuxdeployqt:" && ls -lhR ./usr/lib || true
             fi
 
+      - name: Install Qt6 for MSYS2
+        shell: msys2 {0}
+        run: |
+          set -e
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm mingw-w64-x86_64-qt6-base mingw-w64-x86_64-qt6-tools
+
       - name: Build Windows Qt GUI
         shell: msys2 {0}
         run: |
           set -e
+          export PATH="/mingw64/bin:$PATH"
           # Find Qt tools in MSYS2/MinGW
           if command -v moc-qt6 >/dev/null 2>&1; then
             MOC=moc-qt6
