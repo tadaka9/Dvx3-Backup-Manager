@@ -166,8 +166,12 @@ jobs:
           export PATH="$(brew --prefix qt@6)/bin:/opt/homebrew/opt/qt/bin:$PATH"
           echo "PATH is: $PATH"
           echo "Qt6 bin dir: $(brew --prefix qt@6)/bin"
+          echo "Listing all files in $(brew --prefix qt@6)/bin:"
           ls -l $(brew --prefix qt@6)/bin || true
+          echo "Listing all files in /opt/homebrew/opt/qt/bin:"
           ls -l /opt/homebrew/opt/qt/bin || true
+          echo "Homebrew info for qt@6:"
+          brew info qt@6 || true
           # Symlink moc6 to moc in both locations if only moc6 is present
           if command -v moc6 >/dev/null 2>&1 && ! command -v moc >/dev/null 2>&1; then
             ln -sf "$(command -v moc6)" "$(brew --prefix qt@6)/bin/moc"
