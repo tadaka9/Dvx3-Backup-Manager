@@ -105,6 +105,8 @@ jobs:
 
       - name: Create App Bundle
         run: |
+          set -e
+          export PATH="$(brew --prefix qt@6)/bin:$PATH"
           mkdir -p "Dvx3 Backup Manager.app/Contents/MacOS" "Dvx3 Backup Manager.app/Contents/Resources" "Dvx3 Backup Manager.app/Contents/Frameworks"
 
           cp backup-manager-gui "Dvx3 Backup Manager.app/Contents/MacOS/"
@@ -131,7 +133,7 @@ jobs:
           </plist>
           EOF
 
-          $(brew --prefix qt@6)/bin/macdeployqt "Dvx3 Backup Manager.app" -verbose=2
+          macdeployqt "Dvx3 Backup Manager.app" -verbose=2
 
       - name: Upload App Bundle for ${{ matrix.arch }}
         uses: actions/upload-artifact@v4
@@ -159,6 +161,8 @@ jobs:
 
       - name: Create Universal Binary
         run: |
+          set -e
+          export PATH="$(brew --prefix qt@6)/bin:$PATH"
           # Combine binaries into universal
           lipo -create -output "Dvx3 Backup Manager.app/Contents/MacOS/backup-manager-gui" \
             x86_64/"Dvx3 Backup Manager.app/Contents/MacOS/backup-manager-gui" \
@@ -171,7 +175,7 @@ jobs:
           cp -r x86_64/"Dvx3 Backup Manager.app" .
 
           # Run macdeployqt on the universal app
-          $(brew --prefix qt@6)/bin/macdeployqt "Dvx3 Backup Manager.app" -verbose=2
+          macdeployqt "Dvx3 Backup Manager.app" -verbose=2
 
       - name: Create DMG
         run: |
