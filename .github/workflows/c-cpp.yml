@@ -89,20 +89,6 @@ jobs:
             echo "\nAppDir usr/lib contents after linuxdeployqt:" && ls -lhR ./usr/lib || true
           fi
 
-      - name: Upload AppImage
-              - name: Debug AppImage ICU libraries
-                run: |
-                  set -e
-                  # Find the built AppImage
-                  APPIMAGE=$(ls *.AppImage | head -n1)
-                  echo "Testing ICU in $APPIMAGE"
-                  chmod +x "$APPIMAGE"
-                  # Extract AppImage contents for inspection
-                  "./$APPIMAGE" --appimage-extract || true
-                  echo "\nContents of extracted usr/lib:"
-                  ls -lR squashfs-root/usr/lib || true
-                  echo "\nTrying to run with LD_LIBRARY_PATH..."
-                  (cd squashfs-root && LD_LIBRARY_PATH=usr/lib ./AppRun || true)
 
       - name: Debug AppImage ICU libraries
         run: |
