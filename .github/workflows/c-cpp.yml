@@ -101,7 +101,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew install vala glib json-glib libsodium qt@6 qt@6-tools cmake pkg-config create-dmg
+          brew install vala glib json-glib libsodium qt@6 qttools cmake pkg-config create-dmg
           echo "$(brew --prefix qt@6)/bin" >> $GITHUB_PATH
 
       - name: Verify VAPI
