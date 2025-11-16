@@ -82,6 +82,13 @@ This step links your new runner to your GitLab project.
         ```
         https://gitlab.com/
         ```
+
+    ---
+    **Need help with registration or CI setup?**
+    - You can contact the maintainers directly using our help form:
+    - [Contact Support](https://formspree.io/f/mqawbzbz)
+    - Or use the help button on our project website.
+    ---
     *   **Enter the registration token:**
         *Paste the new token you copied from GitLab.*
     *   **Enter a description for the runner:**
