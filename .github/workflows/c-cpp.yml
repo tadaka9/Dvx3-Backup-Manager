@@ -56,14 +56,14 @@ jobs:
           wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool-x86_64.AppImage
           wget -q https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage
-          chmod +x linuxdeployqt-x86_64.AppImage
+          chmod +x linuxdeployqt-continuous-x86_64.AppImage
 
       - name: Create AppImage
         run: |
           bash ./build-appimage.sh
           # Bundle Qt and ICU dependencies using linuxdeployqt
           if [ -f backup-manager-gui ]; then
-            ./linuxdeployqt-x86_64.AppImage backup-manager-gui -appimage || ./linuxdeployqt-x86_64.AppImage ./backup-manager-gui -appimage || true
+            ./linuxdeployqt-continuous-x86_64.AppImage backup-manager-gui -appimage || ./linuxdeployqt-continuous-x86_64.AppImage ./backup-manager-gui -appimage || true
           fi
 
       - name: Upload AppImage
