@@ -22,11 +22,12 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
+          # Install both ICU dev and runtime libraries (libicu-dev and libicu74)
           sudo apt-get install -y \
             valac gcc g++ make cmake pkg-config \
             libglib2.0-dev libjson-glib-dev libsodium-dev \
             qt6-base-dev qt6-base-dev-tools qt6-tools-dev \
-            libicu-dev \
+            libicu-dev libicu74 \
             tar zstd file wget
 
       - name: Verify VAPI
@@ -159,41 +160,28 @@ jobs:
           export PATH="$(brew --prefix qt@6)/bin:$PATH"
           bash ./build.sh
 
+      - name: Build moc from source if missing
+        run: |
+          set -e
+          if ! command -v moc >/dev/null 2>&1; then
+            echo "moc not found, building from source..."
+            brew install cmake ninja perl python3
+            git clone --depth=1 https://github.com/qt/qttools.git
+            cd qttools
+            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+            cmake --build build --target moc
+            export PATH="$PWD/build/bin:$PATH"
+            echo "Built moc from source and added to PATH."
+            cd ..
+          else
+            echo "moc found in PATH: $(command -v moc)"
+          fi
+
       - name: Build Qt GUI
         run: |
-          # Ensure all Qt6 bin dirs are at front of PATH for moc discovery
-          # Add all possible Homebrew Qt6 bin locations to PATH (Apple Silicon and Intel)
-          export PATH="$(brew --prefix qt@6)/bin:/opt/homebrew/opt/qt/bin:/usr/local/opt/qt/bin:$PATH"
-          echo "PATH is: $PATH"
-          echo "Qt6 bin dir: $(brew --prefix qt@6)/bin"
-          echo "Listing all files in $(brew --prefix qt@6)/bin:"
-          ls -l $(brew --prefix qt@6)/bin || true
-          echo "Listing all files in /opt/homebrew/opt/qt/bin:"
-          ls -l /opt/homebrew/opt/qt/bin || true
-          echo "Listing all files in /usr/local/opt/qt/bin:"
-          ls -l /usr/local/opt/qt/bin || true
-          echo "Homebrew info for qt@6:"
-          brew info qt@6 || true
-          # Debug: Show all possible moc binaries
-          echo "which moc: $(which moc || echo not found)"
-          echo "which moc-qt6: $(which moc-qt6 || echo not found)"
-          echo "which moc6: $(which moc6 || echo not found)"
-          # Symlink moc6 or moc-qt6 to moc in all locations if only those are present
-          if ! command -v moc >/dev/null 2>&1; then
-            if command -v moc-qt6 >/dev/null 2>&1; then
-              ln -sf "$(command -v moc-qt6)" "$(brew --prefix qt@6)/bin/moc"
-              ln -sf "$(command -v moc-qt6)" "/opt/homebrew/opt/qt/bin/moc"
-            fi
-            if command -v moc6 >/dev/null 2>&1; then
-              ln -sf "$(command -v moc6)" "$(brew --prefix qt@6)/bin/moc"
-              ln -sf "$(command -v moc6)" "/opt/homebrew/opt/qt/bin/moc"
-            fi
-          fi
-          if ! command -v moc >/dev/null 2>&1; then
-            echo "Error: moc not found in PATH after exporting Qt6 bin and /opt/homebrew/opt/qt/bin."
-            exit 1
-          else
-            echo "moc found: $(command -v moc)"
+          # Add built moc to PATH if present
+          if [ -d qttools/build/bin ]; then
+            export PATH="$PWD/qttools/build/bin:$PATH"
           fi
           bash ./build_gui.sh
           cat > "Dvx3 Backup Manager.app/Contents/Info.plist" <<EOF
