@@ -27,6 +27,7 @@ jobs:
             valac gcc g++ make cmake pkg-config \
             libglib2.0-dev libjson-glib-dev libsodium-dev \
             qt6-base-dev qt6-base-dev-tools qt6-tools-dev \
+            libicu-dev libicu72 \
             tar zstd file wget
 
       - name: Verify VAPI
@@ -65,9 +66,17 @@ jobs:
           bash ./build-appimage.sh
           # Create a minimal .desktop file for linuxdeployqt (YAML-safe)
           if [ -f backup-manager-gui ]; then
+            # Debug: List ICU files before copying
+            echo "Listing ICU files in /usr/lib/x86_64-linux-gnu:"
+            ls -l /usr/lib/x86_64-linux-gnu/libicu*.so* || true
+            ICU_COUNT=$(ls /usr/lib/x86_64-linux-gnu/libicu*.so* 2>/dev/null | wc -l)
+            if [ "$ICU_COUNT" -eq 0 ]; then
+              echo "ERROR: No ICU libraries found in /usr/lib/x86_64-linux-gnu. AppImage will not work!"
+              exit 1
+            fi
             # Explicitly copy all ICU libraries into AppDir/usr/lib
             mkdir -p usr/lib
-            cp /usr/lib/x86_64-linux-gnu/libicu*.so* usr/lib/ || true
+            cp /usr/lib/x86_64-linux-gnu/libicu*.so* usr/lib/
             # Create soname symlinks for ICU libraries (e.g., libicui18n.so -> libicui18n.so.74)
             for lib in usr/lib/libicu*.so.*; do
               base=$(basename "$lib")
@@ -150,12 +159,14 @@ jobs:
           echo "PATH is: $PATH"
           echo "Qt6 bin dir: $(brew --prefix qt@6)/bin"
           ls -l $(brew --prefix qt@6)/bin || true
-          # Symlink moc6 to moc if moc not already found
+          ls -l /opt/homebrew/opt/qt/bin || true
+          # Symlink moc6 to moc in both locations if only moc6 is present
           if command -v moc6 >/dev/null 2>&1 && ! command -v moc >/dev/null 2>&1; then
             ln -sf "$(command -v moc6)" "$(brew --prefix qt@6)/bin/moc"
+            ln -sf "$(command -v moc6)" "/opt/homebrew/opt/qt/bin/moc"
           fi
           if ! command -v moc >/dev/null 2>&1; then
-            echo "Error: moc not found in PATH after exporting Qt6 bin and /opt/homebrew/bin."
+            echo "Error: moc not found in PATH after exporting Qt6 bin and /opt/homebrew/opt/qt/bin."
             exit 1
           else
             echo "moc found: $(command -v moc)"
@@ -293,7 +304,7 @@ jobs:
         run: |
           set -e
           pacman -Syu --noconfirm
-          pacman -S --noconfirm mingw-w64-x86_64-qt6-base mingw-w64-x86_64-qt6-tools mingw-w64-x86_64-toolchain mingw-w64-x86_64-pkg-config
+          pacman -S --noconfirm mingw-w64-x86_64-qt6-base mingw-w64-x86_64-qt6-tools mingw-w64-x86_64-toolchain mingw-w64-x86_64-pkg-config mingw-w64-x86_64-json-glib mingw-w64-x86_64-libsodium
           # Confirm moc location
           find /mingw64 -name moc.exe || true
 
@@ -302,7 +313,9 @@ jobs:
         run: |
           set -e
           export PATH="/mingw64/share/qt6/bin:/mingw64/bin:$PATH"
+          export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig:$PKG_CONFIG_PATH"
           echo "PATH is: $PATH"
+          echo "PKG_CONFIG_PATH is: $PKG_CONFIG_PATH"
           which moc || true
           # Find Qt tools in MSYS2/MinGW
           if command -v moc-qt6 >/dev/null 2>&1; then
