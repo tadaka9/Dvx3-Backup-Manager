@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "=== Building DVX3 Backup Manager for all platforms ==="
+echo "=== Building Dvx3 Backup Manager for all platforms ==="
 echo ""
 
 VERSION="0.0.3-alpha111725"
