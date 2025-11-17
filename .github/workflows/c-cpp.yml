@@ -54,7 +54,7 @@ jobs:
       - name: Symlink Qt6 tools for build compatibility
         run: |
           sudo mkdir -p /usr/lib/qt6/bin
-          for tool in moc rcc uic lrelease; do
+          for tool in qmake moc rcc uic lrelease; do
             if [ -x "/usr/bin/${tool}6" ]; then
               sudo ln -sf "/usr/bin/${tool}6" "/usr/lib/qt6/bin/${tool}"
             fi
