@@ -9,95 +9,97 @@ jobs:
     name: Build Linux x86_64
     runs-on: ubuntu-22.04
     steps:
-        - name: Install dependencies
-          run: |
-            sudo apt-get update
-            sudo apt-get install -y build-essential valac libglib2.0-dev libjson-glib-dev libsodium-dev zstd qt6-base-dev qt6-base-dev-tools qt6-tools-dev
-        - name: Debug Qt6 installation
-          run: |
-            which qmake6 || true
-            which moc6 || true
-            which rcc6 || true
-            which uic6 || true
-            which lrelease6 || true
-            dpkg -L qt6-base-dev | grep bin || true
-            dpkg -L qt6-base-dev-tools | grep bin || true
-            dpkg -L qt6-tools-dev | grep bin || true
-            ls -l /usr/lib/qt6/bin || true
-            ls -l /usr/bin | grep 6$ || true
-        - name: Symlink Qt6 tools for build compatibility
-          run: |
-            sudo mkdir -p /usr/lib/qt6/bin
-            for tool in moc rcc uic lrelease; do
-              if [ -x "/usr/bin/${tool}6" ]; then
-                sudo ln -sf "/usr/bin/${tool}6" "/usr/lib/qt6/bin/${tool}"
-              fi
-            done
-            ls -l /usr/lib/qt6/bin
-        - name: Build all
-          run: ./build-all.sh
-        - name: Run TUI smoke test
-          run: ./backup-manager --help
-        - name: Debug Qt6 tools in /usr/lib/qt6/bin
-          run: |
-            echo "Listing /usr/lib/qt6/bin:"
-            ls -l /usr/lib/qt6/bin || echo "/usr/lib/qt6/bin not found"
-            echo "Checking for qmake, moc, and other Qt6 tools:"
-            for tool in qmake moc rcc uic lrelease; do
-              if [ -x "/usr/lib/qt6/bin/$tool" ]; then
-                echo "$tool found"
-              else
-                echo "$tool NOT found in /usr/lib/qt6/bin"
-              fi
-            done
-            if [ ! -x /usr/lib/qt6/bin/qmake ]; then
-              echo "ERROR: Qt6 tools not found in /usr/lib/qt6/bin. Check installation."
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential valac libglib2.0-dev libjson-glib-dev libsodium-dev zstd qt6-base-dev qt6-base-dev-tools qt6-tools-dev
+      - name: Debug Qt6 installation
+        run: |
+          which qmake6 || true
+          which moc6 || true
+          which rcc6 || true
+          which uic6 || true
+          which lrelease6 || true
+          dpkg -L qt6-base-dev | grep bin || true
+          dpkg -L qt6-base-dev-tools | grep bin || true
+          dpkg -L qt6-tools-dev | grep bin || true
+          ls -l /usr/lib/qt6/bin || true
+          ls -l /usr/bin | grep 6$ || true
+      - name: Symlink Qt6 tools for build compatibility
+        run: |
+          sudo mkdir -p /usr/lib/qt6/bin
+          for tool in moc rcc uic lrelease; do
+            if [ -x "/usr/bin/${tool}6" ]; then
+              sudo ln -sf "/usr/bin/${tool}6" "/usr/lib/qt6/bin/${tool}"
+            fi
+          done
+          ls -l /usr/lib/qt6/bin
+      - name: Build all
+        run: ./build-all.sh
+      - name: Run TUI smoke test
+        run: ./backup-manager --help
+      - name: Debug Qt6 tools in /usr/lib/qt6/bin
+        run: |
+          echo "Listing /usr/lib/qt6/bin:"
+          ls -l /usr/lib/qt6/bin || echo "/usr/lib/qt6/bin not found"
+          echo "Checking for qmake, moc, and other Qt6 tools:"
+          for tool in qmake moc rcc uic lrelease; do
+            if [ -x "/usr/lib/qt6/bin/$tool" ]; then
+              echo "$tool found"
+            else
+              echo "$tool NOT found in /usr/lib/qt6/bin"
+            fi
+          done
+          if [ ! -x /usr/lib/qt6/bin/qmake ]; then
+            echo "ERROR: Qt6 tools not found in /usr/lib/qt6/bin. Check installation."
+            exit 1
+          fi
+      - name: Verify VAPI
+        run: |
+          ls -la vala-extra-vapis/libsodium.vapi
+          echo "libsodium.vapi found and ready"
+      - name: Check GNU tar version and assert
+        run: |
+          tar --version
+          if ! tar --version | grep -q "GNU tar"; then
+            echo "Error: GNU tar is required for dynamic progress."
+            exit 1
+          fi
+      - name: Install FUSE2 for AppImage
+        run: sudo apt-get install -y libfuse2
+      - name: Build application
+        run: |
+          chmod +x build_gui.sh build-appimage.sh build-raspberry.sh || true
+          # Add Qt6 tools to PATH for Linux
+          export PATH="/usr/lib/qt6/bin:$PATH"
+          bash ./build_gui.sh
+      - name: Download AppImageTool
+        run: |
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          wget -q https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage
+          chmod +x linuxdeployqt-continuous-x86_64.AppImage
+      - name: Create AppImage
+        run: |
+          bash ./build-appimage.sh
+          # Create a minimal .desktop file for linuxdeployqt (YAML-safe)
+          if [ -f backup-manager-gui ]; then
+            # Debug: List ICU files before copying
+            echo "Listing ICU files in /usr/lib/x86_64-linux-gnu:"
+            ls -l /usr/lib/x86_64-linux-gnu/libicu*.so* || true
+            echo "Listing ICU files in /usr/lib:"
+            ls -l /usr/lib/libicu*.so* || true
+            ICU_COUNT1=$(ls /usr/lib/x86_64-linux-gnu/libicu*.so* 2>/dev/null | wc -l)
+            ICU_COUNT2=$(ls /usr/lib/libicu*.so* 2>/dev/null | wc -l)
+            if [ "$ICU_COUNT1" -eq 0 ] && [ "$ICU_COUNT2" -eq 0 ]; then
+              echo "ERROR: No ICU libraries found in /usr/lib/x86_64-linux-gnu or /usr/lib. AppImage will not work!"
               exit 1
             fi
-        - name: Verify VAPI
-          run: |
-            ls -la vala-extra-vapis/libsodium.vapi
-            echo "libsodium.vapi found and ready"
-        - name: Check GNU tar version and assert
-          run: |
-            tar --version
-            if ! tar --version | grep -q "GNU tar"; then
-              echo "Error: GNU tar is required for dynamic progress."
-              exit 1
-            fi
-        - name: Install FUSE2 for AppImage
-          run: sudo apt-get install -y libfuse2
-        - name: Build application
-          run: |
-            chmod +x build_gui.sh build-appimage.sh build-raspberry.sh || true
-            # Add Qt6 tools to PATH for Linux
-            export PATH="/usr/lib/qt6/bin:$PATH"
-            bash ./build_gui.sh
-        - name: Download AppImageTool
-          run: |
-            wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
-            chmod +x appimagetool-x86_64.AppImage
-            wget -q https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage
-            chmod +x linuxdeployqt-continuous-x86_64.AppImage
-        - name: Create AppImage
-          run: |
-            bash ./build-appimage.sh
-            # Create a minimal .desktop file for linuxdeployqt (YAML-safe)
-            if [ -f backup-manager-gui ]; then
-              # Debug: List ICU files before copying
-              echo "Listing ICU files in /usr/lib/x86_64-linux-gnu:"
-              ls -l /usr/lib/x86_64-linux-gnu/libicu*.so* || true
-              echo "Listing ICU files in /usr/lib:"
-              ls -l /usr/lib/libicu*.so* || true
-              ICU_COUNT1=$(ls /usr/lib/x86_64-linux-gnu/libicu*.so* 2>/dev/null | wc -l)
-              ICU_COUNT2=$(ls /usr/lib/libicu*.so* 2>/dev/null | wc -l)
-              if [ "$ICU_COUNT1" -eq 0 ] && [ "$ICU_COUNT2" -eq 0 ]; then
-                echo "ERROR: No ICU libraries found in /usr/lib/x86_64-linux-gnu or /usr/lib. AppImage will not work!"
-                exit 1
-              fi
-              # Explicitly copy all ICU libraries into AppDir/usr/lib from both locations
-              mkdir -p usr/lib
-              if [ "$ICU_COUNT1" -gt 0 ]; then
+            # Explicitly copy all ICU libraries into AppDir/usr/lib from both locations
+            mkdir -p usr/lib
+            if [ "$ICU_COUNT1" -gt 0 ]; then
               cp /usr/lib/x86_64-linux-gnu/libicu*.so* usr/lib/
             fi
             if [ "$ICU_COUNT2" -gt 0 ]; then
@@ -122,26 +124,26 @@ jobs:
             ./linuxdeployqt-continuous-x86_64.AppImage backup-manager-gui.desktop -appimage -bundle-non-qt-libs -extra-plugins=iconengines,platforms -verbose=2 | tee linuxdeployqt.log || true
             echo "\nlinuxdeployqt log:" && cat linuxdeployqt.log
             echo "\nAppDir usr/lib contents after linuxdeployqt:" && ls -lhR ./usr/lib || true
-
-        - name: Debug AppImage ICU libraries
-          run: |
-            set -e
-            # Find the built AppImage
-            APPIMAGE=$(ls *.AppImage | head -n1)
-            echo "Testing ICU in $APPIMAGE"
-            chmod +x "$APPIMAGE"
-            # Extract AppImage contents for inspection
-            "./$APPIMAGE" --appimage-extract || true
-            echo "\nContents of extracted usr/lib:"
-            ls -lR squashfs-root/usr/lib || true
-            echo "\nTrying to run with LD_LIBRARY_PATH..."
-            (cd squashfs-root && LD_LIBRARY_PATH=usr/lib ./AppRun || true)
-        - name: Upload AppImage Artifact
-          uses: actions/upload-artifact@v4
-          with:
-            name: Dvx3-BackupManager-Linux-x86_64-AppImage
-            path: '*.AppImage'
-            retention-days: 90
+          fi
+      - name: Debug AppImage ICU libraries
+        run: |
+          set -e
+          # Find the built AppImage
+          APPIMAGE=$(ls *.AppImage | head -n1)
+          echo "Testing ICU in $APPIMAGE"
+          chmod +x "$APPIMAGE"
+          # Extract AppImage contents for inspection
+          "./$APPIMAGE" --appimage-extract || true
+          echo "\nContents of extracted usr/lib:"
+          ls -lR squashfs-root/usr/lib || true
+          echo "\nTrying to run with LD_LIBRARY_PATH..."
+          (cd squashfs-root && LD_LIBRARY_PATH=usr/lib ./AppRun || true)
+      - name: Upload AppImage Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dvx3-BackupManager-Linux-x86_64-AppImage
+          path: '*.AppImage'
+          retention-days: 90
 
   build-macos-universal:
     name: Build macOS Universal (Intel + Apple Silicon)
