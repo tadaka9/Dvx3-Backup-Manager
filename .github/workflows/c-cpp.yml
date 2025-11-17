@@ -27,8 +27,8 @@ jobs:
           qt6-base-dev qt6-base-dev-tools qt6-tools-dev \
           libqt6svg6-dev libqt6shadertools6-dev libqt6networkauth6-dev \
           libqt6serialport6-dev libqt6webchannel6-dev libqt6websockets6-dev \
-          libqt6xmlpatterns6-dev \
           tar zstd file wget
+            tar zstd file wget
 
       - name: Debug Qt6 tools in /usr/lib/qt6/bin
         run: |
