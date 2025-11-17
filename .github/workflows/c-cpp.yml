@@ -336,35 +336,7 @@ jobs:
         with:
           update: true
           msystem: MINGW64
-      - name: Build AppImage and prepare Windows artifacts
-        shell: bash
-        run: |
-          bash ./build-appimage.sh
-          # Create a minimal .desktop file for linuxdeployqt (YAML-safe)
-          if [ -f backup-manager-gui ]; then
-            # Explicitly copy ICU libraries into AppDir/usr/lib
-            mkdir -p usr/lib
-            cp /usr/lib/x86_64-linux-gnu/libicu*.so.* usr/lib/ || true
-            for lib in usr/lib/libicu*.so.*; do
-              base=$(basename "$lib")
-              soname=$(echo "$base" | sed 's/\(libicu[a-z]*\)\.so\..*/\1.so/')
-              if [ ! -e "usr/lib/$soname" ] || [ "$(readlink -f usr/lib/$soname)" != "$(readlink -f usr/lib/$base)" ]; then
-                ln -sf "$base" "usr/lib/$soname"
-              fi
-            done
-            echo '[Desktop Entry]' > backup-manager-gui.desktop
-            echo 'Name=Backup Manager GUI' >> backup-manager-gui.desktop
-            echo 'Exec=backup-manager-gui' >> backup-manager-gui.desktop
-            echo 'Icon=backup-manager' >> backup-manager-gui.desktop
-            echo 'Type=Application' >> backup-manager-gui.desktop
-            echo 'Categories=Utility;' >> backup-manager-gui.desktop
-            # Set Qt6 library and plugin paths for linuxdeployqt
-            export LD_LIBRARY_PATH=/usr/lib/qt6/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
-            export QT_PLUGIN_PATH=/usr/lib/qt6/plugins${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}
-            ./linuxdeployqt-continuous-x86_64.AppImage backup-manager-gui.desktop -appimage -bundle-non-qt-libs -extra-plugins=iconengines,platforms -verbose=2 | tee linuxdeployqt.log || true
-            echo "\nlinuxdeployqt log:" && cat linuxdeployqt.log
-            echo "\nAppDir usr/lib contents after linuxdeployqt:" && ls -lhR ./usr/lib || true
-          fi
+      # (Removed Linux AppImage build step; Windows build uses MSYS2/MinGW/Qt6 below)
 
       - name: Install Qt6 and Vala for MSYS2
         shell: msys2 {0}
