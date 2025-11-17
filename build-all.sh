@@ -4,7 +4,7 @@ set -e
 echo "=== Building DVX3 Backup Manager for all platforms ==="
 echo ""
 
-VERSION="1.0.0"
+VERSION="0.0.3-alpha111725"
 BUILD_COUNT=0
 
 # 1. Build for current platform (always)
@@ -20,8 +20,8 @@ fi
 ((BUILD_COUNT++))
 echo ""
 
-# 2. Linux AppImage (if on x86_64 Linux)
-if [[ "$(uname -s)" == "Linux" ]] && [[ "$(uname -m)" == "x86_64" ]]; then
+# 2. Linux AppImage (if on x86_64 Linux, not Windows)
+if [[ "$(uname -s)" == "Linux" ]] && [[ "$(uname -m)" == "x86_64" ]] && [[ -z "$MSYSTEM" ]]; then
     echo "▶ Building Linux AppImage..."
     if ./build-appimage.sh 2>&1 | tail -5; then
         ((BUILD_COUNT++))
@@ -29,6 +29,8 @@ if [[ "$(uname -s)" == "Linux" ]] && [[ "$(uname -m)" == "x86_64" ]]; then
         echo "⚠ AppImage build failed"
     fi
     echo ""
+else
+    echo "Skipping AppImage build (not Linux x86_64 or running under MSYS2/Windows)"
 fi
 
 # 3. Raspberry Pi tarball (if on ARM)
