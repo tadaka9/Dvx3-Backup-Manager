@@ -40,6 +40,7 @@ jobs:
           sudo apt-get install -y build-essential valac libglib2.0-dev libjson-glib-dev libsodium-dev zstd qt6-base-dev qt6-base-dev-tools qt6-tools-dev
       - name: Debug Qt6 installation
         run: |
+          echo "Installed Qt6 packages:" && dpkg -l | grep qt6 || true
           which qmake6 || true
           which moc6 || true
           which rcc6 || true
@@ -188,20 +189,10 @@ jobs:
       - name: Install dependencies
         run: |
           brew update
-          if brew tap | grep -q '^homebrew/core$'; then
-            brew tap-new --no-git custom/qt || true
-            brew tap-pin custom/qt || true
-          fi
-          if brew search qt@6.11 | grep -q qt@6.11; then
-            brew install qt@6.11
-            QT_PREFIX=$(brew --prefix qt@6.11)
-          else
-            echo "qt@6.11 not found, installing latest qt6 instead."
-            brew install qt@6
-            QT_PREFIX=$(brew --prefix qt@6)
-          fi
-          brew install vala glib json-glib libsodium qtbase qttools cmake pkg-config create-dmg
+          brew install qt@6 vala glib json-glib libsodium qtbase qttools cmake pkg-config create-dmg
+          QT_PREFIX=$(brew --prefix qt@6)
           echo "$QT_PREFIX/bin" >> $GITHUB_PATH
+          echo "Qt6 version installed:" && $QT_PREFIX/bin/qmake --version || true
 
       - name: Verify VAPI
         run: |
