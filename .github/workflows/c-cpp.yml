@@ -21,16 +21,14 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          # Download and install ICU 74 from .deb package (berkley4/icu-74-debian)
-          wget -O libicu-dev_74.2-2_amd64.deb https://github.com/berkley4/icu-74-debian/releases/download/74.2-2/libicu-dev_74.2-2_amd64.deb
-          sudo dpkg -i libicu-dev_74.2-2_amd64.deb || sudo apt-get -f install -y
-          # Install remaining dependencies
           sudo apt-get install -y \
-            valac gcc g++ make cmake pkg-config \
-            libglib2.0-dev libjson-glib-dev libsodium-dev \
-            qt6-base-dev qt6-base-dev-tools qt6-tools-dev qt6-l10n-tools qt6-tools-dev-tools qt6-qmake qt6-qmake-bin qt6-image-formats-plugins qt6-svg-dev qt6-3d-dev qt6-declarative-dev qt6-shadertools-dev qt6-translations-l10n qt6-wayland-dev qt6-connectivity-dev qt6-multimedia-dev qt6-networkauth-dev qt6-serialport-dev qt6-webchannel-dev qt6-webengine-dev qt6-websockets-dev qt6-xmlpatterns-dev \
-            tar zstd file wget
+          valac gcc g++ make cmake pkg-config \
+          libglib2.0-dev libjson-glib-dev libsodium-dev \
+          qt6-base-dev qt6-base-dev-tools qt6-tools-dev \
+          libqt6svg6-dev libqt6shadertools6-dev libqt6networkauth6-dev \
+          libqt6serialport6-dev libqt6webchannel6-dev libqt6websockets6-dev \
+          libqt6xmlpatterns6-dev \
+          tar zstd file wget
 
       - name: Debug Qt6 tools in /usr/lib/qt6/bin
         run: |
