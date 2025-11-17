@@ -61,7 +61,11 @@ jobs:
           done
           ls -l /usr/lib/qt6/bin
       - name: Build all
-        run: ./build-all.sh
+        run: |
+          export PATH="/usr/lib/qt6/bin:$PATH"
+          echo "PATH for build: $PATH"
+          ls -l /usr/lib/qt6/bin || true
+          ./build-all.sh
       - name: Run TUI smoke test
         run: ./backup-manager --help
       - name: Debug Qt6 tools in /usr/lib/qt6/bin
