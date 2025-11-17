@@ -10,6 +10,13 @@ BUILD_COUNT=0
 # 1. Build for current platform (always)
 echo "▶ Building for current platform..."
 ./build_gui.sh
+if [[ ! -x backup-manager-gui ]]; then
+    echo "❌ ERROR: backup-manager-gui was not produced by build_gui.sh!"
+    echo "Current directory: $(pwd)"
+    echo "Directory contents after build_gui.sh:"
+    ls -l
+    exit 1
+fi
 ((BUILD_COUNT++))
 echo ""
 
