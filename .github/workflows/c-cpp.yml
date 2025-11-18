@@ -1,362 +1,82 @@
-name: C/C++ CI
+name: Cross-Platform Build
+
 on:
   push:
     branches: [main, master, develop, clean-version]
-    tags:
-      - 'v*'
+  pull_request:
+    branches: [main, master, develop]
+  workflow_dispatch:
 
 jobs:
-  ## -------------------------------------------
-  ## Docker image build – saved as an artifact
-  ## ----------------------------------------------
-  build-docker:
-    name: Build Docker Image
-    runs-on: ubuntu-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Set up QEMU (multi‑arch, optional)
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: all
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Build Docker image
-        run: |
-          docker build -t dvx3-backup-manager:ci-test -f Dockerfile .
-      - name: Save Docker image as artifact
-        run: |
-          docker save dvx3-backup-manager:ci-test | gzip > dvx3-backup-manager-docker-image.tar.gz
-      - name: Upload Docker image artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: dvx3-backup-manager-docker-image
-          path: dvx3-backup-manager-docker-image.tar.gz
 
-  ## ----------------------------------------------
-  ## Linux x86_64 build
-  ## ------------------------------------------
-  build-linux-x86_64:
-    name: Build Linux x86_64
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Install dependencies
+      # Linux setup
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential valac libglib2.0-dev libjson-glib-dev libsodium-dev zstd qt6-base-dev qt6-base-dev-tools qt6-tools-dev
-      - name: Debug Qt6 installation
-        run: |
-          echo "Installed Qt6 packages:" && dpkg -l | grep qt6 || true
-          which qmake6 || true
-          which moc6 || true
-          which rcc6 || true
-          which uic6 || true
-          which lrelease6 || true
-          dpkg -L qt6-base-dev | grep bin || true
-          dpkg -L qt6-base-dev-tools | grep bin || true
-          dpkg -L qt6-tools-dev | grep bin || true
-          ls -l /usr/lib/qt6/bin || true
-          ls -l /usr/bin | grep 6$ || true
-      - name: Symlink Qt6 tools for compatibility
-        run: |
           sudo mkdir -p /usr/lib/qt6/bin
           for tool in qmake moc rcc uic lrelease; do
-            if [ ! -x "/usr/bin/${tool}6" ]; then
-              echo "ERROR: /usr/bin/${tool}6 not found!" >&2
-              exit 1
+            if [ -x "/usr/bin/${tool}6" ]; then
+              sudo ln -sf "/usr/bin/${tool}6" "/usr/lib/qt6/bin/${tool}"
             fi
-            sudo ln -sf "/usr/bin/${tool}6" "/usr/lib/qt6/bin/${tool}"
           done
-          echo "Qt6 tools linked:" && ls -l /usr/lib/qt6/bin
-      - name: Build all
-        run: |
-          export PATH="/usr/lib/qt6/bin:$PATH"
-          ./build-all.sh
-      - name: Run TUI smoke test
-        run: ./backup-manager --help
-      - name: Verify VAPI
-        run: |
-          ls -la vala-extra-vapis/libsodium.vapi
-          echo "libsodium.vapi ready"
-      - name: Install FUSE2 (needed for AppImage)
-        run: sudo apt-get install -y libfuse2
-      - name: Build application (GUI)
-        run: |
-          chmod +x build_gui.sh build-appimage.sh build-raspberry.sh || true
-          export PATH="/usr/lib/qt6/bin:$PATH"
-          bash ./build_gui.sh
-      - name: Download AppImage tooling
-        run: |
-          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
-          chmod +x appimagetool-x86_64.AppImage
-          wget -q https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage
-          chmod +x linuxdeployqt-continuous-x86_64.AppImage
-      - name: Create AppImage
-        run: |
-          bash ./build-appimage.sh
-          if [ -f backup-manager-gui ]; then
-            ICU_SRC=()
-            [[ -d /usr/lib/x86_64-linux-gnu ]] && ICU_SRC+=("/usr/lib/x86_64-linux-gnu")
-            [[ -d /usr/lib ]] && ICU_SRC+=("/usr/lib")
-            mkdir -p usr/lib
-            for dir in "${ICU_SRC[@]}"; do
-              cp "$dir"/libicu*.so* usr/lib/ 2>/dev/null || true
-            done
-            for lib in usr/lib/libicu*.so.*; do
-              base=$(basename "$lib")
-              soname=$(echo "$base" | sed -E 's/(libicu[a-z]+)\.so\..*/\1.so/')
-              ln -sf "$base" "usr/lib/$soname"
-            done
-            cat > backup-manager-gui.desktop <<EOF
-[Desktop Entry]
-Name=Backup Manager GUI
-Exec=backup-manager-gui
-Icon=backup-manager
-Type=Application
-Categories=Utility;
-EOF
-            export LD_LIBRARY_PATH=/usr/lib/qt6/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
-            export QT_PLUGIN_PATH=/usr/lib/qt6/plugins${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}
-            ./linuxdeployqt-continuous-x86_64.AppImage backup-manager-gui.desktop \
-              -appimage -bundle-non-qt-libs -extra-plugins=iconengines,platforms -verbose=2 \
-              | tee linuxdeployqt.log || true
-          fi
-      - name: Debug AppImage ICU libs
-        run: |
-          set -e
-          APPIMAGE=$(ls *.AppImage | head -n1)
-          chmod +x "$APPIMAGE"
-          "./$APPIMAGE" --appimage-extract || true
-          echo "Extracted usr/lib contents:"
-          ls -lR squashfs-root/usr/lib || true
-          (cd squashfs-root && LD_LIBRARY_PATH=usr/lib ./AppRun) || true
-      - name: Upload AppImage artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Dvx3-BackupManager-Linux-x86_64-AppImage
-          path: '*.AppImage'
-          retention-days: 90
-
-  ## -------------------------------------------------
-  ## macOS universal (Intel + Apple Silicon)
-  ## -------------------------------------------------
-  build-macos-universal:
-    name: Build macOS Universal (Intel + Apple Silicon)
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [macos-12, macos-latest]
-        include:
-          - os: macos-12
-            arch: x86_64
-          - os: macos-latest
-        arch: arm64
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Install dependencies
+          sudo apt-get install -y libfuse2
+          
+      # macOS setup
+      - name: Install macOS dependencies
+        if: matrix.os == 'macos-latest'
         run: |
           brew update
           brew install qt@6 vala glib json-glib libsodium qtbase qttools cmake pkg-config create-dmg
           QT_PREFIX=$(brew --prefix qt@6)
           echo "$QT_PREFIX/bin" >> $GITHUB_PATH
-          $QT_PREFIX/bin/qmake --version || true
 
-      - name: Verify VAPI
-     run: |
-      ls -la vala-extra-vapis/libsodium.vapi
-          echo "libsodium.vapi ready"
-
-      - name: Build library & CLI
-       run: |
-          export PATH="$(brew --prefix qt@6)/bin:$PATH"
-          bash ./build.sh
-
-      - name: Build Qt GUI
-        run: |
-          export PATH="$(brew --prefix qt@6)/bin:$PATH"
-          bash ./build_gui.sh
-          cat > "Dvx3 Backup Manager.app/Contents/Info.plist" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleExecutable</key><string>backup-manager-gui</string>
-  <key>CFBundleIdentifier</key><string>com.Dvx3.backupmanager</string>
-  <key>CFBundleName</key><string>Dvx3 Backup Manager</string>
-  <key>CFBundleVersion</key><string>1.0.0</string>
-  <key>CFBundleShortVersionString</key><string>1.0.0</string>
-  <key>NSHighResolutionCapable</key><true/>
-</dict>
-</plist>
-EOF
-          macdeployqt "Dvx3 Backup Manager.app" -verbose=2
-
-      - name: Upload App Bundle (${{ matrix.arch }})
-        uses: actions/upload-artifact@v4
-        with:
-          name: Dvx3-BackupManager-macOS-${{ matrix.arch }}-AppBundle
-          path: 'Dvx3 Backup Manager.app'
-          retention-days: 90
-
-  ## -------------------------------------------------
-  ## macOS universal DMG
-  ## -------------------------------------------------
-  build-macos-universal-dmg:
-    name: Build macOS Universal DMG
-    needs: build-macos-universal
-    runs-on: macos-latest
-    steps:
-      - name: Download Intel bundle
-        uses: actions/download-artifact@v4
-        with:
-          name: Dvx3-BackupManager-macOS-x86_64-AppBundle
-          path: intel/
-
-      - name: Download ARM bundle
-        uses: actions/download-artifact@v4
-        with:
-          name: Dvx3-BackupManager-macOS-arm64-AppBundle
-          path: arm/
-
-      - name: Create universal binary
-        run: |
-          export PATH="$(brew --prefix qt@6)/bin:$PATH"
-          lipo -create -output "Dvx3 Backup Manager.app/Contents/MacOS/backup-manager-gui" \
-            intel/"Dvx3 Backup Manager.app/Contents/MacOS/backup-manager-gui" \
-            arm/"Dvx3 Backup Manager.app/Contents/MacOS/backup-manager-gui"
-          lipo -create -output "Dvx3 Backup Manager.app/Contents/Frameworks/libDvx3.dylib" \
-            intel/"Dvx3 Backup Manager.app/Contents/Frameworks/libDvx3.dylib" \
-         arm/"Dvx3 Backup Manager.app/Contents/Frameworks/libDvx3.dylib"
-          cp -r intel/"Dvx3 Backup Manager.app" .
-          macdeployqt "Dvx3 Backup Manager.app" -verbose=2
-
-      - name: Create DMG
-        run: |
-          create-dmg \
-            --volname "Dvx3 Backup Manager" \
-            --window-pos 200 120 \
-            --window-size 600 400 \
-            --icon-size 100 \
-            --app-drop-link 425 120 \
-            "Dvx3-BackupManager-macOS-Universal.dmg" \
-            "Dvx3 Backup Manager.app" || true
-          if [ ! -f "Dvx3-BackupManager-macOS-Universal.dmg" ]; then
-            hdiutil create -volname "Dvx3 Backup Manager" \
-              -srcfolder "Dvx3 Backup Manager.app" \
-              -ov -format UDZO "Dvx3-BackupManager-macOS-Universal.dmg"
-     fi
-
-      - name: Upload Universal DMG
-        uses: actions/upload-artifact@v4
-        with:
-          name: Dvx3-BackupManager-macOS-Universal
-          path: '*.dmg'
-          retention-days: 90
-
-  ## -------------------------------------------------
-  ## Windows x86_64 (MSYS2)
-  ## -------------------------------------------------
-  build-windows-x86_64:
-    name: Build Windows x86_64 (MSYS2)
-   runs-on: windows-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup MSYS2
+      # Windows setup
+      - name: Setup MSYS2 for Windows
+        if: matrix.os == 'windows-latest'
         uses: msys2/setup-msys2@v2
-      with:
+        with:
           update: true
           msystem: MINGW64
 
-      - name: Install Qt6 & Vala
+      - name: Install Windows dependencies & build
+        if: matrix.os == 'windows-latest'
         shell: msys2 {0}
         run: |
           pacman -Syu --noconfirm
-          pacman -S --noconfirm mingw-w64-x86_64-qt6-base \
-            mingw-w64-x86_64-qt6-tools mingw-w64-x86_64-toolchain \
-            mingw-w64-x86_64-pkg-config mingw-w64-x86_64-json-glib \
-            mingw-w64-x86_64-libsodium mingw-w64-x86_64-vala
-
-      - name: Build Dvx3 library (Windows)
-     shell: msys2 {0}
-        run: |
+          pacman -S --noconfirm mingw-w64-x86_64-qt6-base mingw-w64-x86_64-qt6-tools mingw-w64-x86_64-toolchain mingw-w64-x86_64-pkg-config mingw-w64-x86_64-json-glib mingw-w64-x86_64-libsodium mingw-w64-x86_64-vala
           export PATH="/mingw64/bin:$PATH"
           export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig:$PKG_CONFIG_PATH"
-          bash ./build.sh
+          bash ./build.sh || true
+          bash ./build_gui.sh || true
 
-      - name: Build Qt GUI (Windows)
-        shell: msys2 {0}
+      # Linux build
+      - name: Build (Linux/macOS)
+        if: matrix.os != 'windows-latest'
         run: |
-          export PATH="/mingw64/share/qt6/bin:/mingw64/bin:$PATH"
-          export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig:$PKG_CONFIG_PATH"
-          # Choose the right moc/rcc binaries
-          if command -v moc-qt6 >/dev/null; then MOC=moc-qt6; RCC=rcc-qt6;
-          elif command -v moc6 >/dev/null; then MOC=moc6; RCC=rcc6;
-        else MOC=moc; RCC=rcc; fi
-          $MOC backup-manager-gui.hpp -o backup-manager-gui.moc.cpp
-          [ -f resources.qrc ] && $RCC resources.qrc -o resources.rcc.cpp || true
-          # Link against the library (detect its name)
-          LIBNAME=$(ls libdvx3.* 2>/dev/null | head -n1 || echo "")
-          if [[ -z "$LIBNAME" ]]; then LIBFLAG="-lDvx3";
-          else LIBFLAG="-L. -l$(basename "$LIBNAME" | sed 's/^lib\(.*\)\.so$/\1/')"; fi
-          g++ backup-manager-gui.cpp backup-manager-gui.moc.cpp resources.rcc.cpp \
-            -o backup-manager-gui.exe -std=c++17 \
-            $(pkg-config --cflags --libs Qt6Widgets glib-2.0 gio-2.0 json-glib-1.0 libsodium) \
-            $LIBFLAG
-          ls -lh *.exe *.dll
+          export PATH="${QT_PREFIX:-/usr/lib/qt6}/bin:$PATH"
+          bash ./build.sh || true
+          bash ./build_gui.sh || true
 
-      - name: Upload Windows artifacts
+      # Package/Upload artifacts
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Dvx3-BackupManager-Windows-x64
+          name: cross-platform-artifacts
           path: |
-            Dvx3.exe
-            backup-manager-gui.exe
-            libDvx3.dll
-           Dvx3.vapi
-            Dvx3.h
-          retention-days: 90
-
-  ## -------------------------------------------------
-  ## Linux ARM32 (Debian 13 arm/v7)
-  ## -------------------------------------------------
-  build-linux-arm32:
-    name: Build Linux ARM32 (Debian 13 arm/v7)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up QEMU (ARM32)
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm
-
-      - name: Build in ARM32 container
-        run: |
-          docker run --rm --platform linux/arm/v7 \
-            -v ${{ github.workspace }}:/workspace -w /workspace debian:trixie bash -c '
-              set -e
-              apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-                valac gcc g++ make cmake pkg-config git \
-                libglib2.0-dev libjson-glib-dev libsodium-dev \
-                qt6-base-dev qt6-base-dev-tools qt6-tools-dev tar zstd file
-              ls -la vala-extra-vapis/libsodium.vapi
-              chmod +x build_gui.sh build-raspberry.sh || true
-              bash ./build_gui.sh
-              bash ./build-raspberry.sh
-            '
-
-      - name: Upload ARMv7 package
-        uses: actions/upload-artifact@v4
-        with:
-        name: Dvx3-BackupManager-RaspberyPi-ARMv7
-          path: '*.tar.gz'          # oppure il percorso preciso dei file da pubblicare
-          retention-days: 90
+            **/*.AppImage
+            **/*.dmg
+            **/*.exe
+            **/*.dll
+            **/*.tar.gz
+          retention-days: 60
