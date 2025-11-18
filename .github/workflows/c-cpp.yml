@@ -1,89 +1,14 @@
       - name: Move AppImage to workspace root (Linux only)
         if: matrix.os == 'ubuntu-latest'
         run: |
-          find . -name '*.AppImage' -exec cp {} . \;
+          # Copy any AppImage produced to the workspace root for upload
+          find . -name 'Dvx3-BackupManager-*-x86_64.AppImage' -exec cp {} . \; || true
 
-      - name: List files in workspace (debug)
-        run: |
-          ls -lhR .
-name: Cross-Platform Build
-
-on:
-  push:
-    branches: [main, master, develop, clean-version]
-  pull_request:
-    branches: [main, master, develop]
-  workflow_dispatch:
-
-jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      # Linux setup
-      - name: Install Linux dependencies
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential valac libglib2.0-dev libjson-glib-dev libsodium-dev zstd qt6-base-dev qt6-base-dev-tools qt6-tools-dev
-          sudo mkdir -p /usr/lib/qt6/bin
-          for tool in qmake moc rcc uic lrelease; do
-            if [ -x "/usr/bin/${tool}6" ]; then
-              sudo ln -sf "/usr/bin/${tool}6" "/usr/lib/qt6/bin/${tool}"
-            fi
-          done
-          sudo apt-get install -y libfuse2
-          
-      # macOS setup
-      - name: Install macOS dependencies
-        if: matrix.os == 'macos-latest'
-        run: |
-          brew update
-          brew install qt@6 vala glib json-glib libsodium qtbase qttools cmake pkg-config create-dmg
-          QT_PREFIX=$(brew --prefix qt@6)
-          echo "$QT_PREFIX/bin" >> $GITHUB_PATH
-
-      # Windows setup
-      - name: Setup MSYS2 for Windows
-        if: matrix.os == 'windows-latest'
-        uses: msys2/setup-msys2@v2
-        with:
-          update: true
-          msystem: MINGW64
-
-      - name: Install Windows dependencies & build
-        if: matrix.os == 'windows-latest'
-        shell: msys2 {0}
-        run: |
-          pacman -Syu --noconfirm
-          pacman -S --noconfirm mingw-w64-x86_64-qt6-base mingw-w64-x86_64-qt6-tools mingw-w64-x86_64-toolchain mingw-w64-x86_64-pkg-config mingw-w64-x86_64-json-glib mingw-w64-x86_64-libsodium mingw-w64-x86_64-vala
-          export PATH="/mingw64/bin:$PATH"
-          export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig:$PKG_CONFIG_PATH"
-          bash ./build.sh || true
-          bash ./build_gui.sh || true
-
-      - name: Build (Linux/macOS)
-        if: matrix.os != 'windows-latest'
-        run: |
-          export PATH="${QT_PREFIX:-/usr/lib/qt6}/bin:$PATH"
-          bash ./build.sh || true
-          bash ./build_gui.sh || true
-
-      # Package/Upload artifacts
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: cross-platform-artifacts
-          path: |
-            **/*.AppImage
-            **/*.dmg
-            **/*.exe
-            **/*.dll
-            **/*.tar.gz
-          retention-days: 60
+      - name: List files in workspace (debug, Linux only)
+        name: Cross-Platform Build
+        on:
+          push:
+            branches: [main, master, develop, clean-version]
+          pull_request:
+            branches: [main, master, develop]
+          workflow_dispatch:
