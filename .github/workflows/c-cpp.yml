@@ -60,10 +60,21 @@ jobs:
           bash ./build.sh || true
           bash ./build_gui.sh || true
 
-      - name: Build (Linux/macOS)
-        if: matrix.os != 'windows-latest'
+      - name: Build (Linux)
+        if: matrix.os == 'ubuntu-latest'
         run: |
-          export PATH="${QT_PREFIX:-/usr/lib/qt6}/bin:$PATH"
+          set -e
+          export PATH="/usr/lib/qt6/bin:$PATH"
+          echo "=== Running ./build-all.sh (full artifact build) ==="
+          bash ./build-all.sh
+          echo "=== Build script exit code: $? ==="
+          echo "=== Listing produced artifacts ==="
+          ls -lh *.AppImage *.tar.gz *.dmg *.exe 2>/dev/null || true
+
+      - name: Build (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          export PATH="${QT_PREFIX}/bin:$PATH"
           bash ./build.sh || true
           bash ./build_gui.sh || true
 
