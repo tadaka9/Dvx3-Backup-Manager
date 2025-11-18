@@ -4,14 +4,18 @@ on:
     branches: [main, master, develop, clean-version]
     tags:
       - 'v*'
+
 jobs:
+  ## -------------------------------------------
+  ## Docker image build – saved as an artifact
+  ## ----------------------------------------------
   build-docker:
     name: Build Docker Image
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Set up QEMU (for multi-arch, optional)
+      - name: Set up QEMU (multi‑arch, optional)
         uses: docker/setup-qemu-action@v3
         with:
           platforms: all
@@ -28,6 +32,10 @@ jobs:
         with:
           name: dvx3-backup-manager-docker-image
           path: dvx3-backup-manager-docker-image.tar.gz
+
+  ## ----------------------------------------------
+  ## Linux x86_64 build
+  ## ------------------------------------------
   build-linux-x86_64:
     name: Build Linux x86_64
     runs-on: ubuntu-22.04
@@ -51,59 +59,35 @@ jobs:
           dpkg -L qt6-tools-dev | grep bin || true
           ls -l /usr/lib/qt6/bin || true
           ls -l /usr/bin | grep 6$ || true
-      - name: Symlink Qt6 tools for build compatibility
+      - name: Symlink Qt6 tools for compatibility
         run: |
           sudo mkdir -p /usr/lib/qt6/bin
           for tool in qmake moc rcc uic lrelease; do
-            if [ -x "/usr/bin/${tool}6" ]; then
-              sudo ln -sf "/usr/bin/${tool}6" "/usr/lib/qt6/bin/${tool}"
+            if [ ! -x "/usr/bin/${tool}6" ]; then
+              echo "ERROR: /usr/bin/${tool}6 not found!" >&2
+              exit 1
             fi
+            sudo ln -sf "/usr/bin/${tool}6" "/usr/lib/qt6/bin/${tool}"
           done
-          ls -l /usr/lib/qt6/bin
+          echo "Qt6 tools linked:" && ls -l /usr/lib/qt6/bin
       - name: Build all
         run: |
           export PATH="/usr/lib/qt6/bin:$PATH"
-          echo "PATH for build: $PATH"
-          ls -l /usr/lib/qt6/bin || true
           ./build-all.sh
       - name: Run TUI smoke test
         run: ./backup-manager --help
-      - name: Debug Qt6 tools in /usr/lib/qt6/bin
-        run: |
-          echo "Listing /usr/lib/qt6/bin:"
-          ls -l /usr/lib/qt6/bin || echo "/usr/lib/qt6/bin not found"
-          echo "Checking for qmake, moc, and other Qt6 tools:"
-          for tool in qmake moc rcc uic lrelease; do
-            if [ -x "/usr/lib/qt6/bin/$tool" ]; then
-              echo "$tool found"
-            else
-              echo "$tool NOT found in /usr/lib/qt6/bin"
-            fi
-          done
-          if [ ! -x /usr/lib/qt6/bin/qmake ]; then
-            echo "ERROR: Qt6 tools not found in /usr/lib/qt6/bin. Check installation."
-            exit 1
-          fi
       - name: Verify VAPI
         run: |
           ls -la vala-extra-vapis/libsodium.vapi
-          echo "libsodium.vapi found and ready"
-      - name: Check GNU tar version and assert
-        run: |
-          tar --version
-          if ! tar --version | grep -q "GNU tar"; then
-            echo "Error: GNU tar is required for dynamic progress."
-            exit 1
-          fi
-      - name: Install FUSE2 for AppImage
+          echo "libsodium.vapi ready"
+      - name: Install FUSE2 (needed for AppImage)
         run: sudo apt-get install -y libfuse2
-      - name: Build application
+      - name: Build application (GUI)
         run: |
           chmod +x build_gui.sh build-appimage.sh build-raspberry.sh || true
-          # Add Qt6 tools to PATH for Linux
           export PATH="/usr/lib/qt6/bin:$PATH"
           bash ./build_gui.sh
-      - name: Download AppImageTool
+      - name: Download AppImage tooling
         run: |
           wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool-x86_64.AppImage
@@ -112,67 +96,52 @@ jobs:
       - name: Create AppImage
         run: |
           bash ./build-appimage.sh
-          # Create a minimal .desktop file for linuxdeployqt (YAML-safe)
           if [ -f backup-manager-gui ]; then
-            # Debug: List ICU files before copying
-            echo "Listing ICU files in /usr/lib/x86_64-linux-gnu:"
-            ls -l /usr/lib/x86_64-linux-gnu/libicu*.so* || true
-            echo "Listing ICU files in /usr/lib:"
-            ls -l /usr/lib/libicu*.so* || true
-            ICU_COUNT1=$(ls /usr/lib/x86_64-linux-gnu/libicu*.so* 2>/dev/null | wc -l)
-            ICU_COUNT2=$(ls /usr/lib/libicu*.so* 2>/dev/null | wc -l)
-            if [ "$ICU_COUNT1" -eq 0 ] && [ "$ICU_COUNT2" -eq 0 ]; then
-              echo "ERROR: No ICU libraries found in /usr/lib/x86_64-linux-gnu or /usr/lib. AppImage will not work!"
-              exit 1
-            fi
-            # Explicitly copy all ICU libraries into AppDir/usr/lib from both locations
+            ICU_SRC=()
+            [[ -d /usr/lib/x86_64-linux-gnu ]] && ICU_SRC+=("/usr/lib/x86_64-linux-gnu")
+            [[ -d /usr/lib ]] && ICU_SRC+=("/usr/lib")
             mkdir -p usr/lib
-            if [ "$ICU_COUNT1" -gt 0 ]; then
-              cp /usr/lib/x86_64-linux-gnu/libicu*.so* usr/lib/
-            fi
-            if [ "$ICU_COUNT2" -gt 0 ]; then
-              cp /usr/lib/libicu*.so* usr/lib/
-            fi
-            # Create soname symlinks for ICU libraries (e.g., libicui18n.so -> libicui18n.so.74)
+            for dir in "${ICU_SRC[@]}"; do
+              cp "$dir"/libicu*.so* usr/lib/ 2>/dev/null || true
+            done
             for lib in usr/lib/libicu*.so.*; do
               base=$(basename "$lib")
-              soname=$(echo "$base" | sed 's/\(libicu[a-z]*\)\.so\..*/\1.so/')
+              soname=$(echo "$base" | sed -E 's/(libicu[a-z]+)\.so\..*/\1.so/')
               ln -sf "$base" "usr/lib/$soname"
             done
-            echo '[Desktop Entry]' > backup-manager-gui.desktop
-            echo 'Name=Backup Manager GUI' >> backup-manager-gui.desktop
-            echo 'Exec=backup-manager-gui' >> backup-manager-gui.desktop
-            echo 'Icon=backup-manager' >> backup-manager-gui.desktop
-            echo 'Type=Application' >> backup-manager-gui.desktop
-            echo 'Categories=Utility;' >> backup-manager-gui.desktop
-            # Set Qt6 library and plugin paths for linuxdeployqt
+            cat > backup-manager-gui.desktop <<EOF
+[Desktop Entry]
+Name=Backup Manager GUI
+Exec=backup-manager-gui
+Icon=backup-manager
+Type=Application
+Categories=Utility;
+EOF
             export LD_LIBRARY_PATH=/usr/lib/qt6/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
             export QT_PLUGIN_PATH=/usr/lib/qt6/plugins${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}
-            # Bundle Qt, ICU, and plugins using linuxdeployqt
-            ./linuxdeployqt-continuous-x86_64.AppImage backup-manager-gui.desktop -appimage -bundle-non-qt-libs -extra-plugins=iconengines,platforms -verbose=2 | tee linuxdeployqt.log || true
-            echo "\nlinuxdeployqt log:" && cat linuxdeployqt.log
-            echo "\nAppDir usr/lib contents after linuxdeployqt:" && ls -lhR ./usr/lib || true
+            ./linuxdeployqt-continuous-x86_64.AppImage backup-manager-gui.desktop \
+              -appimage -bundle-non-qt-libs -extra-plugins=iconengines,platforms -verbose=2 \
+              | tee linuxdeployqt.log || true
           fi
-      - name: Debug AppImage ICU libraries
+      - name: Debug AppImage ICU libs
         run: |
           set -e
-          # Find the built AppImage
           APPIMAGE=$(ls *.AppImage | head -n1)
-          echo "Testing ICU in $APPIMAGE"
           chmod +x "$APPIMAGE"
-          # Extract AppImage contents for inspection
           "./$APPIMAGE" --appimage-extract || true
-          echo "\nContents of extracted usr/lib:"
+          echo "Extracted usr/lib contents:"
           ls -lR squashfs-root/usr/lib || true
-          echo "\nTrying to run with LD_LIBRARY_PATH..."
-          (cd squashfs-root && LD_LIBRARY_PATH=usr/lib ./AppRun || true)
-      - name: Upload AppImage Artifact
+          (cd squashfs-root && LD_LIBRARY_PATH=usr/lib ./AppRun) || true
+      - name: Upload AppImage artifact
         uses: actions/upload-artifact@v4
         with:
           name: Dvx3-BackupManager-Linux-x86_64-AppImage
           path: '*.AppImage'
           retention-days: 90
 
+  ## -------------------------------------------------
+  ## macOS universal (Intel + Apple Silicon)
+  ## -------------------------------------------------
   build-macos-universal:
     name: Build macOS Universal (Intel + Apple Silicon)
     runs-on: ${{ matrix.os }}
@@ -183,7 +152,7 @@ jobs:
           - os: macos-12
             arch: x86_64
           - os: macos-latest
-            arch: arm64
+        arch: arm64
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -196,103 +165,75 @@ jobs:
           brew install qt@6 vala glib json-glib libsodium qtbase qttools cmake pkg-config create-dmg
           QT_PREFIX=$(brew --prefix qt@6)
           echo "$QT_PREFIX/bin" >> $GITHUB_PATH
-          echo "Qt6 version installed:" && $QT_PREFIX/bin/qmake --version || true
+          $QT_PREFIX/bin/qmake --version || true
 
       - name: Verify VAPI
-        run: |
-          ls -la vala-extra-vapis/libsodium.vapi
-          echo "libsodium.vapi found and ready"
+     run: |
+      ls -la vala-extra-vapis/libsodium.vapi
+          echo "libsodium.vapi ready"
 
-      - name: Build library and CLI
-        run: |
+      - name: Build library & CLI
+       run: |
           export PATH="$(brew --prefix qt@6)/bin:$PATH"
           bash ./build.sh
 
-      - name: Build moc from source if missing
-        run: |
-          set -e
-          if ! command -v moc >/dev/null 2>&1; then
-            echo "moc not found, building from source..."
-            brew install cmake ninja perl python3
-            git clone --depth=1 https://github.com/qt/qttools.git
-            cd qttools
-            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-            cmake --build build --target moc
-            export PATH="$PWD/build/bin:$PATH"
-            echo "Built moc from source and added to PATH."
-            cd ..
-          else
-            echo "moc found in PATH: $(command -v moc)"
-          fi
-
       - name: Build Qt GUI
         run: |
-          # Add built moc to PATH if present
-          if [ -d qttools/build/bin ]; then
-            export PATH="$PWD/qttools/build/bin:$PATH"
-          fi
+          export PATH="$(brew --prefix qt@6)/bin:$PATH"
           bash ./build_gui.sh
           cat > "Dvx3 Backup Manager.app/Contents/Info.plist" <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>CFBundleExecutable</key>
-            <string>backup-manager-gui</string>
-            <key>CFBundleIdentifier</key>
-            <string>com.Dvx3.backupmanager</string>
-            <key>CFBundleName</key>
-            <string>Dvx3 Backup Manager</string>
-            <key>CFBundleVersion</key>
-            <string>1.0.0</string>
-            <key>CFBundleShortVersionString</key>
-            <string>1.0.0</string>
-            <key>NSHighResolutionCapable</key>
-            <true/>
-          </dict>
-          </plist>
-          EOF
-
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key><string>backup-manager-gui</string>
+  <key>CFBundleIdentifier</key><string>com.Dvx3.backupmanager</string>
+  <key>CFBundleName</key><string>Dvx3 Backup Manager</string>
+  <key>CFBundleVersion</key><string>1.0.0</string>
+  <key>CFBundleShortVersionString</key><string>1.0.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+</dict>
+</plist>
+EOF
           macdeployqt "Dvx3 Backup Manager.app" -verbose=2
 
-      - name: Upload App Bundle for ${{ matrix.arch }}
+      - name: Upload App Bundle (${{ matrix.arch }})
         uses: actions/upload-artifact@v4
         with:
           name: Dvx3-BackupManager-macOS-${{ matrix.arch }}-AppBundle
           path: 'Dvx3 Backup Manager.app'
           retention-days: 90
 
+  ## -------------------------------------------------
+  ## macOS universal DMG
+  ## -------------------------------------------------
   build-macos-universal-dmg:
     name: Build macOS Universal DMG
     needs: build-macos-universal
     runs-on: macos-latest
     steps:
-      - name: Download x86_64 App Bundle
+      - name: Download Intel bundle
         uses: actions/download-artifact@v4
         with:
           name: Dvx3-BackupManager-macOS-x86_64-AppBundle
-          path: x86_64/
+          path: intel/
 
-      - name: Download arm64 App Bundle
+      - name: Download ARM bundle
         uses: actions/download-artifact@v4
         with:
           name: Dvx3-BackupManager-macOS-arm64-AppBundle
-          path: arm64/
+          path: arm/
 
-      - name: Create Universal Binary
+      - name: Create universal binary
         run: |
-          set -e
           export PATH="$(brew --prefix qt@6)/bin:$PATH"
-          # Combine binaries into universal
           lipo -create -output "Dvx3 Backup Manager.app/Contents/MacOS/backup-manager-gui" \
-            x86_64/"Dvx3 Backup Manager.app/Contents/MacOS/backup-manager-gui" \
-            arm64/"Dvx3 Backup Manager.app/Contents/MacOS/backup-manager-gui"
+            intel/"Dvx3 Backup Manager.app/Contents/MacOS/backup-manager-gui" \
+            arm/"Dvx3 Backup Manager.app/Contents/MacOS/backup-manager-gui"
           lipo -create -output "Dvx3 Backup Manager.app/Contents/Frameworks/libDvx3.dylib" \
-            x86_64/"Dvx3 Backup Manager.app/Contents/Frameworks/libDvx3.dylib" \
-            arm64/"Dvx3 Backup Manager.app/Contents/Frameworks/libDvx3.dylib"
-
-          cp -r x86_64/"Dvx3 Backup Manager.app" .
-
+            intel/"Dvx3 Backup Manager.app/Contents/Frameworks/libDvx3.dylib" \
+         arm/"Dvx3 Backup Manager.app/Contents/Frameworks/libDvx3.dylib"
+          cp -r intel/"Dvx3 Backup Manager.app" .
           macdeployqt "Dvx3 Backup Manager.app" -verbose=2
 
       - name: Create DMG
@@ -305,12 +246,11 @@ jobs:
             --app-drop-link 425 120 \
             "Dvx3-BackupManager-macOS-Universal.dmg" \
             "Dvx3 Backup Manager.app" || true
-
           if [ ! -f "Dvx3-BackupManager-macOS-Universal.dmg" ]; then
             hdiutil create -volname "Dvx3 Backup Manager" \
               -srcfolder "Dvx3 Backup Manager.app" \
               -ov -format UDZO "Dvx3-BackupManager-macOS-Universal.dmg"
-          fi
+     fi
 
       - name: Upload Universal DMG
         uses: actions/upload-artifact@v4
@@ -319,84 +259,58 @@ jobs:
           path: '*.dmg'
           retention-days: 90
 
+  ## -------------------------------------------------
+  ## Windows x86_64 (MSYS2)
+  ## -------------------------------------------------
   build-windows-x86_64:
     name: Build Windows x86_64 (MSYS2)
-    runs-on: windows-latest
+   runs-on: windows-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
-        with:
+      with:
           update: true
           msystem: MINGW64
-      # (Removed Linux AppImage build step; Windows build uses MSYS2/MinGW/Qt6 below)
 
-      - name: Install Qt6 and Vala for MSYS2
+      - name: Install Qt6 & Vala
         shell: msys2 {0}
         run: |
-          set -e
           pacman -Syu --noconfirm
-          pacman -S --noconfirm mingw-w64-x86_64-qt6-base mingw-w64-x86_64-qt6-tools mingw-w64-x86_64-toolchain mingw-w64-x86_64-pkg-config mingw-w64-x86_64-json-glib mingw-w64-x86_64-libsodium mingw-w64-x86_64-vala
-          # Confirm moc location
-          find /mingw64 -name moc.exe || true
+          pacman -S --noconfirm mingw-w64-x86_64-qt6-base \
+            mingw-w64-x86_64-qt6-tools mingw-w64-x86_64-toolchain \
+            mingw-w64-x86_64-pkg-config mingw-w64-x86_64-json-glib \
+            mingw-w64-x86_64-libsodium mingw-w64-x86_64-vala
 
       - name: Build Dvx3 library (Windows)
-        shell: msys2 {0}
+     shell: msys2 {0}
         run: |
-          set -e
           export PATH="/mingw64/bin:$PATH"
           export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig:$PKG_CONFIG_PATH"
-          echo "Building Dvx3 library for Windows..."
           bash ./build.sh
 
-      - name: Build Windows Qt GUI
+      - name: Build Qt GUI (Windows)
         shell: msys2 {0}
         run: |
-          set -e
           export PATH="/mingw64/share/qt6/bin:/mingw64/bin:$PATH"
           export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig:$PKG_CONFIG_PATH"
-          echo "PATH is: $PATH"
-          echo "PKG_CONFIG_PATH is: $PKG_CONFIG_PATH"
-          which moc || true
-          # Find Qt tools in MSYS2/MinGW
-          if command -v moc-qt6 >/dev/null 2>&1; then
-            MOC=moc-qt6
-            RCC=rcc-qt6
-          elif command -v moc6 >/dev/null 2>&1; then
-            MOC=moc6
-            RCC=rcc6
-          elif command -v moc >/dev/null 2>&1; then
-            MOC=moc
-            RCC=rcc
-          else
-            echo "Error: moc not found in PATH"
-            echo "Qt6 tools location:"
-            find /mingw64 -name "moc*" -o -name "rcc*" 2>/dev/null || true
-            exit 1
-          fi
-
-          # Debug: List Dvx3 libraries before linking
-          echo "Listing Dvx3 libraries in current and mingw64/lib directories:"
-          ls -l libDvx3* libdvx3* /mingw64/lib/libDvx3* /mingw64/lib/libdvx3* 2>/dev/null || true
-
+          # Choose the right moc/rcc binaries
+          if command -v moc-qt6 >/dev/null; then MOC=moc-qt6; RCC=rcc-qt6;
+          elif command -v moc6 >/dev/null; then MOC=moc6; RCC=rcc6;
+        else MOC=moc; RCC=rcc; fi
           $MOC backup-manager-gui.hpp -o backup-manager-gui.moc.cpp
-          if [ -f resources.qrc ]; then
-            $RCC resources.qrc -o resources.rcc.cpp
-          fi
-          # Try lowercase -ldvx3 if -lDvx3 fails
-          if ls libdvx3.* 1>/dev/null 2>&1 || ls /mingw64/lib/libdvx3.* 1>/dev/null 2>&1; then
-            LINKNAME=ldvx3
-          else
-            LINKNAME=lDvx3
-          fi
+          [ -f resources.qrc ] && $RCC resources.qrc -o resources.rcc.cpp || true
+          # Link against the library (detect its name)
+          LIBNAME=$(ls libdvx3.* 2>/dev/null | head -n1 || echo "")
+          if [[ -z "$LIBNAME" ]]; then LIBFLAG="-lDvx3";
+          else LIBFLAG="-L. -l$(basename "$LIBNAME" | sed 's/^lib\(.*\)\.so$/\1/')"; fi
           g++ backup-manager-gui.cpp backup-manager-gui.moc.cpp resources.rcc.cpp \
-            -o backup-manager-gui.exe \
-            -std=c++17 \
+            -o backup-manager-gui.exe -std=c++17 \
             $(pkg-config --cflags --libs Qt6Widgets glib-2.0 gio-2.0 json-glib-1.0 libsodium) \
-            -L. -L/mingw64/lib -$LINKNAME
-          ls -lh *.exe *.dll || true
+            $LIBFLAG
+          ls -lh *.exe *.dll
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
@@ -406,10 +320,13 @@ jobs:
             Dvx3.exe
             backup-manager-gui.exe
             libDvx3.dll
-            Dvx3.vapi
+           Dvx3.vapi
             Dvx3.h
           retention-days: 90
 
+  ## -------------------------------------------------
+  ## Linux ARM32 (Debian 13 arm/v7)
+  ## -------------------------------------------------
   build-linux-arm32:
     name: Build Linux ARM32 (Debian 13 arm/v7)
     runs-on: ubuntu-latest
@@ -417,109 +334,29 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up QEMU
+      - name: Set up QEMU (ARM32)
         uses: docker/setup-qemu-action@v3
         with:
           platforms: arm
 
-      - name: Build in ARM container
+      - name: Build in ARM32 container
         run: |
-          set -e
-          ls -la vala-extra-vapis/libsodium.vapi || true
           docker run --rm --platform linux/arm/v7 \
             -v ${{ github.workspace }}:/workspace -w /workspace debian:trixie bash -c '
               set -e
               apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
                 valac gcc g++ make cmake pkg-config git \
                 libglib2.0-dev libjson-glib-dev libsodium-dev \
-                qt6-base-dev qt6-base-dev-tools qt6-tools-dev tar zstd file && \
-              echo "Verifying VAPI in container..." && \
-              ls -la vala-extra-vapis/libsodium.vapi && \
-              chmod +x build_gui.sh build-raspberry.sh || true && \
-              bash ./build_gui.sh && bash ./build-raspberry.sh && ls -lh *.tar.gz || echo "No tarball found"
+                qt6-base-dev qt6-base-dev-tools qt6-tools-dev tar zstd file
+              ls -la vala-extra-vapis/libsodium.vapi
+              chmod +x build_gui.sh build-raspberry.sh || true
+              bash ./build_gui.sh
+              bash ./build-raspberry.sh
             '
 
       - name: Upload ARMv7 package
         uses: actions/upload-artifact@v4
         with:
-          name: Dvx3-BackupManager-RaspberryPi-ARMv7
-          path: '*.tar.gz'
+        name: Dvx3-BackupManager-RaspberyPi-ARMv7
+          path: '*.tar.gz'          # oppure il percorso preciso dei file da pubblicare
           retention-days: 90
-
-  build-linux-arm64:
-    name: Build Linux ARM64 (Debian 13)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
-
-      - name: Build in ARM64 container
-        run: |
-          set -e
-          ls -la vala-extra-vapis/libsodium.vapi || true
-          docker run --rm --platform linux/arm64 \
-            -v ${{ github.workspace }}:/workspace -w /workspace debian:trixie bash -c '
-              set -e
-              apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-                valac gcc g++ make cmake pkg-config git \
-                libglib2.0-dev libjson-glib-dev libsodium-dev \
-                qt6-base-dev qt6-base-dev-tools qt6-tools-dev tar zstd file && \
-              echo "Verifying VAPI in container..." && \
-              ls -la vala-extra-vapis/libsodium.vapi && \
-              chmod +x build_gui.sh build-raspberry.sh || true && \
-              bash ./build_gui.sh && bash ./build-raspberry.sh && ls -lh *.tar.gz || echo "No tarball found"
-            '
-
-      - name: Upload ARM64 package
-        uses: actions/upload-artifact@v4
-        with:
-          name: Dvx3-BackupManager-RaspberryPi-ARM64
-          path: '*.tar.gz'
-          retention-days: 90
-
-  create-release:
-    name: Create GitHub Release
-    needs: [build-linux-x86_64, build-macos-universal-dmg, build-linux-arm32, build-linux-arm64, build-windows-x86_64]
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    permissions:
-      contents: write
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts/
-
-      - name: Display structure
-        run: ls -R artifacts/
-
-      - name: Generate checksums
-        run: |
-          cd artifacts
-          find . -type f \( -name "*.AppImage" -o -name "*.dmg" -o -name "*.tar.gz" -o -name "*.exe" -o -name "*.dll" -o -name "*.vapi" -o -name "*.h" \) -print0 | \
-            xargs -0 -I {} sh -c 'sha256sum "$1" >> CHECKSUMS.txt' -- {}
-
-          echo "Generated checksums:" && cat CHECKSUMS.txt
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            artifacts/**/*.AppImage
-            artifacts/**/*.dmg
-            artifacts/**/*.tar.gz
-            artifacts/**/*.exe
-            artifacts/**/*.dll
-            artifacts/**/*.vapi
-            artifacts/**/*.h
-            artifacts/CHECKSUMS.txt
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
