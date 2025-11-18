@@ -89,9 +89,9 @@ jobs:
         with:
           name: cross-platform-artifacts
           path: |
-            **/*.AppImage
-            **/*.dmg
-            **/*.exe
-            **/*.dll
-            **/*.tar.gz
+            ./Dvx3-BackupManager-*-x86_64.AppImage
+            ./*.dmg
+            ./*.exe
+            ./*.dll
+            ./*.tar.gz
           retention-days: 60
