@@ -60,13 +60,13 @@ echo "Build Summary ($BUILD_COUNT platforms)"
 echo "========================================="
 echo ""
 
-# List all build artifacts
+ # List all build artifacts (non-fatal)
 echo "Build artifacts:"
-ls -lh backup-manager-gui 2>/dev/null && echo "  ✓ backup-manager-gui ($(du -h backup-manager-gui | cut -f1))"
-ls -lh *.AppImage 2>/dev/null | awk '{print "  ✓ " $9 " (" $5 ")"}'
-ls -lh *.tar.gz 2>/dev/null | awk '{print "  ✓ " $9 " (" $5 ")"}'
-ls -lh *.dmg 2>/dev/null | awk '{print "  ✓ " $9 " (" $5 ")"}'
-ls -lh *.exe 2>/dev/null | awk '{print "  ✓ " $9 " (" $5 ")"}'
+ls -lh backup-manager-gui 2>/dev/null && echo "  ✓ backup-manager-gui ($(du -h backup-manager-gui | cut -f1))" || true
+ls -lh *.AppImage 2>/dev/null | awk '{print "  ✓ " $9 " (" $5 ")"}' || true
+ls -lh *.tar.gz 2>/dev/null | awk '{print "  ✓ " $9 " (" $5 ")"}' || true
+ls -lh *.dmg 2>/dev/null | awk '{print "  ✓ " $9 " (" $5 ")"}' || true
+ls -lh *.exe 2>/dev/null | awk '{print "  ✓ " $9 " (" $5 ")"}' || true
 
 echo ""
 echo "Current platform: $(uname -s) $(uname -m)"
