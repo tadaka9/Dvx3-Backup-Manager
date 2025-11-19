@@ -103,11 +103,6 @@ log "Binaries copied"
 # -------------------------------------------------------------------------
 # 4️⃣ Copy ICU libraries and create correct soname symlinks
 # -------------------------------------------------------------------------
-log "Collecting ICU libraries"
-log "  → copying ${#icu_files[@]} files from $src"
-            cp "${icu_files[@]}" "$ICU_DST/"
-            found_icu=1
-            log "ICU files copied from $src"
 ICU_SRC_DIRS=(
     "/usr/lib/x86_64-linux-gnu"
     "/usr/lib"
@@ -165,10 +160,6 @@ log "All required ICU sonames are present."
 # -------------------------------------------------------------------------
 # 5️⃣ Copy Qt6 plugins (platforms, styles, xcbglintegrations)
 # -------------------------------------------------------------------------
-log "Locating Qt6 plugins"
-            log "  → copying Qt plugin $sub"
-            cp -r "$QT_PLUGIN_PATH/$sub" "$APPDIR/usr/plugins/"
-            log "Qt plugin $sub copied"
 QT_PLUGIN_PATH=$(qmake6 -query QT_INSTALL_PLUGINS 2>/dev/null ||
                 qmake -query QT_INSTALL_PLUGINS 2>/dev/null ||
                 echo "$QT_PLUGIN_PATH_DEFAULT")
