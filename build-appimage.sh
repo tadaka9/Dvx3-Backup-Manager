@@ -30,9 +30,9 @@ QT_PLUGIN_PATH_DEFAULT="/usr/lib/qt6/plugins"
 # -------------------------------------------------------------------------
 
 # -------------------------- Helper functions ---------------------------------
-log()    { echo -e "\n🔎 $*"; }
-error()  { echo -e "\n❌ $*" >&2; exit 1; }
-warn()   { echo -e "\n⚠️  $*"; }
+log()    { echo -e "\n[LOG $(date '+%H:%M:%S')] 🔎 $*"; }
+error()  { echo -e "\n[ERR $(date '+%H:%M:%S')] ❌ $*" >&2; exit 1; }
+warn()   { echo -e "\n[WRN $(date '+%H:%M:%S')] ⚠️  $*"; }
 
 # -------------------------------------------------------------------------
 # 0️⃣ Sanity checks – make sure the required binaries exist
