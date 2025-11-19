@@ -18,6 +18,8 @@
 
 set -euo pipefail               # Safer Bash settings
 IFS=$'\n\t'
+set -x
+log "Script started (trace enabled)"
 
 # -------------------------- Configuration ------------------------------------
 VERSION="0.0.0-alpha_11162025"
@@ -39,6 +41,11 @@ warn()   { echo -e "\n[WRN $(date '+%H:%M:%S')] ⚠️  $*"; }
 # -------------------------------------------------------------------------
 [[ -x "$BIN" ]]   || error "Executable $BIN not found in $(pwd)"
 [[ -f "$LIB" ]]   || error "Library $LIB not found in $(pwd)"
+# Sanity check: binaries
+[[ -x "$BIN" ]]   || error "Executable $BIN not found in $(pwd)"
+log "Found binary: $BIN"
+[[ -f "$LIB" ]]   || error "Library $LIB not found in $(pwd)"
+log "Found library: $LIB"
 # Icon is optional – we’ll create a placeholder if it’s missing later
 
 # -------------------------------------------------------------------------
@@ -62,12 +69,14 @@ detect_icu_major() {
     [[ -n "$highest" ]] && echo "$highest"
 }
 ICU_MAJOR=$(detect_icu_major || true)
+log "ICU_MAJOR set to: $ICU_MAJOR"
 
 if [[ -n "$ICU_MAJOR" ]]; then
     log "Detected ICU major version: $ICU_MAJOR"
 else
     warn "Could not determine ICU major version – will use generic symlink rules"
 fi
+log "ICU detection complete"
 
 # -------------------------------------------------------------------------
 # 2️⃣ Prepare AppDir skeleton
@@ -75,10 +84,13 @@ fi
 log "Cleaning previous AppDir and AppImages"
 rm -rf "$APPDIR" "${APPDIR%.*}.AppImage" *.AppImage
 
+log "AppDir and AppImages cleaned"
+
 mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/lib" \
          "$APPDIR/usr/share/applications" \
          "$APPDIR/usr/share/icons/hicolor/256x256/apps" \
          "$APPDIR/usr/plugins"
+log "AppDir skeleton created"
 
 # -------------------------------------------------------------------------
 # 3️⃣ Copy our own binaries into the AppDir
@@ -86,11 +98,16 @@ mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/lib" \
 log "Copying application binaries"
 cp "$BIN"   "$APPDIR/usr/bin/"
 cp "$LIB"   "$APPDIR/usr/lib/"
+log "Binaries copied"
 
 # -------------------------------------------------------------------------
 # 4️⃣ Copy ICU libraries and create correct soname symlinks
 # -------------------------------------------------------------------------
 log "Collecting ICU libraries"
+log "  → copying ${#icu_files[@]} files from $src"
+            cp "${icu_files[@]}" "$ICU_DST/"
+            found_icu=1
+            log "ICU files copied from $src"
 ICU_SRC_DIRS=(
     "/usr/lib/x86_64-linux-gnu"
     "/usr/lib"
@@ -149,6 +166,9 @@ log "All required ICU sonames are present."
 # 5️⃣ Copy Qt6 plugins (platforms, styles, xcbglintegrations)
 # -------------------------------------------------------------------------
 log "Locating Qt6 plugins"
+            log "  → copying Qt plugin $sub"
+            cp -r "$QT_PLUGIN_PATH/$sub" "$APPDIR/usr/plugins/"
+            log "Qt plugin $sub copied"
 QT_PLUGIN_PATH=$(qmake6 -query QT_INSTALL_PLUGINS 2>/dev/null ||
                 qmake -query QT_INSTALL_PLUGINS 2>/dev/null ||
                 echo "$QT_PLUGIN_PATH_DEFAULT")
@@ -196,6 +216,8 @@ copy_deps "$APPDIR/usr/bin/$BIN"
 # 7️⃣ Desktop file and icon
 # -------------------------------------------------------------------------
 log "Creating desktop entry"
+    cp "$ICON" "$APPDIR/usr/share/icons/hicolor/256x256/apps/dvx3-backup.png"
+    log "Icon copied to AppDir"
 cat > "$APPDIR/usr/share/applications/dvx3-backup.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
@@ -235,6 +257,7 @@ chmod +x "$APPDIR/AppRun"
 # Also copy desktop/icon to the top level (nice for some AppImage viewers)
 cp "$APPDIR/usr/share/applications/dvx3-backup.desktop" "$APPDIR/"
 cp "$APPDIR/usr/share/icons/hicolor/256x256/apps/dvx3-backup.png" "$APPDIR/"
+log "Copied desktop and icon to AppDir root"
 
 # -------------------------------------------------------------------------
 # 9️⃣ Ensure libfuse2 is present (optional, only for informative message)
@@ -242,6 +265,9 @@ cp "$APPDIR/usr/share/icons/hicolor/256x256/apps/dvx3-backup.png" "$APPDIR/"
 if ! ldconfig -p 2>/dev/null | grep -q libfuse.so.2; then
     warn "libfuse2 is not installed – the resulting AppImage may require the user to install it."
     echo "You can install it with: sudo apt-get install -y libfuse2"
+else
+    log "libfuse2 is present."
+fi
 fi
 
 # -------------------------------------------------------------------------
@@ -251,6 +277,10 @@ if [[ ! -f "$APPIMAGETOOL" ]]; then
     log "Downloading appimagetool..."
     wget -q "https://github.com/AppImage/AppImageKit/releases/download/continuous/$APPIMAGETOOL"
     chmod +x "$APPIMAGETOOL"
+    log "appimagetool downloaded and made executable"
+else
+    log "appimagetool already present"
+fi
 fi
 
 # -------------------------------------------------------------------------
@@ -259,10 +289,12 @@ fi
 log "Building the AppImage…"
 if [[ -e /dev/fuse ]]; then
     ARCH=x86_64 ./"$APPIMAGETOOL" "$APPDIR" "Dvx3-BackupManager-${VERSION}-x86_64.AppImage"
+    log "AppImage build command completed (with FUSE)"
 else
     warn "FUSE not available – falling back to --appimage-extract-and-run mode."
     ARCH=x86_64 ./"$APPIMAGETOOL" --appimage-extract-and-run \
         "$APPDIR" "Dvx3-BackupManager-${VERSION}-x86_64.AppImage"
+    log "AppImage build command completed (extract-and-run)"
 fi
 
 log "✅ AppImage created successfully!"
