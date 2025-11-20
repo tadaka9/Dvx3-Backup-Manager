@@ -66,16 +66,14 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           export PATH="/usr/lib/qt6/bin:$PATH"
-          echo "=== Running ./build_gui.sh (core build) ==="
-          bash ./build_gui.sh || echo "Build script exited with code $?"
-          echo "=== Attempting AppImage packaging ==="
+          echo "=== Attempting AppImage packaging (includes core build) ==="
           if [ -f appimagetool-x86_64.AppImage ]; then
-            bash ./build-appimage.sh || echo "AppImage build failed"
+            bash ./build-appimage.sh || echo "AppImage build failed with code $?"
+            echo "=== Checking for AppImage after build ==="
+            ls -lh DVX3-BackupManager-*.AppImage || echo "No AppImage found"
           else
             echo "AppImage tool not found, skipping"
           fi
-          echo "=== Listing produced artifacts ==="
-          ls -lh *.AppImage *.tar.gz *.dmg *.exe 2>/dev/null || true
 
       - name: Build (macOS)
         if: matrix.os == 'macos-latest'
@@ -90,12 +88,12 @@ jobs:
       - name: Move AppImage to workspace root (Linux only)
         if: matrix.os == 'ubuntu-latest'
         run: |
-          find . -name 'Dvx3-BackupManager-*-x86_64.AppImage' -exec cp {} . \; || true
+          find . -name 'DVX3-BackupManager-*-x86_64.AppImage' -exec cp {} . \; || true
 
       - name: List files in workspace (debug, Linux only)
         if: matrix.os == 'ubuntu-latest'
         run: |
-          ls -lh *.AppImage || true
+          ls -lh DVX3-BackupManager-*.AppImage || true
           ls -lhR .
 
       - name: Print working directory and all files (debug, Linux/macOS)
@@ -116,7 +114,7 @@ jobs:
         with:
           name: cross-platform-artifacts-${{ matrix.os }}
           path: |
-            ./Dvx3-BackupManager-*-x86_64.AppImage
+            ./DVX3-BackupManager-*-x86_64.AppImage
             ./*.dmg
             ./*.exe
             ./*.dll
