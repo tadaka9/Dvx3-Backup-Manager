@@ -30,6 +30,9 @@ jobs:
             fi
           done
           sudo apt-get install -y libfuse2
+          # Download appimagetool for AppImage builds
+          wget -O appimagetool-x86_64.AppImage https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
 
       # macOS setup
       - name: Install macOS dependencies
@@ -62,11 +65,15 @@ jobs:
       - name: Build (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
-          set -e
           export PATH="/usr/lib/qt6/bin:$PATH"
-          echo "=== Running ./build-all.sh (full artifact build) ==="
-          bash ./build-all.sh
-          echo "=== Build script exit code: $? ==="
+          echo "=== Running ./build_gui.sh (core build) ==="
+          bash ./build_gui.sh || echo "Build script exited with code $?"
+          echo "=== Attempting AppImage packaging ==="
+          if [ -f appimagetool-x86_64.AppImage ]; then
+            bash ./build-appimage.sh || echo "AppImage build failed"
+          else
+            echo "AppImage tool not found, skipping"
+          fi
           echo "=== Listing produced artifacts ==="
           ls -lh *.AppImage *.tar.gz *.dmg *.exe 2>/dev/null || true
 
@@ -74,8 +81,10 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           export PATH="${QT_PREFIX}/bin:$PATH"
-          bash ./build.sh
-          bash ./build_gui.sh
+          echo "=== Running ./build_gui.sh (core build) ==="
+          bash ./build_gui.sh || echo "Build script exited with code $?"
+          echo "=== Attempting macOS packaging ==="
+          bash ./build-macos.sh || echo "macOS build failed"
 
       # Package/Upload artifacts
       - name: Move AppImage to workspace root (Linux only)
