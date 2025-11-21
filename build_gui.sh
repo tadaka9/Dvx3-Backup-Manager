@@ -96,16 +96,16 @@ if [ -n "$QT_MOC_NATIVE" ] && [ -x "$QT_MOC_NATIVE" ]; then
     else
         RCC=rcc # Fallback to searching in PATH
     fi
-# Check MSYS2/MINGW64 paths (Windows)
-elif [ -x /mingw64/bin/moc ]; then
-    MOC=/mingw64/bin/moc
-    RCC=/mingw64/bin/rcc
-elif [ -x /mingw64/qt6/bin/moc ]; then
-    MOC=/mingw64/qt6/bin/moc
-    RCC=/mingw64/qt6/bin/rcc
-elif [ -x /mingw64/lib/qt6/bin/moc ]; then
-    MOC=/mingw64/lib/qt6/bin/moc
-    RCC=/mingw64/lib/qt6/bin/rcc
+# Check MSYS2/MINGW64 paths (Windows) - executables have .exe extension
+elif [ -x /mingw64/bin/moc.exe ]; then
+    MOC=/mingw64/bin/moc.exe
+    RCC=/mingw64/bin/rcc.exe
+elif [ -x /mingw64/qt6/bin/moc.exe ]; then
+    MOC=/mingw64/qt6/bin/moc.exe
+    RCC=/mingw64/qt6/bin/rcc.exe
+elif [ -x /mingw64/lib/qt6/bin/moc.exe ]; then
+    MOC=/mingw64/lib/qt6/bin/moc.exe
+    RCC=/mingw64/lib/qt6/bin/rcc.exe
 # Check Linux paths
 elif [ -x /usr/lib/qt6/moc ]; then
     MOC=/usr/lib/qt6/moc
