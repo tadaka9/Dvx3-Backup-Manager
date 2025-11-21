@@ -2,7 +2,7 @@ name: Cross-Platform Build & Release
 
 on:
   push:
-    branches: [main, master, develop]
+    branches: [main, master, develop, clean-version]
     tags: ['v*']
   pull_request:
     branches: [main, master]
@@ -51,7 +51,6 @@ jobs:
           bash ./build_gui.sh
           
           echo "=== Generating AppImage Script ==="
-          # We create the script on the fly to ensure it exists
           cat << 'EOF' > build_appimage.sh
           #!/bin/bash
           set -e
@@ -59,6 +58,7 @@ jobs:
           rm -rf "$APPDIR" *.AppImage
           mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/lib" "$APPDIR/usr/share/applications" "$APPDIR/usr/share/icons/hicolor/256x256/apps" "$APPDIR/usr/plugins"
           
+          # Copy Binaries
           cp "backup-manager-gui" "$APPDIR/usr/bin/"
           cp "libdvx3.so" "$APPDIR/usr/lib/"
           
@@ -74,7 +74,7 @@ jobs:
             [ -d "$QT_PLUGINS/$sub" ] && cp -r "$QT_PLUGINS/$sub" "$APPDIR/usr/plugins/"
           done
           
-          # Copy Deps (excluding system libs)
+          # Copy Deps
           ldd "$APPDIR/usr/bin/backup-manager-gui" | grep "=> /" | awk '{print $3}' | while read -r lib; do
             libname=$(basename "$lib")
             if [[ ! "$libname" =~ ^(libc\.so|libstdc\+\+|libgcc_s|libpthread|libdl|libm|librt|libz|ld-linux) ]]; then
@@ -82,7 +82,7 @@ jobs:
             fi
           done
           
-          # Desktop File
+          # Create Desktop File
           cat > "$APPDIR/usr/share/applications/dvx3-backup.desktop" <<'DESKTOP'
           [Desktop Entry]
           Type=Application
@@ -92,12 +92,17 @@ jobs:
           Categories=Utility;
           DESKTOP
           
+          # FIX: Copy desktop file to AppDir root (Required by appimagetool)
+          cp "$APPDIR/usr/share/applications/dvx3-backup.desktop" "$APPDIR/"
+          
           # Icon
           if [ -f "dvx3-backup.png" ]; then
             cp "dvx3-backup.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/"
             cp "dvx3-backup.png" "$APPDIR/"
           else
+            # Create dummy icon if missing
             touch "$APPDIR/usr/share/icons/hicolor/256x256/apps/dvx3-backup.png"
+            touch "$APPDIR/dvx3-backup.png"
           fi
           
           # AppRun
@@ -111,7 +116,7 @@ jobs:
           APPRUN
           chmod +x "$APPDIR/AppRun"
           
-          # Build
+          # Build AppImage
           wget -q -O appimagetool "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
           chmod +x appimagetool
           ./appimagetool --appimage-extract-and-run "$APPDIR" "Dvx3-BackupManager-x86_64.AppImage"
