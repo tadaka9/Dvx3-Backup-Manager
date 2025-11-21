@@ -2,8 +2,8 @@ name: Cross-Platform Build & Release
 
 on:
   push:
-    branches: [main, master, develop, clean-version]
-    tags: ['v*']
+    branches: [main, master, develop]
+    tags: [ 'v*' ]
   pull_request:
     branches: [main, master]
   workflow_dispatch:
@@ -13,9 +13,34 @@ permissions:
   packages: write
 
 jobs:
-  # ===========================================================================
-  # JOB 1: Desktop Builds (Linux x64, macOS, Windows)
-  # ===========================================================================
+  lint-yaml:
+    name: YAML Lint (lynt/Super-Linter)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Super-Linter YAML
+        uses: github/super-linter@v5
+        env:
+          VALIDATE_YAML: true
+          VALIDATE_GITHUB_ACTIONS: true
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  lint-python:
+    name: Python Lint (PEP8)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install Flake8
+        run: pip install flake8
+      - name: Run Flake8
+        run: |
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=120 --statistics
+
   desktop-build:
     name: Build Desktop (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -23,66 +48,45 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-
     steps:
       - uses: actions/checkout@v4
-
-      # -----------------------------------------------------------------------
-      # LINUX
-      # -----------------------------------------------------------------------
       - name: Install Linux Deps
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential valac libglib2.0-dev libjson-glib-dev libsodium-dev zstd \
-            qt6-base-dev qt6-base-dev-tools qt6-tools-dev libfuse2
+          sudo apt-get install -y build-essential valac libglib2.0-dev libjson-glib-dev libsodium-dev zstd qt6-base-dev qt6-base-dev-tools qt6-tools-dev libfuse2
           sudo mkdir -p /usr/lib/qt6/bin
           for tool in qmake moc rcc uic lrelease; do
             if [ -x "/usr/bin/${tool}6" ]; then sudo ln -sf "/usr/bin/${tool}6" "/usr/lib/qt6/bin/${tool}"; fi
           done
-
       - name: Build Linux AppImage
         if: matrix.os == 'ubuntu-latest'
         run: |
           export PATH="/usr/lib/qt6/bin:$PATH"
-          
-          echo "=== Building Core & GUI ==="
           bash ./build.sh
           bash ./build_gui.sh
-          
-          echo "=== Generating AppImage Script ==="
           cat << 'EOF' > build_appimage.sh
           #!/bin/bash
           set -e
           APPDIR="Dvx3BackupManager.AppDir"
           rm -rf "$APPDIR" *.AppImage
           mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/lib" "$APPDIR/usr/share/applications" "$APPDIR/usr/share/icons/hicolor/256x256/apps" "$APPDIR/usr/plugins"
-          
-          # Copy Binaries
           cp "backup-manager-gui" "$APPDIR/usr/bin/"
           cp "libdvx3.so" "$APPDIR/usr/lib/"
-          
-          # Copy ICU
           ICU_DST="$APPDIR/usr/lib"
           for src in "/usr/lib/x86_64-linux-gnu" "/usr/lib"; do
             [ -d "$src" ] && cp "$src"/libicu*.so* "$ICU_DST/" 2>/dev/null || true
           done
-          
-          # Copy Qt Plugins
           QT_PLUGINS=$(qmake6 -query QT_INSTALL_PLUGINS 2>/dev/null || echo "/usr/lib/qt6/plugins")
           for sub in platforms styles xcbglintegrations imageformats iconengines; do
             [ -d "$QT_PLUGINS/$sub" ] && cp -r "$QT_PLUGINS/$sub" "$APPDIR/usr/plugins/"
           done
-          
-          # Copy Deps
           ldd "$APPDIR/usr/bin/backup-manager-gui" | grep "=> /" | awk '{print $3}' | while read -r lib; do
             libname=$(basename "$lib")
             if [[ ! "$libname" =~ ^(libc\.so|libstdc\+\+|libgcc_s|libpthread|libdl|libm|librt|libz|ld-linux) ]]; then
               [ ! -f "$APPDIR/usr/lib/$libname" ] && cp "$lib" "$APPDIR/usr/lib/"
             fi
           done
-          
-          # Create Desktop File
           cat > "$APPDIR/usr/share/applications/dvx3-backup.desktop" <<'DESKTOP'
           [Desktop Entry]
           Type=Application
@@ -91,21 +95,14 @@ jobs:
           Icon=dvx3-backup
           Categories=Utility;
           DESKTOP
-          
-          # FIX: Copy desktop file to AppDir root (Required by appimagetool)
           cp "$APPDIR/usr/share/applications/dvx3-backup.desktop" "$APPDIR/"
-          
-          # Icon
           if [ -f "dvx3-backup.png" ]; then
             cp "dvx3-backup.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/"
             cp "dvx3-backup.png" "$APPDIR/"
           else
-            # Create dummy icon if missing
             touch "$APPDIR/usr/share/icons/hicolor/256x256/apps/dvx3-backup.png"
             touch "$APPDIR/dvx3-backup.png"
           fi
-          
-          # AppRun
           cat > "$APPDIR/AppRun" <<'APPRUN'
           #!/bin/bash
           HERE="$(dirname "$(readlink -f "$0")")"
@@ -115,45 +112,28 @@ jobs:
           exec "${HERE}/usr/bin/backup-manager-gui" "$@"
           APPRUN
           chmod +x "$APPDIR/AppRun"
-          
-          # Build AppImage
           wget -q -O appimagetool "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
           chmod +x appimagetool
           ./appimagetool --appimage-extract-and-run "$APPDIR" "Dvx3-BackupManager-x86_64.AppImage"
           EOF
-          
           chmod +x build_appimage.sh
           ./build_appimage.sh
-
-      # -----------------------------------------------------------------------
-      # MACOS
-      # -----------------------------------------------------------------------
       - name: Install macOS Deps
         if: matrix.os == 'macos-latest'
         run: |
           brew update
-          brew install qt@6 vala glib json-glib libsodium cmake pkg-config create-dmg
-
+          brew install qt vala glib json-glib libsodium cmake pkg-config create-dmg
+          brew link qt --force || true
       - name: Build macOS DMG
         if: matrix.os == 'macos-latest'
         run: |
-          # FIX: Explicitly add Qt bin to PATH for this step
-          export PATH="$(brew --prefix qt@6)/bin:$PATH"
-          
-          echo "=== Building Core & GUI ==="
+          export PATH="$(brew --prefix qt)/bin:$(brew --prefix qt@6)/bin:$PATH"
+          echo "Checking for moc..."
+          which moc || echo "moc not found in PATH"
           bash ./build.sh
           bash ./build_gui.sh
-          
-          echo "=== Packaging DMG ==="
-          if [ -f "build_macos.sh" ]; then 
-            chmod +x build_macos.sh && ./build_macos.sh
-          elif [ -f "build-macos.sh" ]; then
-            chmod +x build-macos.sh && ./build-macos.sh
-          fi
-
-      # -----------------------------------------------------------------------
-      # WINDOWS
-      # -----------------------------------------------------------------------
+          if [ -f "build_macos.sh" ]; then chmod +x build_macos.sh && ./build_macos.sh
+          elif [ -f "build-macos.sh" ]; then chmod +x build-macos.sh && ./build-macos.sh; fi
       - name: Setup Windows (MSYS2)
         if: matrix.os == 'windows-latest'
         uses: msys2/setup-msys2@v2
@@ -165,7 +145,6 @@ jobs:
             mingw-w64-x86_64-qt6-tools mingw-w64-x86_64-pkg-config
             mingw-w64-x86_64-json-glib mingw-w64-x86_64-libsodium mingw-w64-x86_64-vala
             mingw-w64-x86_64-libzip
-
       - name: Build Windows
         if: matrix.os == 'windows-latest'
         shell: msys2 {0}
@@ -176,10 +155,6 @@ jobs:
           fi
           bash ./build.sh
           bash ./build_gui.sh
-
-      # -----------------------------------------------------------------------
-      # UPLOAD
-      # -----------------------------------------------------------------------
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -193,9 +168,6 @@ jobs:
             ./build/*.dll
           if-no-files-found: warn
 
-  # ===========================================================================
-  # JOB 2: Raspberry Pi Builds
-  # ===========================================================================
   rpi-build:
     name: Build RPi (${{ matrix.arch }})
     runs-on: ubuntu-latest
@@ -209,7 +181,6 @@ jobs:
           - arch: aarch64
             platform: linux/arm64
             image: arm64v8/debian:bookworm
-
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
@@ -233,16 +204,12 @@ jobs:
           name: rpi-artifacts-${{ matrix.arch }}
           path: ./*.tar.gz
 
-  # ===========================================================================
-  # JOB 3: Docker Image Build
-  # ===========================================================================
   docker-build:
     name: Build Docker Image
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-
       - name: Login to GHCR
         if: startsWith(github.ref, 'refs/tags/')
         uses: docker/login-action@v3
@@ -250,11 +217,8 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      # FIX: Lowercase repo name for Docker tag
       - name: Lowercase Repo Name
         run: echo "REPO_LC=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
-
       - name: Build and Push
         uses: docker/build-push-action@v5
         with:
@@ -264,9 +228,6 @@ jobs:
             ghcr.io/${{ env.REPO_LC }}:latest
             ghcr.io/${{ env.REPO_LC }}:${{ github.ref_name }}
 
-  # ===========================================================================
-  # JOB 4: Create Release
-  # ===========================================================================
   release:
     name: Create Release
     needs: [desktop-build, rpi-build, docker-build]
@@ -276,7 +237,6 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: ./artifacts
-
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
@@ -288,3 +248,4 @@ jobs:
             ./artifacts/**/*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish to Docker Hub
