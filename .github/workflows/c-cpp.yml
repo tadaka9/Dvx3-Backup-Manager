@@ -1,122 +1,209 @@
-name: Cross-Platform Build
+name: Cross-Platform Build & Release
+
 on:
   push:
-    branches: [main, master, develop, clean-version]
-  pull_request:
     branches: [main, master, develop]
+    tags: ['v*'] # Trigger release logic on version tags
+  pull_request:
+    branches: [main, master]
   workflow_dispatch:
 
+permissions:
+  contents: write
+  packages: write
+
 jobs:
-  build:
+  # ===========================================================================
+  # JOB 1: Desktop Builds (Linux x64, macOS, Windows)
+  # ===========================================================================
+  desktop-build:
+    name: Build Desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
 
-      # Linux setup
-      - name: Install Linux dependencies
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- LINUX ---
+      - name: Install Linux Deps
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential valac libglib2.0-dev libjson-glib-dev libsodium-dev zstd qt6-base-dev qt6-base-dev-tools qt6-tools-dev
+          sudo apt-get install -y build-essential valac libglib2.0-dev libjson-glib-dev libsodium-dev zstd \
+            qt6-base-dev qt6-base-dev-tools qt6-tools-dev libfuse2
+          # Symlink Qt tools
           sudo mkdir -p /usr/lib/qt6/bin
           for tool in qmake moc rcc uic lrelease; do
-            if [ -x "/usr/bin/${tool}6" ]; then
-              sudo ln -sf "/usr/bin/${tool}6" "/usr/lib/qt6/bin/${tool}"
-            fi
+            if [ -x "/usr/bin/${tool}6" ]; then sudo ln -sf "/usr/bin/${tool}6" "/usr/lib/qt6/bin/${tool}"; fi
           done
-          sudo apt-get install -y libfuse2
-          # Download appimagetool for AppImage builds
-          wget -O appimagetool-x86_64.AppImage https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
-          chmod +x appimagetool-x86_64.AppImage
 
-      # macOS setup
-      - name: Install macOS dependencies
+      - name: Build Linux AppImage
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          export PATH="/usr/lib/qt6/bin:$PATH"
+          bash ./build.sh
+          bash ./build_gui.sh
+          chmod +x build_appimage.sh
+          ./build_appimage.sh
+
+      # --- MACOS ---
+      - name: Install macOS Deps
         if: matrix.os == 'macos-latest'
         run: |
           brew update
-          brew install qt@6 vala glib json-glib libsodium qtbase qttools cmake pkg-config create-dmg
-          QT_PREFIX=$(brew --prefix qt@6)
-          echo "$QT_PREFIX/bin" >> $GITHUB_PATH
+          brew install qt@6 vala glib json-glib libsodium cmake pkg-config create-dmg
+          echo "QT_PREFIX=$(brew --prefix qt@6)" >> $GITHUB_ENV
+          echo "$(brew --prefix qt@6)/bin" >> $GITHUB_PATH
 
-      # Windows setup
-      - name: Setup MSYS2 for Windows
+      - name: Build macOS DMG
+        if: matrix.os == 'macos-latest'
+        run: |
+          bash ./build.sh
+          bash ./build_gui.sh
+          # Assuming build_macos.sh exists
+          if [ -f "build_macos.sh" ]; then chmod +x build_macos.sh && ./build_macos.sh; fi
+
+      # --- WINDOWS ---
+      - name: Setup Windows (MSYS2)
         if: matrix.os == 'windows-latest'
         uses: msys2/setup-msys2@v2
         with:
           update: true
           msystem: MINGW64
+          install: >-
+            base-devel mingw-w64-x86_64-toolchain mingw-w64-x86_64-qt6-base
+            mingw-w64-x86_64-qt6-tools mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-json-glib mingw-w64-x86_64-libsodium mingw-w64-x86_64-vala
 
-      - name: Install Windows dependencies & build
+      - name: Build Windows
         if: matrix.os == 'windows-latest'
         shell: msys2 {0}
         run: |
-          pacman -Syu --noconfirm
-          pacman -S --noconfirm mingw-w64-x86_64-qt6-base mingw-w64-x86_64-qt6-tools mingw-w64-x86_64-toolchain mingw-w64-x86_64-pkg-config mingw-w64-x86_64-json-glib mingw-w64-x86_64-libsodium mingw-w64-x86_64-vala
           export PATH="/mingw64/bin:/mingw64/lib/qt6/bin:$PATH"
-          export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig:$PKG_CONFIG_PATH"
           bash ./build.sh
           bash ./build_gui.sh
 
-      - name: Build (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          export PATH="/usr/lib/qt6/bin:$PATH"
-          echo "=== Attempting AppImage packaging (includes core build) ==="
-          if [ -f appimagetool-x86_64.AppImage ]; then
-            bash ./build-appimage.sh || echo "AppImage build failed with code $?"
-            echo "=== Checking for AppImage after build ==="
-            ls -lh Dvx3-BackupManager-*.AppImage || echo "No AppImage found"
-          else
-            echo "AppImage tool not found, skipping"
-          fi
-
-      - name: Build (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          export PATH="${QT_PREFIX}/bin:$PATH"
-          echo "=== Running ./build_gui.sh (core build) ==="
-          bash ./build_gui.sh || echo "Build script exited with code $?"
-          echo "=== Attempting macOS packaging ==="
-          bash ./build-macos.sh || echo "macOS build failed"
-
-      # Package/Upload artifacts
-      - name: Move AppImage to workspace root (Linux only)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          find . -name 'Dvx3-BackupManager-*-x86_64.AppImage' -exec cp {} . \; || true
-
-      - name: List files in workspace (debug, Linux only)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          ls -lh Dvx3-BackupManager-*.AppImage || true
-          ls -lhR .
-
-      - name: Print working directory and all files (debug, Linux/macOS)
-        if: matrix.os != 'windows-latest'
-        run: |
-          pwd
-          find . -type f | sort
-
-      - name: Print working directory and all files (debug, Windows)
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          Get-Location
-          Get-ChildItem -Recurse | Sort-Object FullName | Format-Table FullName,Length -AutoSize
-
-      - name: Upload artifacts
+      # --- UPLOAD ARTIFACTS ---
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: cross-platform-artifacts-${{ matrix.os }}
+          name: desktop-artifacts-${{ matrix.os }}
           path: |
-            ./Dvx3-BackupManager-*-x86_64.AppImage
+            ./*.AppImage
             ./*.dmg
             ./*.exe
             ./*.dll
-            ./*.tar.gz
-          retention-days: 60
+          if-no-files-found: warn
+
+  # ===========================================================================
+  # JOB 2: Raspberry Pi Builds (ARM32 & ARM64 via QEMU)
+  # ===========================================================================
+  rpi-build:
+    name: Build RPi (${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: armv7
+            platform: linux/arm/v7
+            image: arm32v7/debian:bookworm
+          - arch: aarch64
+            platform: linux/arm64
+            image: arm64v8/debian:bookworm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build in Docker (Emulation)
+        run: |
+          # We mount the current directory to /work inside the container
+          docker run --rm --platform ${{ matrix.platform }} \
+            -v ${{ github.workspace }}:/work \
+            -w /work \
+            ${{ matrix.image }} \
+            /bin/bash -c "
+              apt-get update && \
+              apt-get install -y build-essential valac libglib2.0-dev libjson-glib-dev \
+              libsodium-dev zstd qt6-base-dev qt6-base-dev-tools qt6-tools-dev && \
+              
+              # Build
+              ./build.sh && \
+              ./build_gui.sh && \
+              
+              # Package as Tarball (AppImage on QEMU/ARM is often unstable)
+              tar -czvf Dvx3-BackupManager-RPi-${{ matrix.arch }}.tar.gz \
+                  backup-manager-gui libdvx3.so dvx3-backup.png
+            "
+
+      - name: Upload RPi Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpi-artifacts-${{ matrix.arch }}
+          path: ./*.tar.gz
+
+  # ===========================================================================
+  # JOB 3: Docker Image Build
+  # ===========================================================================
+  docker-build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: ${{ startsWith(github.ref, 'refs/tags/') }}
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+
+  # ===========================================================================
+  # JOB 4: Create Release (Only on Tag)
+  # ===========================================================================
+  release:
+    name: Create Release
+    needs: [desktop-build, rpi-build, docker-build]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: Display Artifacts
+        run: ls -R ./artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ./artifacts/**/*.AppImage
+            ./artifacts/**/*.dmg
+            ./artifacts/**/*.exe
+            ./artifacts/**/*.dll
+            ./artifacts/**/*.tar.gz
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
