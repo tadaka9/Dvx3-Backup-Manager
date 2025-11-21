@@ -3,7 +3,7 @@ name: Cross-Platform Build & Release
 on:
   push:
     branches: [main, master, develop]
-    tags: ['v*'] # Trigger release logic on version tags
+    tags: ['v*']
   pull_request:
     branches: [main, master]
   workflow_dispatch:
@@ -34,7 +34,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential valac libglib2.0-dev libjson-glib-dev libsodium-dev zstd \
             qt6-base-dev qt6-base-dev-tools qt6-tools-dev libfuse2
-          # Symlink Qt tools
           sudo mkdir -p /usr/lib/qt6/bin
           for tool in qmake moc rcc uic lrelease; do
             if [ -x "/usr/bin/${tool}6" ]; then sudo ln -sf "/usr/bin/${tool}6" "/usr/lib/qt6/bin/${tool}"; fi
@@ -50,8 +49,16 @@ jobs:
           bash ./build_gui.sh
           
           echo "=== Packaging AppImage ==="
-          chmod +x build_appimage.sh
-          ./build_appimage.sh
+          # FIX: Check for both naming conventions
+          if [ -f "build_appimage.sh" ]; then
+            chmod +x build_appimage.sh && ./build_appimage.sh
+          elif [ -f "build-appimage.sh" ]; then
+            chmod +x build-appimage.sh && ./build-appimage.sh
+          else
+            echo "::error::AppImage script not found! Listing files:"
+            ls -la
+            exit 1
+          fi
 
       # --- MACOS ---
       - name: Install macOS Deps
@@ -65,11 +72,8 @@ jobs:
       - name: Build macOS DMG
         if: matrix.os == 'macos-latest'
         run: |
-          echo "=== Building Core & GUI ==="
           bash ./build.sh
           bash ./build_gui.sh
-          
-          echo "=== Packaging DMG ==="
           if [ -f "build_macos.sh" ]; then 
             chmod +x build_macos.sh && ./build_macos.sh
           elif [ -f "build-macos.sh" ]; then
@@ -93,14 +97,10 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: msys2 {0}
         run: |
-          # FIX: Add hidden Qt bin path and alias moc.exe to moc
           export PATH="/mingw64/share/qt6/bin:/mingw64/bin:$PATH"
-          
           if [ -f "/mingw64/share/qt6/bin/moc.exe" ] && [ ! -f "/mingw64/bin/moc" ]; then
             cp "/mingw64/share/qt6/bin/moc.exe" "/mingw64/bin/moc"
           fi
-          
-          echo "=== Building Core & GUI ==="
           bash ./build.sh
           bash ./build_gui.sh
 
@@ -119,7 +119,7 @@ jobs:
           if-no-files-found: warn
 
   # ===========================================================================
-  # JOB 2: Raspberry Pi Builds (ARM32 & ARM64 via QEMU)
+  # JOB 2: Raspberry Pi Builds
   # ===========================================================================
   rpi-build:
     name: Build RPi (${{ matrix.arch }})
@@ -137,11 +137,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Build in Docker (Emulation)
+      - uses: docker/setup-qemu-action@v3
+      - name: Build in Docker
         run: |
           docker run --rm --platform ${{ matrix.platform }} \
             -v ${{ github.workspace }}:/work \
@@ -156,9 +153,7 @@ jobs:
               tar -czvf Dvx3-BackupManager-RPi-${{ matrix.arch }}.tar.gz \
                   backup-manager-gui libdvx3.so dvx3-backup.png
             "
-
-      - name: Upload RPi Artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: rpi-artifacts-${{ matrix.arch }}
           path: ./*.tar.gz
@@ -172,7 +167,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-
       - name: Login to GHCR
         if: startsWith(github.ref, 'refs/tags/')
         uses: docker/login-action@v3
@@ -180,13 +174,9 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      # FIX: Lowercase repo name for Docker tag
       - name: Lowercase Repo Name
         run: echo "REPO_LC=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
-
-      - name: Build and Push
-        uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v5
         with:
           context: .
           push: ${{ startsWith(github.ref, 'refs/tags/') }}
@@ -206,9 +196,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: ./artifacts
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
+      - uses: softprops/action-gh-release@v1
         with:
           files: |
             ./artifacts/**/*.AppImage
