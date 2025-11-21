@@ -127,33 +127,111 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           brew update
-          brew install qt vala glib json-glib libsodium cmake pkg-config create-dmg
-          # Force link to make binaries available
-          brew link qt --force || true
+          brew install qt@6 vala glib json-glib libsodium cmake pkg-config create-dmg
       
-      - name: Build macOS DMG
+      - name: Build macOS Application
         if: matrix.os == 'macos-latest'
         run: |
-          # Bulletproof method to find moc
-          echo "Searching for moc executable..."
-          MOC_PATH=$(find /opt/homebrew/Cellar -name moc -type f -perm +111 2>/dev/null | grep "/bin/moc" | head -n 1)
+          # Set up Qt6 paths
+          QT6_PREFIX=$(brew --prefix qt@6)
+          export PATH="$QT6_PREFIX/bin:$PATH"
+          export PKG_CONFIG_PATH="$QT6_PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH"
+          export QT_MOC_NATIVE="$QT6_PREFIX/libexec/moc"
           
-          if [ -n "$MOC_PATH" ]; then
-            echo "Found moc at: $MOC_PATH"
-            MOC_DIR=$(dirname "$MOC_PATH")
-            export PATH="$MOC_DIR:$PATH"
+          echo "Qt6 installation path: $QT6_PREFIX"
+          echo "Checking for Qt6 tools..."
+          which moc || echo "moc not in PATH"
+          ls -la "$QT6_PREFIX/bin/" || echo "Qt6 bin directory not found"
+          ls -la "$QT6_PREFIX/libexec/" || echo "Qt6 libexec directory not found"
+          
+          # Verify moc exists
+          if [ -f "$QT6_PREFIX/libexec/moc" ]; then
+            echo "✓ Found moc at: $QT6_PREFIX/libexec/moc"
+          elif [ -f "$QT6_PREFIX/bin/moc" ]; then
+            export QT_MOC_NATIVE="$QT6_PREFIX/bin/moc"
+            echo "✓ Found moc at: $QT6_PREFIX/bin/moc"
           else
-            echo "WARNING: Could not find moc via find command. Falling back to standard paths."
-            export PATH="$(brew --prefix qt)/bin:$(brew --prefix qt@6)/bin:$PATH"
+            echo "ERROR: moc not found in expected locations"
+            exit 1
           fi
           
-          echo "Checking for moc in PATH..."
-          which moc || echo "moc still not found in PATH"
-          
+          # Build the application
+          echo "Building library and CLI..."
           bash ./build.sh
+          
+          echo "Building GUI..."
           bash ./build_gui.sh
-          if [ -f "build_macos.sh" ]; then chmod +x build_macos.sh && ./build_macos.sh
-          elif [ -f "build-macos.sh" ]; then chmod +x build-macos.sh && ./build-macos.sh; fi
+          
+          # Verify build outputs
+          if [ ! -f "backup-manager-gui" ]; then
+            echo "ERROR: backup-manager-gui was not created"
+            ls -la
+            exit 1
+          fi
+          
+          echo "✓ Build successful"
+      
+      - name: Create macOS DMG
+        if: matrix.os == 'macos-latest'
+        run: |
+          # Create app bundle structure
+          APP_NAME="Dvx3 Backup Manager"
+          APP_BUNDLE="$APP_NAME.app"
+          
+          echo "Creating macOS app bundle..."
+          mkdir -p "$APP_BUNDLE/Contents/MacOS"
+          mkdir -p "$APP_BUNDLE/Contents/Resources"
+          mkdir -p "$APP_BUNDLE/Contents/Frameworks"
+          
+          # Copy executable and library
+          cp backup-manager-gui "$APP_BUNDLE/Contents/MacOS/"
+          cp libdvx3.dylib "$APP_BUNDLE/Contents/Frameworks/" || echo "Warning: libdvx3.dylib not found"
+          
+          # Copy icon if available
+          if [ -f "dvx3-backup.png" ]; then
+            cp dvx3-backup.png "$APP_BUNDLE/Contents/Resources/icon.png"
+          fi
+          
+          # Create Info.plist
+          cat > "$APP_BUNDLE/Contents/Info.plist" << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>backup-manager-gui</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.dvx3.backup-manager</string>
+              <key>CFBundleName</key>
+              <string>Dvx3 Backup Manager</string>
+              <key>CFBundleVersion</key>
+              <string>1.0</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>10.15</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+          
+          # Create DMG
+          echo "Creating DMG..."
+          DMG_NAME="Dvx3-BackupManager-macOS.dmg"
+          
+          # Simple DMG creation
+          hdiutil create -volname "Dvx3 Backup Manager" -srcfolder "$APP_BUNDLE" -ov -format UDZO "$DMG_NAME"
+          
+          if [ -f "$DMG_NAME" ]; then
+            echo "✓ DMG created successfully: $DMG_NAME"
+            ls -lh "$DMG_NAME"
+          else
+            echo "ERROR: DMG creation failed"
+            exit 1
+          fi
       
       # --- WINDOWS ---
       - name: Setup Windows (MSYS2)
