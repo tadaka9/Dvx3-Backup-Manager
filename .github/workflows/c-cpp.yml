@@ -44,8 +44,12 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           export PATH="/usr/lib/qt6/bin:$PATH"
+          
+          echo "=== Building Core & GUI ==="
           bash ./build.sh
           bash ./build_gui.sh
+          
+          echo "=== Packaging AppImage ==="
           chmod +x build_appimage.sh
           ./build_appimage.sh
 
@@ -61,10 +65,16 @@ jobs:
       - name: Build macOS DMG
         if: matrix.os == 'macos-latest'
         run: |
+          echo "=== Building Core & GUI ==="
           bash ./build.sh
           bash ./build_gui.sh
-          # Assuming build_macos.sh exists
-          if [ -f "build_macos.sh" ]; then chmod +x build_macos.sh && ./build_macos.sh; fi
+          
+          echo "=== Packaging DMG ==="
+          if [ -f "build_macos.sh" ]; then 
+            chmod +x build_macos.sh && ./build_macos.sh
+          elif [ -f "build-macos.sh" ]; then
+            chmod +x build-macos.sh && ./build-macos.sh
+          fi
 
       # --- WINDOWS ---
       - name: Setup Windows (MSYS2)
@@ -77,12 +87,20 @@ jobs:
             base-devel mingw-w64-x86_64-toolchain mingw-w64-x86_64-qt6-base
             mingw-w64-x86_64-qt6-tools mingw-w64-x86_64-pkg-config
             mingw-w64-x86_64-json-glib mingw-w64-x86_64-libsodium mingw-w64-x86_64-vala
+            mingw-w64-x86_64-libzip
 
       - name: Build Windows
         if: matrix.os == 'windows-latest'
         shell: msys2 {0}
         run: |
-          export PATH="/mingw64/bin:/mingw64/lib/qt6/bin:$PATH"
+          # FIX: Add hidden Qt bin path and alias moc.exe to moc
+          export PATH="/mingw64/share/qt6/bin:/mingw64/bin:$PATH"
+          
+          if [ -f "/mingw64/share/qt6/bin/moc.exe" ] && [ ! -f "/mingw64/bin/moc" ]; then
+            cp "/mingw64/share/qt6/bin/moc.exe" "/mingw64/bin/moc"
+          fi
+          
+          echo "=== Building Core & GUI ==="
           bash ./build.sh
           bash ./build_gui.sh
 
@@ -96,6 +114,8 @@ jobs:
             ./*.dmg
             ./*.exe
             ./*.dll
+            ./build/*.exe
+            ./build/*.dll
           if-no-files-found: warn
 
   # ===========================================================================
@@ -123,7 +143,6 @@ jobs:
 
       - name: Build in Docker (Emulation)
         run: |
-          # We mount the current directory to /work inside the container
           docker run --rm --platform ${{ matrix.platform }} \
             -v ${{ github.workspace }}:/work \
             -w /work \
@@ -132,12 +151,8 @@ jobs:
               apt-get update && \
               apt-get install -y build-essential valac libglib2.0-dev libjson-glib-dev \
               libsodium-dev zstd qt6-base-dev qt6-base-dev-tools qt6-tools-dev && \
-              
-              # Build
               ./build.sh && \
               ./build_gui.sh && \
-              
-              # Package as Tarball (AppImage on QEMU/ARM is often unstable)
               tar -czvf Dvx3-BackupManager-RPi-${{ matrix.arch }}.tar.gz \
                   backup-manager-gui libdvx3.so dvx3-backup.png
             "
@@ -156,11 +171,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to GitHub Container Registry
+      - name: Login to GHCR
         if: startsWith(github.ref, 'refs/tags/')
         uses: docker/login-action@v3
         with:
@@ -168,17 +181,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # FIX: Lowercase repo name for Docker tag
+      - name: Lowercase Repo Name
+        run: echo "REPO_LC=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
+
       - name: Build and Push
         uses: docker/build-push-action@v5
         with:
           context: .
           push: ${{ startsWith(github.ref, 'refs/tags/') }}
           tags: |
-            ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            ghcr.io/${{ env.REPO_LC }}:latest
+            ghcr.io/${{ env.REPO_LC }}:${{ github.ref_name }}
 
   # ===========================================================================
-  # JOB 4: Create Release (Only on Tag)
+  # JOB 4: Create Release
   # ===========================================================================
   release:
     name: Create Release
@@ -186,13 +203,9 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
-      - name: Download All Artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           path: ./artifacts
-
-      - name: Display Artifacts
-        run: ls -R ./artifacts
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -203,7 +216,5 @@ jobs:
             ./artifacts/**/*.exe
             ./artifacts/**/*.dll
             ./artifacts/**/*.tar.gz
-          draft: false
-          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
