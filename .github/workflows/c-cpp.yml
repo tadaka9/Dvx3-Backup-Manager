@@ -50,6 +50,8 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
+      
+      # --- LINUX ---
       - name: Install Linux Deps
         if: matrix.os == 'ubuntu-latest'
         run: |
@@ -59,6 +61,7 @@ jobs:
           for tool in qmake moc rcc uic lrelease; do
             if [ -x "/usr/bin/${tool}6" ]; then sudo ln -sf "/usr/bin/${tool}6" "/usr/lib/qt6/bin/${tool}"; fi
           done
+      
       - name: Build Linux AppImage
         if: matrix.os == 'ubuntu-latest'
         run: |
@@ -118,22 +121,41 @@ jobs:
           EOF
           chmod +x build_appimage.sh
           ./build_appimage.sh
+      
+      # --- MACOS ---
       - name: Install macOS Deps
         if: matrix.os == 'macos-latest'
         run: |
           brew update
           brew install qt vala glib json-glib libsodium cmake pkg-config create-dmg
+          # Force link to make binaries available
           brew link qt --force || true
+      
       - name: Build macOS DMG
         if: matrix.os == 'macos-latest'
         run: |
-          export PATH="$(brew --prefix qt)/bin:$(brew --prefix qt@6)/bin:$PATH"
-          echo "Checking for moc..."
-          which moc || echo "moc not found in PATH"
+          # Bulletproof method to find moc
+          echo "Searching for moc executable..."
+          MOC_PATH=$(find /opt/homebrew/Cellar -name moc -type f -perm +111 2>/dev/null | grep "/bin/moc" | head -n 1)
+          
+          if [ -n "$MOC_PATH" ]; then
+            echo "Found moc at: $MOC_PATH"
+            MOC_DIR=$(dirname "$MOC_PATH")
+            export PATH="$MOC_DIR:$PATH"
+          else
+            echo "WARNING: Could not find moc via find command. Falling back to standard paths."
+            export PATH="$(brew --prefix qt)/bin:$(brew --prefix qt@6)/bin:$PATH"
+          fi
+          
+          echo "Checking for moc in PATH..."
+          which moc || echo "moc still not found in PATH"
+          
           bash ./build.sh
           bash ./build_gui.sh
           if [ -f "build_macos.sh" ]; then chmod +x build_macos.sh && ./build_macos.sh
           elif [ -f "build-macos.sh" ]; then chmod +x build-macos.sh && ./build-macos.sh; fi
+      
+      # --- WINDOWS ---
       - name: Setup Windows (MSYS2)
         if: matrix.os == 'windows-latest'
         uses: msys2/setup-msys2@v2
@@ -145,6 +167,7 @@ jobs:
             mingw-w64-x86_64-qt6-tools mingw-w64-x86_64-pkg-config
             mingw-w64-x86_64-json-glib mingw-w64-x86_64-libsodium mingw-w64-x86_64-vala
             mingw-w64-x86_64-libzip
+      
       - name: Build Windows
         if: matrix.os == 'windows-latest'
         shell: msys2 {0}
@@ -155,6 +178,7 @@ jobs:
           fi
           bash ./build.sh
           bash ./build_gui.sh
+      
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -248,4 +272,3 @@ jobs:
             ./artifacts/**/*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish to Docker Hub
