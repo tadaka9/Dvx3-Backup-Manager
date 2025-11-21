@@ -116,21 +116,27 @@ elif [ -x /usr/local/bin/moc ]; then
     MOC=/usr/local/bin/moc
     RCC=/usr/local/bin/rcc
 # Check MSYS2/MINGW64 paths (Windows) - executables have .exe extension
-elif [ -x /mingw64/bin/moc.exe ]; then
-    MOC=/mingw64/bin/moc.exe
-    RCC=/mingw64/bin/rcc.exe
+# Prioritize Qt6-specific variants first
 elif [ -x /mingw64/bin/moc-qt6.exe ]; then
     MOC=/mingw64/bin/moc-qt6.exe
     RCC=/mingw64/bin/rcc-qt6.exe
+    echo "✓ Found moc-qt6.exe at /mingw64/bin/"
 elif [ -x /mingw64/bin/moc6.exe ]; then
     MOC=/mingw64/bin/moc6.exe
     RCC=/mingw64/bin/rcc6.exe
+    echo "✓ Found moc6.exe at /mingw64/bin/"
+elif [ -x /mingw64/bin/moc.exe ]; then
+    MOC=/mingw64/bin/moc.exe
+    RCC=/mingw64/bin/rcc.exe
+    echo "✓ Found moc.exe at /mingw64/bin/"
 elif [ -x /mingw64/qt6/bin/moc.exe ]; then
     MOC=/mingw64/qt6/bin/moc.exe
     RCC=/mingw64/qt6/bin/rcc.exe
+    echo "✓ Found moc.exe at /mingw64/qt6/bin/"
 elif [ -x /mingw64/lib/qt6/bin/moc.exe ]; then
     MOC=/mingw64/lib/qt6/bin/moc.exe
     RCC=/mingw64/lib/qt6/bin/rcc.exe
+    echo "✓ Found moc.exe at /mingw64/lib/qt6/bin/"
 # Check Linux paths
 elif [ -x /usr/lib/qt6/moc ]; then
     MOC=/usr/lib/qt6/moc

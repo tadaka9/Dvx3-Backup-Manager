@@ -76,33 +76,76 @@ jobs:
       - name: Install dependencies
         run: |
           brew update || true
-          # Install Qt6 explicitly (not just 'qt')
+          # Install Qt6 - try both 'qt' and 'qt@6' packages
+          brew install vala glib json-glib libsodium qt cmake pkg-config || \
           brew install vala glib json-glib libsodium qt@6 cmake pkg-config || \
-          brew upgrade vala glib json-glib libsodium qt@6 cmake pkg-config || true
+          brew upgrade vala glib json-glib libsodium qt cmake pkg-config || true
 
       - name: Setup Qt6 environment
         run: |
-          # Set up PATH to use Qt6
-          echo "$(brew --prefix qt@6)/bin" >> $GITHUB_PATH
-          echo "QT6_DIR=$(brew --prefix qt@6)" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=$(brew --prefix qt@6)/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+          # Detect Qt installation (try both 'qt' and 'qt@6')
+          if brew --prefix qt >/dev/null 2>&1; then
+            QT_PREFIX="$(brew --prefix qt)"
+            echo "Using Qt at: $QT_PREFIX"
+          elif brew --prefix qt@6 >/dev/null 2>&1; then
+            QT_PREFIX="$(brew --prefix qt@6)"
+            echo "Using Qt@6 at: $QT_PREFIX"
+          else
+            echo "ERROR: Qt not found in Homebrew!"
+            exit 1
+          fi
+          
+          # Set up environment
+          echo "$QT_PREFIX/bin" >> $GITHUB_PATH
+          echo "QT6_DIR=$QT_PREFIX" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=$QT_PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
 
       - name: Verify Qt6 installation
         run: |
-          echo "Qt6 prefix: $(brew --prefix qt@6)"
-          ls -la "$(brew --prefix qt@6)/bin/" || true
-          ls -la "$(brew --prefix qt@6)/libexec/" || true
-          # Check for moc in both possible locations
-          if [ -f "$(brew --prefix qt@6)/libexec/moc" ]; then
-            echo "Found moc in libexec"
-            echo "QT_MOC_NATIVE=$(brew --prefix qt@6)/libexec/moc" >> $GITHUB_ENV
-          elif [ -f "$(brew --prefix qt@6)/bin/moc" ]; then
-            echo "Found moc in bin"
-            echo "QT_MOC_NATIVE=$(brew --prefix qt@6)/bin/moc" >> $GITHUB_ENV
+          # Detect Qt prefix
+          if brew --prefix qt >/dev/null 2>&1; then
+            QT_PREFIX="$(brew --prefix qt)"
+          elif brew --prefix qt@6 >/dev/null 2>&1; then
+            QT_PREFIX="$(brew --prefix qt@6)"
           else
-            echo "ERROR: moc not found!"
+            echo "ERROR: Qt not found!"
             exit 1
           fi
+
+          echo "Qt prefix: $QT_PREFIX"
+          echo "Checking for moc..."
+
+          # Check bin directory
+          if [ -f "$QT_PREFIX/bin/moc" ]; then
+            echo "✓ Found moc at: $QT_PREFIX/bin/moc"
+            echo "QT_MOC_NATIVE=$QT_PREFIX/bin/moc" >> $GITHUB_ENV
+          # Check libexec directory
+          elif [ -f "$QT_PREFIX/libexec/moc" ]; then
+            echo "✓ Found moc at: $QT_PREFIX/libexec/moc"
+            echo "QT_MOC_NATIVE=$QT_PREFIX/libexec/moc" >> $GITHUB_ENV
+          # Check Homebrew bin directory (for qt package on Apple Silicon)
+          elif [ -f "/opt/homebrew/bin/moc" ]; then
+            echo "✓ Found moc at: /opt/homebrew/bin/moc"
+            echo "QT_MOC_NATIVE=/opt/homebrew/bin/moc" >> $GITHUB_ENV
+          # Check Homebrew bin directory (for qt package on Intel Mac)
+          elif [ -f "/usr/local/bin/moc" ]; then
+            echo "✓ Found moc at: /usr/local/bin/moc"
+            echo "QT_MOC_NATIVE=/usr/local/bin/moc" >> $GITHUB_ENV
+          else
+            echo "ERROR: moc not found!"
+            echo "Contents of $QT_PREFIX/bin/:"
+            ls -la "$QT_PREFIX/bin/" || true
+            echo "Contents of $QT_PREFIX/libexec/:"
+            ls -la "$QT_PREFIX/libexec/" || true
+            echo "Contents of /opt/homebrew/bin/:"
+            ls -la "/opt/homebrew/bin/moc" || true
+            echo "Contents of /usr/local/bin/:"
+            ls -la "/usr/local/bin/moc" || true
+            exit 1
+          fi
+
+          # Verify pkg-config can find Qt6
+          pkg-config --modversion Qt6Widgets || echo "Warning: pkg-config cannot find Qt6Widgets"
 
       - name: Verify libsodium.vapi
         run: ls -la vala-extra-vapis/libsodium.vapi
