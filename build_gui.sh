@@ -116,23 +116,43 @@ elif [ -x /usr/local/bin/moc ]; then
     MOC=/usr/local/bin/moc
     RCC=/usr/local/bin/rcc
 # Check MSYS2/MINGW64 paths (Windows) - executables have .exe extension
-# Prioritize Qt6-specific variants first
+# Prioritize Qt6-specific variants first, check both with and without .exe
+elif [ -x /mingw64/bin/moc-qt6 ]; then
+    MOC=/mingw64/bin/moc-qt6
+    RCC=/mingw64/bin/rcc-qt6
+    echo "✓ Found moc-qt6 at /mingw64/bin/"
 elif [ -x /mingw64/bin/moc-qt6.exe ]; then
     MOC=/mingw64/bin/moc-qt6.exe
     RCC=/mingw64/bin/rcc-qt6.exe
     echo "✓ Found moc-qt6.exe at /mingw64/bin/"
+elif [ -x /mingw64/bin/moc6 ]; then
+    MOC=/mingw64/bin/moc6
+    RCC=/mingw64/bin/rcc6
+    echo "✓ Found moc6 at /mingw64/bin/"
 elif [ -x /mingw64/bin/moc6.exe ]; then
     MOC=/mingw64/bin/moc6.exe
     RCC=/mingw64/bin/rcc6.exe
     echo "✓ Found moc6.exe at /mingw64/bin/"
+elif [ -x /mingw64/bin/moc ]; then
+    MOC=/mingw64/bin/moc
+    RCC=/mingw64/bin/rcc
+    echo "✓ Found moc at /mingw64/bin/"
 elif [ -x /mingw64/bin/moc.exe ]; then
     MOC=/mingw64/bin/moc.exe
     RCC=/mingw64/bin/rcc.exe
     echo "✓ Found moc.exe at /mingw64/bin/"
+elif [ -x /mingw64/qt6/bin/moc ]; then
+    MOC=/mingw64/qt6/bin/moc
+    RCC=/mingw64/qt6/bin/rcc
+    echo "✓ Found moc at /mingw64/qt6/bin/"
 elif [ -x /mingw64/qt6/bin/moc.exe ]; then
     MOC=/mingw64/qt6/bin/moc.exe
     RCC=/mingw64/qt6/bin/rcc.exe
     echo "✓ Found moc.exe at /mingw64/qt6/bin/"
+elif [ -x /mingw64/lib/qt6/bin/moc ]; then
+    MOC=/mingw64/lib/qt6/bin/moc
+    RCC=/mingw64/lib/qt6/bin/rcc
+    echo "✓ Found moc at /mingw64/lib/qt6/bin/"
 elif [ -x /mingw64/lib/qt6/bin/moc.exe ]; then
     MOC=/mingw64/lib/qt6/bin/moc.exe
     RCC=/mingw64/lib/qt6/bin/rcc.exe
