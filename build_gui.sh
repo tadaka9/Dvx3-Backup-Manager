@@ -96,23 +96,40 @@ if [ -n "$QT_MOC_NATIVE" ] && [ -x "$QT_MOC_NATIVE" ]; then
     else
         RCC=rcc # Fallback to searching in PATH
     fi
+# Check MSYS2/MINGW64 paths (Windows)
+elif [ -x /mingw64/bin/moc ]; then
+    MOC=/mingw64/bin/moc
+    RCC=/mingw64/bin/rcc
+elif [ -x /mingw64/qt6/bin/moc ]; then
+    MOC=/mingw64/qt6/bin/moc
+    RCC=/mingw64/qt6/bin/rcc
+elif [ -x /mingw64/lib/qt6/bin/moc ]; then
+    MOC=/mingw64/lib/qt6/bin/moc
+    RCC=/mingw64/lib/qt6/bin/rcc
+# Check Linux paths
 elif [ -x /usr/lib/qt6/moc ]; then
     MOC=/usr/lib/qt6/moc
     RCC=/usr/lib/qt6/rcc
 elif [ -x /usr/lib/qt6/libexec/moc ]; then
     MOC=/usr/lib/qt6/libexec/moc
     RCC=/usr/lib/qt6/libexec/rcc
+# Check for Qt6-specific commands in PATH
 elif command -v moc-qt6 >/dev/null 2>&1; then
     MOC=moc-qt6
     RCC=rcc-qt6
 elif command -v moc6 >/dev/null 2>&1; then
     MOC=moc6
     RCC=rcc6
+# Fallback to generic commands in PATH
 elif command -v moc >/dev/null 2>&1; then
     MOC=moc
     RCC=rcc
 else
     echo "Error: moc not found. Install Qt6 development tools."
+    echo "Searched locations:"
+    echo "  - MSYS2: /mingw64/bin/moc, /mingw64/qt6/bin/moc, /mingw64/lib/qt6/bin/moc"
+    echo "  - Linux: /usr/lib/qt6/moc, /usr/lib/qt6/libexec/moc"
+    echo "  - PATH: moc-qt6, moc6, moc"
     exit 1
 fi
 
