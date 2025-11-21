@@ -1,119 +1,101 @@
-# Build System Fixes - Implementation Complete
+# macOS and Windows Build Fix - TODO
 
-## Current Status: ✅ IMPLEMENTED - READY FOR TESTING
+## Steps to Complete:
 
-### Phase 1: Windows Build Fixes ✅ COMPLETED
-- [x] Fix DLL detection and copying (replaced wildcards with explicit finding)
-- [x] Fix Qt6 plugin paths (detect dynamically via pkg-config)
-- [x] Create qt.conf file for plugin configuration
-- [x] Add dependency verification using objdump
-- [x] Ensure consistent library naming (libDvx3.dll/libdvx3.dll)
-- [x] Add executable testing before packaging
-
-### Phase 2: macOS Build Fixes ✅ COMPLETED
-- [x] Fix library install_name using install_name_tool
-- [x] Improve macdeployqt usage with -always-overwrite flag
-- [x] Add bundle verification (check frameworks present)
-- [x] Test app bundle before DMG creation
-- [x] Add proper error handling for each step
-- [x] Add icon conversion to ICNS format
-- [x] Use create-dmg for better DMG creation
-
-### Phase 3: Linux AppImage Support ✅ COMPLETED
-- [x] Add linuxdeploy/appimagetool download
-- [x] Create AppImage build step with Qt plugin
-- [x] Bundle all dependencies
-- [x] Upload AppImage as artifact
-- [x] Add desktop file and icon
-
-### Phase 4: Release Artifacts Improvements ✅ COMPLETED
-- [x] Upload only final archives (DMG, ZIP, AppImage)
-- [x] Generate SHA256 checksums for all artifacts
-- [x] Add combined SHA256SUMS.txt file
-- [x] Create comprehensive release notes
-- [x] Improve artifact naming consistency
-
-### Phase 5: Build Script Improvements
-- [x] build_gui.sh - No changes needed (already has MSYS2 support)
-- [x] build.sh - No changes needed (already cross-platform)
-- [x] Consistent library naming handled in workflow
-
-## Implementation Summary
-
-### Key Improvements Made:
-
-#### Windows Build:
-- ✅ Explicit DLL copying with verification (no more wildcards)
-- ✅ Dynamic Qt6 plugin directory detection
-- ✅ qt.conf file creation for proper plugin loading
-- ✅ Dependency verification with objdump
-- ✅ Comprehensive error checking at each step
-- ✅ Detailed logging of copied files
-
-#### macOS Build:
-- ✅ Library install_name fixed with install_name_tool
-- ✅ Proper @executable_path/../Frameworks/ references
-- ✅ macdeployqt with -always-overwrite flag
-- ✅ App bundle verification before DMG creation
-- ✅ PNG to ICNS icon conversion
-- ✅ create-dmg for professional DMG creation
-- ✅ Fallback to hdiutil if create-dmg fails
-
-#### Linux Build:
-- ✅ Full AppImage support with linuxdeploy
-- ✅ Qt plugin bundling
-- ✅ Desktop file and icon integration
-- ✅ Portable distribution
-
-#### Release Process:
-- ✅ Only archives uploaded (no loose files)
-- ✅ SHA256 checksums for all artifacts
-- ✅ Combined SHA256SUMS.txt file
-- ✅ Comprehensive release notes with installation instructions
-- ✅ Automatic release creation on version tags
-
-## Next Steps - Testing Required
-
-1. **Push to GitHub** to trigger the workflow:
-   ```bash
-   git add .github/workflows/build.yml TODO.md
-   git commit -m "Fix Windows, macOS, and Linux builds with proper library embedding"
-   git push origin main
-   ```
-
-2. **Monitor GitHub Actions**:
-   - Go to Actions tab on GitHub
-   - Watch all three build jobs (Linux, macOS, Windows)
-   - Check for any errors in the logs
-
-3. **Download and Test Artifacts**:
-   - Download Linux AppImage and test on Linux
-   - Download macOS DMG and test on macOS
-   - Download Windows ZIP and test on Windows
-
-4. **Create Test Release**:
-   ```bash
-   git tag v0.0.3a101125
-   git push origin v0.0.3a101125
-   ```
-
-5. **Verify Release**:
-   - Check that release is created automatically
-   - Verify all artifacts are attached
-   - Verify SHA256SUMS.txt is present
-   - Test downloads from release page
-
-## Files Modified
-- [x] .github/workflows/build.yml - Comprehensive fixes implemented
-- [x] TODO.md - Updated with implementation status
-
-## Previous Fixes (Completed)
 - [x] Fix macOS Dependencies Installation
+  - [x] Change `qt` to `qt@6` for explicit Qt6 installation
+  - [x] Remove problematic `brew link qt --force`
+  - [x] Add proper PATH setup using `brew --prefix qt@6`
+
 - [x] Fix macOS Build Step
-- [x] Fix Windows Build with MSYS2
+  - [x] Remove deprecated `find -perm +111` syntax
+  - [x] Use `brew --prefix qt@6` to locate Qt tools
+  - [x] Set `QT_MOC_NATIVE` environment variable
+  - [x] Remove references to non-existent build scripts
+  - [x] Add proper error handling and debugging
+  - [x] Add inline DMG creation for packaging
+
+- [x] Fix Windows Build
+  - [x] Setup MSYS2 with proper mingw-w64 toolchain
+  - [x] Install all required dependencies (vala, glib2, json-glib, libsodium, qt6)
+  - [x] Configure MSYS2 shell as default for build steps
+  - [x] Package all required DLLs (glib, Qt6, libsodium, etc.)
+  - [x] Include Qt6 plugins (platforms, styles)
+  - [x] Create ZIP archive for distribution
+
 - [x] Create GitHub Actions Workflow
-- [x] Fix Windows moc Detection Issue
-- [x] Fix Windows DLL packaging
-- [x] Fix macOS library embedding
-- [x] Add Linux AppImage support
-- [x] Improve release artifacts
+  - [x] Create `.github/workflows/build.yml`
+  - [x] Implement Linux build job
+  - [x] Implement macOS build job with all fixes
+  - [x] Implement Windows build job with MSYS2
+  - [x] Add artifact uploads for all platforms
+  - [x] Add automatic release creation on tags
+
+- [ ] Verify Changes
+  - [x] Review the updated workflow
+  - [ ] Test on GitHub Actions (push to trigger workflow)
+
+## Current Status:
+✅ All changes implemented successfully!
+✅ GitHub Actions workflow created at `.github/workflows/build.yml`
+
+## Summary of Changes:
+
+### 1. macOS Dependencies Installation (Fixed)
+- Changed `brew install qt` to `brew install qt@6` for explicit Qt6 installation
+- Removed the problematic `brew link qt --force` command
+- Dependencies now install cleanly without conflicts
+
+### 2. macOS Build Step (Completely Rewritten)
+- **Removed deprecated syntax**: Eliminated `find -perm +111` which doesn't work on modern macOS
+- **Proper Qt6 path detection**: Uses `brew --prefix qt@6` to get the correct installation path
+- **Environment variables**: Sets `QT_MOC_NATIVE`, `PATH`, and `PKG_CONFIG_PATH` correctly
+- **Tool verification**: Checks for `moc` in both `libexec` and `bin` directories
+- **Error handling**: Exits with clear error messages if tools are not found
+- **Build verification**: Confirms `backup-manager-gui` was created successfully
+- **Removed non-existent scripts**: Uses existing `build.sh` and `build_gui.sh` scripts
+
+### 3. macOS DMG Creation (New Step Added)
+- Creates proper macOS `.app` bundle structure
+- Includes `Info.plist` with correct bundle identifiers
+- Copies executable, library, and icon into the bundle
+- Uses `macdeployqt` to bundle Qt frameworks automatically
+- Uses `hdiutil` to create a distributable DMG file
+- Verifies DMG creation with proper error handling
+
+### 4. Windows Build (Completely New)
+- **MSYS2 Setup**: Uses official `msys2/setup-msys2@v2` action
+- **MINGW64 Environment**: Configures proper mingw-w64 toolchain
+- **All Dependencies**: Installs vala, glib2, json-glib, libsodium, qt6-base, qt6-tools
+- **DLL Packaging**: Automatically copies all required runtime DLLs:
+  - GLib family (libglib, libgobject, libgio, etc.)
+  - JSON-GLib
+  - Libsodium
+  - Qt6 (Core, Gui, Widgets)
+  - MinGW runtime libraries
+- **Qt6 Plugins**: Includes platform plugins (qwindows.dll) and styles
+- **ZIP Distribution**: Creates ready-to-run package with all dependencies
+
+### 5. GitHub Actions Workflow Structure
+- **Multi-platform builds**: Linux (Ubuntu), macOS, Windows
+- **Artifact uploads**: Each platform uploads its build artifacts
+- **Automatic releases**: Creates GitHub releases on version tags
+- **Proper triggers**: Runs on push to main branches, tags, PRs, and manual dispatch
+
+## Key Improvements:
+✅ No more deprecated `find` command syntax on macOS
+✅ Explicit Qt6 installation and path handling
+✅ Proper environment variable setup for build scripts
+✅ Comprehensive error checking and debugging output
+✅ Complete DMG packaging solution for macOS
+✅ Full Windows support with MSYS2 and proper DLL packaging
+✅ Clean separation of build and packaging steps
+✅ Automated release creation on tags
+✅ Uses existing build scripts instead of creating new ones
+
+## Next Steps:
+1. Push the workflow to GitHub to trigger the first build
+2. Test all three platforms (Linux, macOS, Windows)
+3. Verify artifacts are created correctly
+4. Create a version tag (e.g., `v0.0.3a101125`) to test release creation
+5. Download and test the packaged applications on each platform

@@ -33,7 +33,7 @@ jobs:
           sudo apt-get install -y valac gcc g++ make cmake pkg-config \
             libglib2.0-dev libjson-glib-dev libsodium-dev \
             qt6-base-dev qt6-base-dev-tools qt6-tools-dev \
-            tar zstd file patchelf desktop-file-utils
+            tar zstd
 
       - name: Verify libsodium.vapi
         run: ls -la vala-extra-vapis/libsodium.vapi
@@ -52,82 +52,17 @@ jobs:
         run: |
           ls -lh backup-manager-gui dvx3 libdvx3.so
           file backup-manager-gui dvx3 libdvx3.so
-          echo "Checking library dependencies..."
-          ldd backup-manager-gui || true
-          ldd dvx3 || true
-
-      - name: Download linuxdeploy and appimagetool
-        run: |
-          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
-          chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-qt-x86_64.AppImage
-
-      - name: Create AppImage
-        run: |
-          export VERSION="${VERSION}"
-          export QMAKE=/usr/lib/qt6/bin/qmake
-          
-          # Create desktop file
-          mkdir -p AppDir/usr/share/applications
-          cat > AppDir/usr/share/applications/dvx3-backup-manager.desktop << 'EOF'
-          [Desktop Entry]
-          Type=Application
-          Name=Dvx3 Backup Manager
-          Comment=Encrypted Backup System
-          Exec=backup-manager-gui
-          Icon=dvx3-backup
-          Categories=System;Utility;Archiving;
-          Terminal=false
-          EOF
-          
-          # Create icon (copy if exists, create placeholder if not)
-          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
-          if [ -f dvx3-backup.png ]; then
-            cp dvx3-backup.png AppDir/usr/share/icons/hicolor/256x256/apps/dvx3-backup.png
-          else
-            # Create a simple placeholder icon
-            convert -size 256x256 xc:blue -pointsize 72 -fill white -gravity center \
-              -annotate +0+0 "DVX3" AppDir/usr/share/icons/hicolor/256x256/apps/dvx3-backup.png 2>/dev/null || \
-            echo "Warning: Could not create icon"
-          fi
-          
-          # Deploy application
-          ./linuxdeploy-x86_64.AppImage --appdir AppDir \
-            --executable=backup-manager-gui \
-            --executable=dvx3 \
-            --library=libdvx3.so \
-            --desktop-file=AppDir/usr/share/applications/dvx3-backup-manager.desktop \
-            --icon-file=AppDir/usr/share/icons/hicolor/256x256/apps/dvx3-backup.png \
-            --plugin qt \
-            --output appimage
-          
-          # Rename to include version
-          mv Dvx3_Backup_Manager-*.AppImage "Dvx3-BackupManager-Linux-x86_64-${VERSION}.AppImage" 2>/dev/null || \
-          mv *.AppImage "Dvx3-BackupManager-Linux-x86_64-${VERSION}.AppImage" 2>/dev/null || \
-          echo "Warning: AppImage not created with expected name"
-          
-          if [ -f "Dvx3-BackupManager-Linux-x86_64-${VERSION}.AppImage" ]; then
-            chmod +x "Dvx3-BackupManager-Linux-x86_64-${VERSION}.AppImage"
-            ls -lh "Dvx3-BackupManager-Linux-x86_64-${VERSION}.AppImage"
-            echo "✓ AppImage created successfully"
-          else
-            echo "ERROR: AppImage creation failed"
-            ls -la *.AppImage 2>/dev/null || echo "No AppImage files found"
-            exit 1
-          fi
-
-      - name: Generate checksums
-        run: |
-          sha256sum "Dvx3-BackupManager-Linux-x86_64-${VERSION}.AppImage" > "Dvx3-BackupManager-Linux-x86_64-${VERSION}.AppImage.sha256"
-          cat "Dvx3-BackupManager-Linux-x86_64-${VERSION}.AppImage.sha256"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: linux-x86_64
           path: |
-            Dvx3-BackupManager-Linux-x86_64-*.AppImage
-            Dvx3-BackupManager-Linux-x86_64-*.AppImage.sha256
+            backup-manager-gui
+            dvx3
+            libdvx3.so
+            dvx3.h
+            dvx3.vapi
 
   build-macos:
     name: Build macOS (Universal)
@@ -141,11 +76,13 @@ jobs:
       - name: Install dependencies
         run: |
           brew update || true
-          brew install vala glib json-glib libsodium qt@6 cmake pkg-config create-dmg || \
-          brew upgrade vala glib json-glib libsodium qt@6 cmake pkg-config create-dmg || true
+          # Install Qt6 explicitly (not just 'qt')
+          brew install vala glib json-glib libsodium qt@6 cmake pkg-config || \
+          brew upgrade vala glib json-glib libsodium qt@6 cmake pkg-config || true
 
       - name: Setup Qt6 environment
         run: |
+          # Set up PATH to use Qt6
           echo "$(brew --prefix qt@6)/bin" >> $GITHUB_PATH
           echo "QT6_DIR=$(brew --prefix qt@6)" >> $GITHUB_ENV
           echo "PKG_CONFIG_PATH=$(brew --prefix qt@6)/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
@@ -155,6 +92,7 @@ jobs:
           echo "Qt6 prefix: $(brew --prefix qt@6)"
           ls -la "$(brew --prefix qt@6)/bin/" || true
           ls -la "$(brew --prefix qt@6)/libexec/" || true
+          # Check for moc in both possible locations
           if [ -f "$(brew --prefix qt@6)/libexec/moc" ]; then
             echo "Found moc in libexec"
             echo "QT_MOC_NATIVE=$(brew --prefix qt@6)/libexec/moc" >> $GITHUB_ENV
@@ -185,56 +123,13 @@ jobs:
             echo "ERROR: backup-manager-gui was not created!"
             exit 1
           fi
-          ls -lh backup-manager-gui dvx3 libdvx3.dylib || ls -lh backup-manager-gui dvx3 libDvx3.dylib || true
+          ls -lh backup-manager-gui dvx3 libdvx3.so || ls -lh backup-manager-gui dvx3 libDvx3.dylib || true
           file backup-manager-gui dvx3
-          echo "Checking library dependencies..."
-          otool -L backup-manager-gui || true
-          otool -L dvx3 || true
-
-      - name: Fix library install names
-        run: |
-          # Find the library (try both possible names)
-          if [ -f "libDvx3.dylib" ]; then
-            LIB_NAME="libDvx3.dylib"
-          elif [ -f "libdvx3.dylib" ]; then
-            LIB_NAME="libdvx3.dylib"
-          else
-            echo "ERROR: Library not found!"
-            ls -la *.dylib
-            exit 1
-          fi
-          
-          echo "Found library: $LIB_NAME"
-          
-          # Set proper install name for the library
-          install_name_tool -id "@executable_path/../Frameworks/$LIB_NAME" "$LIB_NAME"
-          
-          # Update the executable to look for the library in the right place
-          install_name_tool -change "libDvx3.dylib" "@executable_path/../Frameworks/$LIB_NAME" backup-manager-gui 2>/dev/null || \
-          install_name_tool -change "libdvx3.dylib" "@executable_path/../Frameworks/$LIB_NAME" backup-manager-gui 2>/dev/null || \
-          install_name_tool -change "@rpath/$LIB_NAME" "@executable_path/../Frameworks/$LIB_NAME" backup-manager-gui 2>/dev/null || \
-          echo "Library reference already correct or not found"
-          
-          # Verify changes
-          echo "Library install name:"
-          otool -D "$LIB_NAME"
-          echo "Executable dependencies:"
-          otool -L backup-manager-gui | grep -i dvx3 || echo "No dvx3 library reference found"
 
       - name: Create macOS App Bundle
         run: |
           APP_NAME="Dvx3 Backup Manager"
           BUNDLE_DIR="${APP_NAME}.app"
-          
-          # Find the library name
-          if [ -f "libDvx3.dylib" ]; then
-            LIB_NAME="libDvx3.dylib"
-          elif [ -f "libdvx3.dylib" ]; then
-            LIB_NAME="libdvx3.dylib"
-          else
-            echo "ERROR: Library not found!"
-            exit 1
-          fi
           
           # Create bundle structure
           mkdir -p "${BUNDLE_DIR}/Contents/MacOS"
@@ -244,34 +139,17 @@ jobs:
           # Copy executable
           cp backup-manager-gui "${BUNDLE_DIR}/Contents/MacOS/"
           
-          # Copy library
-          cp "$LIB_NAME" "${BUNDLE_DIR}/Contents/Frameworks/"
-          
-          # Copy CLI tool
-          cp dvx3 "${BUNDLE_DIR}/Contents/MacOS/" || echo "Warning: CLI tool not copied"
+          # Copy library (try both possible names)
+          cp libDvx3.dylib "${BUNDLE_DIR}/Contents/Frameworks/" 2>/dev/null || \
+          cp libdvx3.so "${BUNDLE_DIR}/Contents/Frameworks/libDvx3.dylib" 2>/dev/null || \
+          echo "Warning: Could not copy library"
           
           # Copy icon if exists
-          if [ -f dvx3-backup.png ]; then
-            cp dvx3-backup.png "${BUNDLE_DIR}/Contents/Resources/dvx3-backup.png"
-            # Convert PNG to ICNS if possible
-            if command -v sips >/dev/null 2>&1; then
-              mkdir -p dvx3-backup.iconset
-              sips -z 16 16     dvx3-backup.png --out dvx3-backup.iconset/icon_16x16.png
-              sips -z 32 32     dvx3-backup.png --out dvx3-backup.iconset/icon_16x16@2x.png
-              sips -z 32 32     dvx3-backup.png --out dvx3-backup.iconset/icon_32x32.png
-              sips -z 64 64     dvx3-backup.png --out dvx3-backup.iconset/icon_32x32@2x.png
-              sips -z 128 128   dvx3-backup.png --out dvx3-backup.iconset/icon_128x128.png
-              sips -z 256 256   dvx3-backup.png --out dvx3-backup.iconset/icon_128x128@2x.png
-              sips -z 256 256   dvx3-backup.png --out dvx3-backup.iconset/icon_256x256.png
-              sips -z 512 512   dvx3-backup.png --out dvx3-backup.iconset/icon_256x256@2x.png
-              sips -z 512 512   dvx3-backup.png --out dvx3-backup.iconset/icon_512x512.png
-              iconutil -c icns dvx3-backup.iconset -o "${BUNDLE_DIR}/Contents/Resources/dvx3-backup.icns"
-              rm -rf dvx3-backup.iconset
-            fi
-          fi
+          cp dvx3-backup.png "${BUNDLE_DIR}/Contents/Resources/" 2>/dev/null || \
+          echo "Warning: Icon not found"
           
           # Create Info.plist
-          cat > "${BUNDLE_DIR}/Contents/Info.plist" << EOF
+          cat > "${BUNDLE_DIR}/Contents/Info.plist" << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -286,62 +164,17 @@ jobs:
               <string>${VERSION}</string>
               <key>CFBundleShortVersionString</key>
               <string>${VERSION}</string>
-              <key>CFBundleIconFile</key>
-              <string>dvx3-backup</string>
               <key>NSHighResolutionCapable</key>
               <true/>
-              <key>LSMinimumSystemVersion</key>
-              <string>10.15</string>
           </dict>
           </plist>
           EOF
           
-          echo "App bundle structure created"
-          ls -la "${BUNDLE_DIR}/Contents/MacOS/"
-          ls -la "${BUNDLE_DIR}/Contents/Frameworks/"
-
-      - name: Bundle Qt frameworks with macdeployqt
-        run: |
-          APP_NAME="Dvx3 Backup Manager"
-          BUNDLE_DIR="${APP_NAME}.app"
-          
           # Run macdeployqt to bundle Qt frameworks
-          "$(brew --prefix qt@6)/bin/macdeployqt" "${BUNDLE_DIR}" -verbose=2 -always-overwrite
+          "$(brew --prefix qt@6)/bin/macdeployqt" "${BUNDLE_DIR}" -verbose=2
           
-          echo "✓ macdeployqt completed"
-          echo "Frameworks bundled:"
-          ls -la "${BUNDLE_DIR}/Contents/Frameworks/" | head -20
-
-      - name: Verify app bundle
-        run: |
-          APP_NAME="Dvx3 Backup Manager"
-          BUNDLE_DIR="${APP_NAME}.app"
-          
-          echo "Verifying app bundle..."
-          
-          # Check executable exists
-          if [ ! -f "${BUNDLE_DIR}/Contents/MacOS/backup-manager-gui" ]; then
-            echo "ERROR: Executable not found in bundle!"
-            exit 1
-          fi
-          
-          # Check library exists
-          if [ ! -f "${BUNDLE_DIR}/Contents/Frameworks/libDvx3.dylib" ] && \
-             [ ! -f "${BUNDLE_DIR}/Contents/Frameworks/libdvx3.dylib" ]; then
-            echo "ERROR: Library not found in bundle!"
-            exit 1
-          fi
-          
-          # Check Qt frameworks
-          if [ ! -d "${BUNDLE_DIR}/Contents/Frameworks/QtCore.framework" ]; then
-            echo "WARNING: QtCore.framework not found - macdeployqt may have failed"
-          fi
-          
-          # Check dependencies
-          echo "Executable dependencies:"
-          otool -L "${BUNDLE_DIR}/Contents/MacOS/backup-manager-gui" | grep -v "/System/Library" | grep -v "/usr/lib"
-          
-          echo "✓ App bundle verification complete"
+          echo "App bundle created successfully"
+          ls -la "${BUNDLE_DIR}/Contents/MacOS/"
 
       - name: Create DMG
         run: |
@@ -349,30 +182,10 @@ jobs:
           BUNDLE_DIR="${APP_NAME}.app"
           DMG_NAME="Dvx3-BackupManager-macOS-${VERSION}.dmg"
           
-          # Use create-dmg for better DMG creation
-          if command -v create-dmg >/dev/null 2>&1; then
-            create-dmg \
-              --volname "Dvx3 Backup Manager" \
-              --volicon "${BUNDLE_DIR}/Contents/Resources/dvx3-backup.icns" \
-              --window-pos 200 120 \
-              --window-size 600 400 \
-              --icon-size 100 \
-              --icon "${APP_NAME}.app" 175 120 \
-              --hide-extension "${APP_NAME}.app" \
-              --app-drop-link 425 120 \
-              --no-internet-enable \
-              "${DMG_NAME}" \
-              "${BUNDLE_DIR}" || \
-            # Fallback to hdiutil if create-dmg fails
-            hdiutil create -volname "Dvx3 Backup Manager" \
-              -srcfolder "${BUNDLE_DIR}" \
-              -ov -format UDZO "${DMG_NAME}"
-          else
-            # Use hdiutil if create-dmg not available
-            hdiutil create -volname "Dvx3 Backup Manager" \
-              -srcfolder "${BUNDLE_DIR}" \
-              -ov -format UDZO "${DMG_NAME}"
-          fi
+          # Create DMG using hdiutil
+          hdiutil create -volname "Dvx3 Backup Manager" \
+            -srcfolder "${BUNDLE_DIR}" \
+            -ov -format UDZO "${DMG_NAME}"
           
           if [ -f "${DMG_NAME}" ]; then
             echo "✓ DMG created successfully: ${DMG_NAME}"
@@ -382,19 +195,13 @@ jobs:
             exit 1
           fi
 
-      - name: Generate checksums
-        run: |
-          DMG_NAME="Dvx3-BackupManager-macOS-${VERSION}.dmg"
-          shasum -a 256 "${DMG_NAME}" > "${DMG_NAME}.sha256"
-          cat "${DMG_NAME}.sha256"
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: macos-universal
           path: |
-            Dvx3-BackupManager-macOS-*.dmg
-            Dvx3-BackupManager-macOS-*.dmg.sha256
+            *.dmg
+            *.app
 
   build-windows:
     name: Build Windows x64
@@ -428,43 +235,6 @@ jobs:
       - name: Verify libsodium.vapi
         run: ls -la vala-extra-vapis/libsodium.vapi
 
-      - name: Verify Qt6 installation
-        run: |
-          echo "Checking Qt6 installation..."
-          pkg-config --modversion Qt6Widgets || echo "Qt6Widgets not found via pkg-config"
-          
-          echo ""
-          echo "Searching for moc in common MSYS2 locations..."
-          ls -la /mingw64/bin/moc* 2>/dev/null || echo "Not found in /mingw64/bin/"
-          ls -la /mingw64/qt6/bin/moc* 2>/dev/null || echo "Not found in /mingw64/qt6/bin/"
-          ls -la /mingw64/lib/qt6/bin/moc* 2>/dev/null || echo "Not found in /mingw64/lib/qt6/bin/"
-          
-          echo ""
-          echo "Checking PATH for moc..."
-          which moc || echo "moc not found in PATH"
-          
-          echo ""
-          echo "Qt6 packages installed:"
-          pacman -Qs mingw-w64-x86_64-qt6 || echo "No Qt6 packages found"
-          
-          echo ""
-          echo "Detecting Qt6 plugin directory..."
-          QT_PLUGIN_DIR=$(pkg-config --variable=plugindir Qt6Core 2>/dev/null || echo "")
-          if [ -n "$QT_PLUGIN_DIR" ]; then
-            echo "Qt6 plugin directory: $QT_PLUGIN_DIR"
-            echo "QT_PLUGIN_DIR=$QT_PLUGIN_DIR" >> $GITHUB_ENV
-          else
-            echo "Could not detect Qt6 plugin directory via pkg-config"
-            # Try common locations
-            for dir in /mingw64/share/qt6/plugins /mingw64/lib/qt6/plugins /mingw64/plugins; do
-              if [ -d "$dir" ]; then
-                echo "Found Qt6 plugins at: $dir"
-                echo "QT_PLUGIN_DIR=$dir" >> $GITHUB_ENV
-                break
-              fi
-            done
-          fi
-
       - name: Build CLI
         run: |
           chmod +x build.sh || true
@@ -477,155 +247,53 @@ jobs:
 
       - name: Verify build outputs
         run: |
-          echo "Listing all executables and DLLs..."
-          ls -lh *.exe *.dll 2>/dev/null || echo "Some files not found"
-          
-          echo ""
-          echo "Checking file types..."
-          file *.exe 2>/dev/null || echo "No .exe files found"
-          
-          echo ""
-          echo "Checking dependencies of backup-manager-gui.exe..."
-          objdump -p backup-manager-gui.exe | grep "DLL Name:" || echo "Could not check dependencies"
+          ls -lh backup-manager-gui.exe dvx3.exe libdvx3.dll || \
+          ls -lh backup-manager-gui.exe Dvx3.exe libDvx3.dll || \
+          ls -lh *.exe *.dll
+          file *.exe || true
 
       - name: Package Windows build
         run: |
-          PKG_DIR="dvx3-backup-manager-windows"
-          mkdir -p "$PKG_DIR"
+          mkdir -p dvx3-backup-manager-windows
           
-          echo "Copying executables..."
-          # Copy GUI executable
-          if [ -f "backup-manager-gui.exe" ]; then
-            cp backup-manager-gui.exe "$PKG_DIR/"
-            echo "✓ Copied backup-manager-gui.exe"
-          else
-            echo "ERROR: backup-manager-gui.exe not found!"
-            exit 1
-          fi
+          # Copy executables
+          cp backup-manager-gui.exe dvx3-backup-manager-windows/ || true
+          cp Dvx3.exe dvx3-backup-manager-windows/ || cp dvx3.exe dvx3-backup-manager-windows/Dvx3.exe || true
           
-          # Copy CLI executable (try different names)
-          if [ -f "Dvx3.exe" ]; then
-            cp Dvx3.exe "$PKG_DIR/"
-            echo "✓ Copied Dvx3.exe"
-          elif [ -f "dvx3.exe" ]; then
-            cp dvx3.exe "$PKG_DIR/Dvx3.exe"
-            echo "✓ Copied dvx3.exe as Dvx3.exe"
-          else
-            echo "WARNING: CLI executable not found"
-          fi
+          # Copy library
+          cp libDvx3.dll dvx3-backup-manager-windows/ || cp libdvx3.dll dvx3-backup-manager-windows/ || true
           
-          # Copy library (try different names)
-          echo ""
-          echo "Copying library..."
-          if [ -f "libDvx3.dll" ]; then
-            cp libDvx3.dll "$PKG_DIR/"
-            echo "✓ Copied libDvx3.dll"
-          elif [ -f "libdvx3.dll" ]; then
-            cp libdvx3.dll "$PKG_DIR/"
-            echo "✓ Copied libdvx3.dll"
-          else
-            echo "WARNING: Library DLL not found"
-            ls -la *.dll
-          fi
+          # Copy required DLLs from MSYS2
+          cp /mingw64/bin/libglib-2.0-0.dll dvx3-backup-manager-windows/ || true
+          cp /mingw64/bin/libgobject-2.0-0.dll dvx3-backup-manager-windows/ || true
+          cp /mingw64/bin/libgio-2.0-0.dll dvx3-backup-manager-windows/ || true
+          cp /mingw64/bin/libgmodule-2.0-0.dll dvx3-backup-manager-windows/ || true
+          cp /mingw64/bin/libjson-glib-1.0-0.dll dvx3-backup-manager-windows/ || true
+          cp /mingw64/bin/libsodium-*.dll dvx3-backup-manager-windows/ || true
+          cp /mingw64/bin/libintl-*.dll dvx3-backup-manager-windows/ || true
+          cp /mingw64/bin/libiconv-*.dll dvx3-backup-manager-windows/ || true
+          cp /mingw64/bin/libpcre*.dll dvx3-backup-manager-windows/ || true
+          cp /mingw64/bin/libffi-*.dll dvx3-backup-manager-windows/ || true
+          cp /mingw64/bin/libwinpthread-*.dll dvx3-backup-manager-windows/ || true
+          cp /mingw64/bin/libgcc_s_seh-*.dll dvx3-backup-manager-windows/ || true
+          cp /mingw64/bin/libstdc++-*.dll dvx3-backup-manager-windows/ || true
           
-          echo ""
-          echo "Copying GLib dependencies..."
-          # Copy GLib and related DLLs (explicit file names)
-          for dll in libglib-2.0-0.dll libgobject-2.0-0.dll libgio-2.0-0.dll \
-                     libgmodule-2.0-0.dll libjson-glib-1.0-0.dll; do
-            if [ -f "/mingw64/bin/$dll" ]; then
-              cp "/mingw64/bin/$dll" "$PKG_DIR/"
-              echo "✓ Copied $dll"
-            else
-              echo "WARNING: $dll not found"
-            fi
-          done
-          
-          echo ""
-          echo "Copying libsodium..."
-          # Find and copy libsodium (handle version numbers)
-          SODIUM_DLL=$(ls /mingw64/bin/libsodium-*.dll 2>/dev/null | head -1)
-          if [ -n "$SODIUM_DLL" ]; then
-            cp "$SODIUM_DLL" "$PKG_DIR/"
-            echo "✓ Copied $(basename $SODIUM_DLL)"
-          else
-            echo "WARNING: libsodium DLL not found"
-          fi
-          
-          echo ""
-          echo "Copying runtime dependencies..."
-          # Copy runtime DLLs (explicit file names)
-          for pattern in "libintl-*.dll" "libiconv-*.dll" "libpcre2-*.dll" \
-                         "libffi-*.dll" "libwinpthread-*.dll" "libgcc_s_seh-*.dll" \
-                         "libstdc++-*.dll" "zlib*.dll"; do
-            for dll in /mingw64/bin/$pattern; do
-              if [ -f "$dll" ]; then
-                cp "$dll" "$PKG_DIR/"
-                echo "✓ Copied $(basename $dll)"
-              fi
-            done
-          done
-          
-          echo ""
-          echo "Copying Qt6 DLLs..."
           # Copy Qt6 DLLs
-          for dll in Qt6Core.dll Qt6Gui.dll Qt6Widgets.dll; do
-            if [ -f "/mingw64/bin/$dll" ]; then
-              cp "/mingw64/bin/$dll" "$PKG_DIR/"
-              echo "✓ Copied $dll"
-            else
-              echo "WARNING: $dll not found"
-            fi
-          done
+          cp /mingw64/bin/Qt6Core.dll dvx3-backup-manager-windows/ || true
+          cp /mingw64/bin/Qt6Gui.dll dvx3-backup-manager-windows/ || true
+          cp /mingw64/bin/Qt6Widgets.dll dvx3-backup-manager-windows/ || true
           
-          echo ""
-          echo "Copying Qt6 plugins..."
           # Copy Qt6 plugins
-          mkdir -p "$PKG_DIR/platforms"
-          mkdir -p "$PKG_DIR/styles"
+          mkdir -p dvx3-backup-manager-windows/platforms
+          mkdir -p dvx3-backup-manager-windows/styles
+          cp /mingw64/share/qt6/plugins/platforms/qwindows.dll dvx3-backup-manager-windows/platforms/ || true
+          cp /mingw64/share/qt6/plugins/styles/*.dll dvx3-backup-manager-windows/styles/ || true
           
-          # Use detected plugin directory or try common locations
-          PLUGIN_DIR="${QT_PLUGIN_DIR:-/mingw64/share/qt6/plugins}"
-          if [ ! -d "$PLUGIN_DIR" ]; then
-            PLUGIN_DIR="/mingw64/lib/qt6/plugins"
-          fi
-          
-          echo "Using Qt6 plugin directory: $PLUGIN_DIR"
-          
-          if [ -f "$PLUGIN_DIR/platforms/qwindows.dll" ]; then
-            cp "$PLUGIN_DIR/platforms/qwindows.dll" "$PKG_DIR/platforms/"
-            echo "✓ Copied qwindows.dll"
-          else
-            echo "ERROR: qwindows.dll not found in $PLUGIN_DIR/platforms/"
-            ls -la "$PLUGIN_DIR/platforms/" 2>/dev/null || echo "platforms directory not found"
-          fi
-          
-          if [ -d "$PLUGIN_DIR/styles" ]; then
-            cp "$PLUGIN_DIR/styles"/*.dll "$PKG_DIR/styles/" 2>/dev/null || echo "No style plugins found"
-            echo "✓ Copied style plugins"
-          fi
-          
-          echo ""
-          echo "Creating qt.conf..."
-          # Create qt.conf to tell Qt where to find plugins
-          cat > "$PKG_DIR/qt.conf" << 'EOF'
-          [Paths]
-          Plugins = .
-          EOF
-          echo "✓ Created qt.conf"
-          
-          echo ""
-          echo "Copying icon..."
           # Copy icon if exists
-          if [ -f dvx3-backup.png ]; then
-            cp dvx3-backup.png "$PKG_DIR/"
-            echo "✓ Copied dvx3-backup.png"
-          fi
+          cp dvx3-backup.png dvx3-backup-manager-windows/ || true
           
-          echo ""
-          echo "Creating README..."
           # Create README
-          cat > "$PKG_DIR/README.txt" << 'EOFREADME'
+          cat > dvx3-backup-manager-windows/README.txt << 'EOFREADME'
           DVX3 Backup Manager for Windows
           ================================
           
@@ -633,76 +301,26 @@ jobs:
           
           All required DLLs are included in this package.
           
-          For CLI usage, run Dvx3.exe from command prompt:
-            Dvx3.exe encrypt <folder> -p <password> -o <output.dvx3>
-            Dvx3.exe decrypt <archive.dvx3> -p <password> -o <output_dir>
-          
-          Requirements:
-          - Windows 10 or later (64-bit)
-          
-          Troubleshooting:
-          - If the application doesn't start, make sure all files are in the same directory
-          - Check that the 'platforms' folder is present with qwindows.dll
-          - Run from command prompt to see any error messages
+          For CLI usage, run Dvx3.exe from command prompt.
           EOFREADME
-          echo "✓ Created README.txt"
           
-          echo ""
+          # List contents
           echo "Package contents:"
-          ls -lh "$PKG_DIR/"
-          echo ""
-          echo "Platforms folder:"
-          ls -lh "$PKG_DIR/platforms/" 2>/dev/null || echo "platforms folder is empty or missing"
-          echo ""
-          echo "Styles folder:"
-          ls -lh "$PKG_DIR/styles/" 2>/dev/null || echo "styles folder is empty or missing"
-
-      - name: Verify package dependencies
-        run: |
-          PKG_DIR="dvx3-backup-manager-windows"
-          
-          echo "Verifying backup-manager-gui.exe dependencies..."
-          echo "Required DLLs:"
-          objdump -p "$PKG_DIR/backup-manager-gui.exe" | grep "DLL Name:" | while read -r line; do
-            dll=$(echo "$line" | awk '{print $3}')
-            if [ -f "$PKG_DIR/$dll" ]; then
-              echo "  ✓ $dll (found)"
-            elif [[ "$dll" =~ ^(KERNEL32|USER32|SHELL32|ADVAPI32|msvcrt|WS2_32|ole32|OLEAUT32) ]]; then
-              echo "  ✓ $dll (system DLL)"
-            else
-              echo "  ✗ $dll (MISSING!)"
-            fi
-          done
-          
-          echo ""
-          echo "Checking for Qt platform plugin..."
-          if [ -f "$PKG_DIR/platforms/qwindows.dll" ]; then
-            echo "✓ qwindows.dll found"
-          else
-            echo "✗ qwindows.dll MISSING - application will not start!"
-            exit 1
-          fi
+          ls -lh dvx3-backup-manager-windows/
 
       - name: Create ZIP archive
         shell: pwsh
         run: |
-          Compress-Archive -Path dvx3-backup-manager-windows -DestinationPath "Dvx3-BackupManager-Windows-x64-$env:VERSION.zip"
+          Compress-Archive -Path dvx3-backup-manager-windows -DestinationPath Dvx3-BackupManager-Windows-x64-$env:VERSION.zip
           Get-ChildItem *.zip
-
-      - name: Generate checksums
-        shell: pwsh
-        run: |
-          $hash = Get-FileHash -Algorithm SHA256 "Dvx3-BackupManager-Windows-x64-$env:VERSION.zip"
-          "$($hash.Hash)  Dvx3-BackupManager-Windows-x64-$env:VERSION.zip" | Out-File -Encoding ASCII "Dvx3-BackupManager-Windows-x64-$env:VERSION.zip.sha256"
-          Get-Content "Dvx3-BackupManager-Windows-x64-$env:VERSION.zip.sha256"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-x64
           path: |
-            Dvx3-BackupManager-Windows-x64-*.zip
-            Dvx3-BackupManager-Windows-x64-*.zip.sha256
+            *.zip
+            dvx3-backup-manager-windows/
 
   create-release:
     name: Create Release
@@ -721,118 +339,16 @@ jobs:
           path: artifacts
 
       - name: Display structure of downloaded files
-        run: |
-          echo "Artifact structure:"
-          ls -R artifacts
-          echo ""
-          echo "Finding release files..."
-          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.AppImage" -o -name "*.sha256" \)
-
-      - name: Prepare release files
-        run: |
-          mkdir -p release-files
-          
-          # Copy all release artifacts to a single directory
-          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.AppImage" \) -exec cp {} release-files/ \;
-          find artifacts -type f -name "*.sha256" -exec cp {} release-files/ \;
-          
-          echo "Release files prepared:"
-          ls -lh release-files/
-          
-          # Create a combined checksums file
-          cd release-files
-          cat *.sha256 > SHA256SUMS.txt 2>/dev/null || echo "No checksum files found"
-          cd ..
-          
-          echo ""
-          echo "Combined checksums:"
-          cat release-files/SHA256SUMS.txt 2>/dev/null || echo "No checksums available"
-
-      - name: Create release notes
-        run: |
-          cat > release-files/RELEASE_NOTES.md << 'EOF'
-          # Dvx3 Backup Manager ${VERSION}
-          
-          ## Downloads
-          
-          ### Linux
-          - **Dvx3-BackupManager-Linux-x86_64-${VERSION}.AppImage** - Portable AppImage for Linux x86_64
-          
-          ### macOS
-          - **Dvx3-BackupManager-macOS-${VERSION}.dmg** - Universal binary (Intel + Apple Silicon)
-          
-          ### Windows
-          - **Dvx3-BackupManager-Windows-x64-${VERSION}.zip** - Complete package with all dependencies
-          
-          ## Installation
-          
-          ### Linux
-          ```bash
-          chmod +x Dvx3-BackupManager-Linux-x86_64-${VERSION}.AppImage
-          ./Dvx3-BackupManager-Linux-x86_64-${VERSION}.AppImage
-          ```
-          
-          ### macOS
-          1. Open the DMG file
-          2. Drag "Dvx3 Backup Manager" to Applications
-          3. Right-click and select "Open" (first time only, due to Gatekeeper)
-          
-          ### Windows
-          1. Extract the ZIP file
-          2. Run `backup-manager-gui.exe`
-          
-          ## Verification
-          
-          All downloads include SHA256 checksums. Verify with:
-          
-          **Linux/macOS:**
-          ```bash
-          sha256sum -c SHA256SUMS.txt
-          ```
-          
-          **Windows (PowerShell):**
-          ```powershell
-          Get-FileHash -Algorithm SHA256 Dvx3-BackupManager-Windows-x64-${VERSION}.zip
-          ```
-          
-          ## Features
-          
-          - Encrypted backups with Argon2id + XSalsa20-Poly1305
-          - zstd compression (configurable levels)
-          - Qt6 GUI and CLI interfaces
-          - Backup job management with retention policies
-          - Cross-platform support
-          
-          ## Requirements
-          
-          - **Linux**: x86_64, glibc 2.31+
-          - **macOS**: 10.15+ (Catalina or later)
-          - **Windows**: Windows 10+ (64-bit)
-          
-          ## Support
-          
-          - Documentation: See README.md in the repository
-          - Issues: Report on GitHub/GitLab
-          - Security: See SECURITY.md
-          EOF
-          
-          # Replace ${VERSION} with actual version
-          sed -i "s/\${VERSION}/$VERSION/g" release-files/RELEASE_NOTES.md 2>/dev/null || \
-          sed -i '' "s/\${VERSION}/$VERSION/g" release-files/RELEASE_NOTES.md 2>/dev/null || \
-          echo "Could not replace version in release notes"
-          
-          echo "Release notes created:"
-          cat release-files/RELEASE_NOTES.md
+        run: ls -R artifacts
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            release-files/*.dmg
-            release-files/*.zip
-            release-files/*.AppImage
-            release-files/SHA256SUMS.txt
-          body_path: release-files/RELEASE_NOTES.md
+            artifacts/**/*.dmg
+            artifacts/**/*.zip
+            artifacts/**/backup-manager-gui
+            artifacts/**/dvx3
           draft: false
           prerelease: false
           generate_release_notes: true
