@@ -133,15 +133,25 @@ jobs:
       - name: Compress EXE and DLLs with UPX
         shell: bash
         run: |
-          # Install UPX
-          sudo apt-get update && sudo apt-get install -y upx-ucl
+          # Download UPX Windows binary if on Windows runner
+          if [[ "$RUNNER_OS" == "Windows" ]] || [[ "$(uname -s)" == MINGW* ]]; then
+            echo "Downloading UPX for Windows"
+            curl -L -o upx.zip https://github.com/upx/upx/releases/latest/download/upx-4.0.2-win64.zip
+            unzip -q upx.zip
+            UPX_PATH="./upx-4.0.2-win64/upx.exe"
+          else
+            echo "Assuming Linux runner: using system upx"
+            UPX_PATH="upx"
+          fi
+
           # Compress EXE
           if [ -f Releases/Dvx3\ Backup\ Manager.exe ]; then
-            upx --best --lzma "Releases/Dvx3 Backup Manager.exe"
+            "$UPX_PATH" --best --lzma "Releases/Dvx3 Backup Manager.exe"
           fi
+
           # Compress DLLs
           for dll in Releases/*.dll; do
-            upx --best --lzma "$dll"
+            "$UPX_PATH" --best --lzma "$dll"
           done
 
       - name: Upload Windows build artifacts
