@@ -37,6 +37,13 @@ jobs:
           ls -l /mingw64/lib/qt6/bin/moc.exe || true
           echo "moc in PATH:"
           which moc || true
+  
+          echo "PATH environment variable:"
+          echo $PATH
+  
+          echo "Listing moc executables recursively under /mingw64"
+          find /mingw64 -name "moc*.exe" || true
+  
           echo "List installed Qt6 packages"
           pacman -Qs qt6
 
