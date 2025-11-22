@@ -100,12 +100,39 @@ PREFIX=~/.local ./install.sh
 
 ## Building
 
+**Prerequisites:**
+
+Before building, ensure the following dependencies are installed on your system:
+
+- Vala compiler (0.56+)
+- GLib 2.0 development packages
+- JSON-GLib development packages
+- libsodium development packages
+- zstd
+- gcc/g++ with C++17 support
+- Qt6 development libraries and tools
+
+On Debian/Ubuntu, these can be installed with:
+
+```bash
+sudo apt-get install valac libglib2.0-dev libjson-glib-dev libsodium-dev zstd g++ qt6-base-dev
+```
+
+On Arch Linux, install with:
+
+```bash
+sudo pacman -S vala glib2 json-glib libsodium zstd gcc qt6-base
+```
+
 See [BUILD_MULTIPLATFORM.md](BUILD_MULTIPLATFORM.md) for platform-specific instructions.
 
 **Linux:**
 ```bash
 ./build_gui.sh
 ```
+./build_gui.sh
+sudo pacman -S vala glib2 json-glib libsodium zstd gcc qt6-base
+sudo apt-get install valac libglib2.0-dev libjson-glib-dev libsodium-dev zstd g++ qt6-base-dev
 
 **macOS:**
 ```bash

@@ -17,6 +17,22 @@ if ! pkg-config --exists Qt6Widgets; then
     exit 1
 fi
 
+# Check for json-glib-1.0
+if ! pkg-config --exists json-glib-1.0; then
+    echo "Error: json-glib-1.0 not found. Install with:"
+    echo "  Arch Linux: sudo pacman -S json-glib"
+    echo "  Debian/Ubuntu: sudo apt-get install libjson-glib-dev"
+    exit 1
+fi
+
+# Check for libsodium
+if ! pkg-config --exists libsodium; then
+    echo "Error: libsodium not found. Install with:"
+    echo "  Arch Linux: sudo pacman -S libsodium"
+    echo "  Debian/Ubuntu: sudo apt-get install libsodium-dev"
+    exit 1
+fi
+
 # 1. Generate C sources from Vala library
 echo "[1/5] Generating C sources from Vala..."
 rm -rf gen-c

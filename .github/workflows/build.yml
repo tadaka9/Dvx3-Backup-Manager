@@ -23,6 +23,8 @@ jobs:
             mingw-w64-x86_64-qt6-tools
             mingw-w64-x86_64-pkg-config
             mingw-w64-x86_64-vala
+            mingw-w64-x86_64-json-glib
+            mingw-w64-x86_64-libsodium
 
       - name: Verify Qt6 installation
         shell: msys2 {0}
