@@ -297,15 +297,23 @@ jobs:
             UPX_PATH="upx"
           fi
 
-          # Compress EXE
+          # Compress main EXE
           if [ -f Releases/Dvx3\ Backup\ Manager.exe ]; then
-            "$UPX_PATH" --best --lzma "Releases/Dvx3 Backup Manager.exe"
+            "$UPX_PATH" --best --lzma "Releases/Dvx3 Backup Manager.exe" || echo "Failed to compress main exe, continuing..."
           fi
 
-          # Compress DLLs
+          # Compress DLLs (skip MSYS2 DLLs and executables as they can't be compressed)
           for dll in Releases/*.dll; do
-            "$UPX_PATH" --best --lzma "$dll"
+            # Skip MSYS2 DLLs (they have writable shared sections)
+            if [[ "$dll" == *"msys-"* ]]; then
+              echo "Skipping MSYS2 DLL: $dll"
+              continue
+            fi
+            "$UPX_PATH" --best --lzma "$dll" || echo "Failed to compress $dll, continuing..."
           done
+          
+          # Note: tar.exe, zstd.exe, sh.exe are MSYS2 executables and cannot be compressed with UPX
+          echo "Note: MSYS2 executables (tar.exe, zstd.exe, sh.exe) are not compressed (not compatible with UPX)"
 
       - name: Upload Windows build artifacts
         uses: actions/upload-artifact@v4
