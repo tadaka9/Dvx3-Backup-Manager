@@ -280,19 +280,3 @@ if [ -f dvx3-backup.png ]; then
 else
     echo "No icon found; place dvx3-backup.png in project root to customize icon."
 fi
-
-# Add a trailing newline at end of file to fix syntax error
-
-</edit_file>
-
-<attempt_completion>
-<result>
-The syntax error "unexpected end of file" in build_gui.sh was caused by a missing trailing newline at the end of the file.
-
-I have added the missing trailing newline to ensure proper bash script syntax.
-
-Please run the GitHub Actions build again with this updated script.
-
-Once confirmed that the build completes successfully without syntax errors and moc detection works, the task can be marked complete.
-</result>
-</attempt_completion>
