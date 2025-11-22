@@ -1,399 +1,44 @@
-name: Multi-Platform Build
+name: Build Backup Manager
 
 on:
   push:
     branches:
-      - main
-      - master
-      - develop
-    tags:
-      - 'v*'
+      - clean-verison
   pull_request:
-    branches:
-      - main
-      - master
-  workflow_dispatch:
-
-env:
-  VERSION: "0.0.3a101125"
 
 jobs:
-  build-linux:
-    name: Build Linux x86_64
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y valac gcc g++ make cmake pkg-config \
-            libglib2.0-dev libjson-glib-dev libsodium-dev \
-            qt6-base-dev qt6-base-dev-tools qt6-tools-dev \
-            tar zstd
-
-      - name: Verify libsodium.vapi
-        run: ls -la vala-extra-vapis/libsodium.vapi
-
-      - name: Build CLI
-        run: |
-          chmod +x build.sh
-          bash ./build.sh
-
-      - name: Build GUI
-        run: |
-          chmod +x build_gui.sh
-          bash ./build_gui.sh
-
-      - name: Verify build outputs
-        run: |
-          ls -lh backup-manager-gui dvx3 libdvx3.so
-          file backup-manager-gui dvx3 libdvx3.so
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-x86_64
-          path: |
-            backup-manager-gui
-            dvx3
-            libdvx3.so
-            dvx3.h
-            dvx3.vapi
-
-  build-macos:
-    name: Build macOS (Universal)
-    runs-on: macos-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Install dependencies
-        run: |
-          brew update || true
-          # Install Qt6 - try both 'qt' and 'qt@6' packages
-          brew install vala glib json-glib libsodium qt cmake pkg-config || \
-          brew install vala glib json-glib libsodium qt@6 cmake pkg-config || \
-          brew upgrade vala glib json-glib libsodium qt cmake pkg-config || true
-
-      - name: Setup Qt6 environment
-        run: |
-          # Detect Qt installation (try both 'qt' and 'qt@6')
-          if brew --prefix qt >/dev/null 2>&1; then
-            QT_PREFIX="$(brew --prefix qt)"
-            echo "Using Qt at: $QT_PREFIX"
-          elif brew --prefix qt@6 >/dev/null 2>&1; then
-            QT_PREFIX="$(brew --prefix qt@6)"
-            echo "Using Qt@6 at: $QT_PREFIX"
-          else
-            echo "ERROR: Qt not found in Homebrew!"
-            exit 1
-          fi
-          
-          # Set up environment
-          echo "$QT_PREFIX/bin" >> $GITHUB_PATH
-          echo "QT6_DIR=$QT_PREFIX" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=$QT_PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-
-      - name: Verify Qt6 installation
-        run: |
-          # Detect Qt prefix
-          if brew --prefix qt >/dev/null 2>&1; then
-            QT_PREFIX="$(brew --prefix qt)"
-          elif brew --prefix qt@6 >/dev/null 2>&1; then
-            QT_PREFIX="$(brew --prefix qt@6)"
-          else
-            echo "ERROR: Qt not found!"
-            exit 1
-          fi
-
-          echo "Qt prefix: $QT_PREFIX"
-          echo "Checking for moc..."
-
-          # Check bin directory
-          if [ -f "$QT_PREFIX/bin/moc" ]; then
-            echo "✓ Found moc at: $QT_PREFIX/bin/moc"
-            echo "QT_MOC_NATIVE=$QT_PREFIX/bin/moc" >> $GITHUB_ENV
-          # Check libexec directory
-          elif [ -f "$QT_PREFIX/libexec/moc" ]; then
-            echo "✓ Found moc at: $QT_PREFIX/libexec/moc"
-            echo "QT_MOC_NATIVE=$QT_PREFIX/libexec/moc" >> $GITHUB_ENV
-          # Check Homebrew bin directory (for qt package on Apple Silicon)
-          elif [ -f "/opt/homebrew/bin/moc" ]; then
-            echo "✓ Found moc at: /opt/homebrew/bin/moc"
-            echo "QT_MOC_NATIVE=/opt/homebrew/bin/moc" >> $GITHUB_ENV
-          # Check Homebrew bin directory (for qt package on Intel Mac)
-          elif [ -f "/usr/local/bin/moc" ]; then
-            echo "✓ Found moc at: /usr/local/bin/moc"
-            echo "QT_MOC_NATIVE=/usr/local/bin/moc" >> $GITHUB_ENV
-          else
-            echo "ERROR: moc not found!"
-            echo "Contents of $QT_PREFIX/bin/:"
-            ls -la "$QT_PREFIX/bin/" || true
-            echo "Contents of $QT_PREFIX/libexec/:"
-            ls -la "$QT_PREFIX/libexec/" || true
-            echo "Contents of /opt/homebrew/bin/:"
-            ls -la "/opt/homebrew/bin/moc" || true
-            echo "Contents of /usr/local/bin/:"
-            ls -la "/usr/local/bin/moc" || true
-            exit 1
-          fi
-
-          # Verify pkg-config can find Qt6
-          pkg-config --modversion Qt6Widgets || echo "Warning: pkg-config cannot find Qt6Widgets"
-
-      - name: Verify libsodium.vapi
-        run: ls -la vala-extra-vapis/libsodium.vapi
-
-      - name: Build CLI
-        run: |
-          chmod +x build.sh
-          bash ./build.sh
-
-      - name: Build GUI
-        run: |
-          chmod +x build_gui.sh
-          bash ./build_gui.sh
-
-      - name: Verify build outputs
-        run: |
-          if [ ! -f "backup-manager-gui" ]; then
-            echo "ERROR: backup-manager-gui was not created!"
-            exit 1
-          fi
-          ls -lh backup-manager-gui dvx3 libdvx3.so || ls -lh backup-manager-gui dvx3 libDvx3.dylib || true
-          file backup-manager-gui dvx3
-
-      - name: Create macOS App Bundle
-        run: |
-          APP_NAME="Dvx3 Backup Manager"
-          BUNDLE_DIR="${APP_NAME}.app"
-          
-          # Create bundle structure
-          mkdir -p "${BUNDLE_DIR}/Contents/MacOS"
-          mkdir -p "${BUNDLE_DIR}/Contents/Resources"
-          mkdir -p "${BUNDLE_DIR}/Contents/Frameworks"
-          
-          # Copy executable
-          cp backup-manager-gui "${BUNDLE_DIR}/Contents/MacOS/"
-          
-          # Copy library (try both possible names)
-          cp libDvx3.dylib "${BUNDLE_DIR}/Contents/Frameworks/" 2>/dev/null || \
-          cp libdvx3.so "${BUNDLE_DIR}/Contents/Frameworks/libDvx3.dylib" 2>/dev/null || \
-          echo "Warning: Could not copy library"
-          
-          # Copy icon if exists
-          cp dvx3-backup.png "${BUNDLE_DIR}/Contents/Resources/" 2>/dev/null || \
-          echo "Warning: Icon not found"
-          
-          # Create Info.plist
-          cat > "${BUNDLE_DIR}/Contents/Info.plist" << 'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>CFBundleExecutable</key>
-              <string>backup-manager-gui</string>
-              <key>CFBundleIdentifier</key>
-              <string>com.cryptowave.dvx3backupmanager</string>
-              <key>CFBundleName</key>
-              <string>Dvx3 Backup Manager</string>
-              <key>CFBundleVersion</key>
-              <string>${VERSION}</string>
-              <key>CFBundleShortVersionString</key>
-              <string>${VERSION}</string>
-              <key>NSHighResolutionCapable</key>
-              <true/>
-          </dict>
-          </plist>
-          EOF
-          
-          # Run macdeployqt to bundle Qt frameworks
-          "$(brew --prefix qt@6)/bin/macdeployqt" "${BUNDLE_DIR}" -verbose=2
-          
-          echo "App bundle created successfully"
-          ls -la "${BUNDLE_DIR}/Contents/MacOS/"
-
-      - name: Create DMG
-        run: |
-          APP_NAME="Dvx3 Backup Manager"
-          BUNDLE_DIR="${APP_NAME}.app"
-          DMG_NAME="Dvx3-BackupManager-macOS-${VERSION}.dmg"
-          
-          # Create DMG using hdiutil
-          hdiutil create -volname "Dvx3 Backup Manager" \
-            -srcfolder "${BUNDLE_DIR}" \
-            -ov -format UDZO "${DMG_NAME}"
-          
-          if [ -f "${DMG_NAME}" ]; then
-            echo "✓ DMG created successfully: ${DMG_NAME}"
-            ls -lh "${DMG_NAME}"
-          else
-            echo "ERROR: DMG creation failed!"
-            exit 1
-          fi
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-universal
-          path: |
-            *.dmg
-            *.app
-
   build-windows:
-    name: Build Windows x64
     runs-on: windows-latest
-    defaults:
-      run:
-        shell: msys2 {0}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
+      - uses: actions/checkout@v3
 
-      - name: Setup MSYS2
+      - name: Install MSYS2
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
           update: true
-          install: >-
+          install: >
             mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-vala
-            mingw-w64-x86_64-glib2
-            mingw-w64-x86_64-json-glib
-            mingw-w64-x86_64-libsodium
-            mingw-w64-x86_64-pkg-config
             mingw-w64-x86_64-qt6-base
             mingw-w64-x86_64-qt6-tools
-            tar
-            zip
+            mingw-w64-x86_64-pkg-config
 
-      - name: Verify libsodium.vapi
-        run: ls -la vala-extra-vapis/libsodium.vapi
-
-      - name: Build CLI
+      - name: Verify Qt6 installation
+        shell: msys2 {0}
         run: |
-          chmod +x build.sh || true
-          bash ./build.sh
+          echo "Checking Qt6Widgets with pkg-config"
+          pkg-config --modversion Qt6Widgets
+          echo "Searching for moc in MSYS2 directories"
+          ls -l /mingw64/bin/moc.exe || true
+          ls -l /mingw64/qt6/bin/moc.exe || true
+          ls -l /mingw64/lib/qt6/bin/moc.exe || true
+          echo "moc in PATH:"
+          which moc || true
+          echo "List installed Qt6 packages"
+          pacman -Qs qt6
 
-      - name: Build GUI
+      - name: Build Backup Manager GUI
+        shell: msys2 {0}
         run: |
           chmod +x build_gui.sh || true
-          bash ./build_gui.sh
-
-      - name: Verify build outputs
-        run: |
-          ls -lh backup-manager-gui.exe dvx3.exe libdvx3.dll || \
-          ls -lh backup-manager-gui.exe Dvx3.exe libDvx3.dll || \
-          ls -lh *.exe *.dll
-          file *.exe || true
-
-      - name: Package Windows build
-        run: |
-          mkdir -p dvx3-backup-manager-windows
-          
-          # Copy executables
-          cp backup-manager-gui.exe dvx3-backup-manager-windows/ || true
-          cp Dvx3.exe dvx3-backup-manager-windows/ || cp dvx3.exe dvx3-backup-manager-windows/Dvx3.exe || true
-          
-          # Copy library
-          cp libDvx3.dll dvx3-backup-manager-windows/ || cp libdvx3.dll dvx3-backup-manager-windows/ || true
-          
-          # Copy required DLLs from MSYS2
-          cp /mingw64/bin/libglib-2.0-0.dll dvx3-backup-manager-windows/ || true
-          cp /mingw64/bin/libgobject-2.0-0.dll dvx3-backup-manager-windows/ || true
-          cp /mingw64/bin/libgio-2.0-0.dll dvx3-backup-manager-windows/ || true
-          cp /mingw64/bin/libgmodule-2.0-0.dll dvx3-backup-manager-windows/ || true
-          cp /mingw64/bin/libjson-glib-1.0-0.dll dvx3-backup-manager-windows/ || true
-          cp /mingw64/bin/libsodium-*.dll dvx3-backup-manager-windows/ || true
-          cp /mingw64/bin/libintl-*.dll dvx3-backup-manager-windows/ || true
-          cp /mingw64/bin/libiconv-*.dll dvx3-backup-manager-windows/ || true
-          cp /mingw64/bin/libpcre*.dll dvx3-backup-manager-windows/ || true
-          cp /mingw64/bin/libffi-*.dll dvx3-backup-manager-windows/ || true
-          cp /mingw64/bin/libwinpthread-*.dll dvx3-backup-manager-windows/ || true
-          cp /mingw64/bin/libgcc_s_seh-*.dll dvx3-backup-manager-windows/ || true
-          cp /mingw64/bin/libstdc++-*.dll dvx3-backup-manager-windows/ || true
-          
-          # Copy Qt6 DLLs
-          cp /mingw64/bin/Qt6Core.dll dvx3-backup-manager-windows/ || true
-          cp /mingw64/bin/Qt6Gui.dll dvx3-backup-manager-windows/ || true
-          cp /mingw64/bin/Qt6Widgets.dll dvx3-backup-manager-windows/ || true
-          
-          # Copy Qt6 plugins
-          mkdir -p dvx3-backup-manager-windows/platforms
-          mkdir -p dvx3-backup-manager-windows/styles
-          cp /mingw64/share/qt6/plugins/platforms/qwindows.dll dvx3-backup-manager-windows/platforms/ || true
-          cp /mingw64/share/qt6/plugins/styles/*.dll dvx3-backup-manager-windows/styles/ || true
-          
-          # Copy icon if exists
-          cp dvx3-backup.png dvx3-backup-manager-windows/ || true
-          
-          # Create README
-          cat > dvx3-backup-manager-windows/README.txt << 'EOFREADME'
-          DVX3 Backup Manager for Windows
-          ================================
-          
-          To run the application, simply double-click backup-manager-gui.exe
-          
-          All required DLLs are included in this package.
-          
-          For CLI usage, run Dvx3.exe from command prompt.
-          EOFREADME
-          
-          # List contents
-          echo "Package contents:"
-          ls -lh dvx3-backup-manager-windows/
-
-      - name: Create ZIP archive
-        shell: pwsh
-        run: |
-          Compress-Archive -Path dvx3-backup-manager-windows -DestinationPath Dvx3-BackupManager-Windows-x64-$env:VERSION.zip
-          Get-ChildItem *.zip
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-x64
-          path: |
-            *.zip
-            dvx3-backup-manager-windows/
-
-  create-release:
-    name: Create Release
-    needs: [build-linux, build-macos, build-windows]
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Display structure of downloaded files
-        run: ls -R artifacts
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            artifacts/**/*.dmg
-            artifacts/**/*.zip
-            artifacts/**/backup-manager-gui
-            artifacts/**/dvx3
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ./build_gui.sh
