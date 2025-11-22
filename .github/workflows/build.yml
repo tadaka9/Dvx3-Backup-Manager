@@ -115,6 +115,9 @@ jobs:
           /mingw64/bin/libjson-glib-1.0.dll
           /mingw64/bin/libmd4c.dll
           /mingw64/bin/libpng16-16.dll
+          /mingw64/bin/libiconv-2.dll
+          /mingw64/bin/libicudt78.dll
+          /mingw64/bin/libbrotlicommon.dll
           /mingw64/bin/Qt6Core.dll
           /mingw64/bin/Qt6Gui.dll
           /mingw64/bin/Qt6Widgets.dll
