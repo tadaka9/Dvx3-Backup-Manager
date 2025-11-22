@@ -8,7 +8,7 @@
  */
 
 using GLib;
-using GLib as GLibLibAlias;
+using GLibLibAlias = GLib;
 
 /* Direct C bindings for low-level POSIX I/O */
 [CCode (cname = "read", cheader_filename = "unistd.h")]
