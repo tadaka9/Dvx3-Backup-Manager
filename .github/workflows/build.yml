@@ -54,3 +54,9 @@ jobs:
           # Fix line endings for build_gui.sh to Unix LF before build
           sed -i 's/\r$//' build_gui.sh
           ./build_gui.sh
+
+      - name: Upload Windows build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: Dvx3-Backup-Manager-Windows-Build
+          path: Releases/
