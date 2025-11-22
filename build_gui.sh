@@ -105,132 +105,126 @@ echo "[4/5] Running Qt MOC..."
 
 # Windows MSYS2 fix for Qt6 moc path from pkg-config libexecdir
 case "$UNAME_OUT" in
-  MINGW*|MSYS*|CYGWIN*)
-    if command -v pkg-config >/dev/null 2>&1; then
-      libexecdir=$(pkg-config --variable=libexecdir 'Qt6Core >= 6.4.0' 2>/dev/null)
-      if [ -n "$libexecdir" ]; then
-        libexecdir=$(cygpath -a "$libexecdir")
-        moc_candidate="$libexecdir/moc"
-        if [ -x "$moc_candidate" ] || [ -x "$moc_candidate.exe" ]; then
-          if [ -x "$moc_candidate" ]; then
-            MOC="$moc_candidate"
-          else
-            MOC="${moc_candidate}.exe"
-          fi
-          RCC="${libexecdir}/rcc"
-          echo "✓ Found moc at Qt6 libexecdir: $MOC"
+    MINGW*|MSYS*|CYGWIN*)
+        if command -v pkg-config >/dev/null 2>&1; then
+            libexecdir=$(pkg-config --variable=libexecdir 'Qt6Core >= 6.4.0' 2>/dev/null)
+            if [ -n "$libexecdir" ]; then
+                libexecdir=$(cygpath -a "$libexecdir")
+                moc_candidate="$libexecdir/moc"
+                if [ -x "$moc_candidate" ] || [ -x "$moc_candidate.exe" ]; then
+                    if [ -x "$moc_candidate" ]; then
+                        MOC="$moc_candidate"
+                    else
+                        MOC="${moc_candidate}.exe"
+                    fi
+                    RCC="${libexecdir}/rcc"
+                    echo "✓ Found moc at Qt6 libexecdir: $MOC"
+                fi
+            fi
         fi
-      fi
-    fi
-    ;;
+        ;;
 esac
 
 # Find moc and rcc (works on Linux, macOS, Windows/MSYS2)
 # Prioritize Qt6-specific tools to avoid Qt5/Qt6 mismatch
 if [ -z "$MOC" ]; then
-  if [ -n "$QT_MOC_NATIVE" ] && [ -x "$QT_MOC_NATIVE" ]; then
-    MOC="$QT_MOC_NATIVE"
-    RCC_DIR=$(dirname "$QT_MOC_NATIVE")
-    if [ -x "$RCC_DIR/rcc" ]; then
-      RCC="$RCC_DIR/rcc"
+    if [ -n "$QT_MOC_NATIVE" ] && [ -x "$QT_MOC_NATIVE" ]; then
+        MOC="$QT_MOC_NATIVE"
+        RCC_DIR=$(dirname "$QT_MOC_NATIVE")
+        if [ -x "$RCC_DIR/rcc" ]; then
+            RCC="$RCC_DIR/rcc"
+        else
+            RCC=rcc # Fallback to searching in PATH
+        fi
+    elif [ -x /opt/homebrew/opt/qt/bin/moc ]; then
+        MOC=/opt/homebrew/opt/qt/bin/moc
+        RCC=/opt/homebrew/opt/qt/bin/rcc
+    elif [ -x /opt/homebrew/opt/qt@6/bin/moc ]; then
+        MOC=/opt/homebrew/opt/qt@6/bin/moc
+        RCC=/opt/homebrew/opt/qt@6/bin/rcc
+    elif [ -x /usr/local/opt/qt/bin/moc ]; then
+        MOC=/usr/local/opt/qt/bin/moc
+        RCC=/usr/local/opt/qt/bin/rcc
+    elif [ -x /usr/local/opt/qt@6/bin/moc ]; then
+        MOC=/usr/local/opt/qt@6/bin/moc
+        RCC=/usr/local/opt/qt@6/bin/rcc
+    elif [ -x /opt/homebrew/bin/moc ]; then
+        MOC=/opt/homebrew/bin/moc
+        RCC=/opt/homebrew/bin/rcc
+    elif [ -x /usr/local/bin/moc ]; then
+        MOC=/usr/local/bin/moc
+        RCC=/usr/local/bin/rcc
+    elif [ -x /opt/homebrew/opt/qt6/bin/moc ]; then
+        MOC=/opt/homebrew/opt/qt6/bin/moc
+        RCC=/opt/homebrew/opt/qt6/bin/rcc
+    elif [ -x /usr/local/opt/qt6/bin/moc ]; then
+        MOC=/usr/local/opt/qt6/bin/moc
+        RCC=/usr/local/opt/qt6/bin/rcc
+    elif [ -x /mingw64/bin/moc-qt6 ]; then
+        MOC=/mingw64/bin/moc-qt6
+        RCC=/mingw64/bin/rcc-qt6
+        echo "✓ Found moc-qt6 at /mingw64/bin/"
+    elif [ -x /mingw64/bin/moc-qt6.exe ]; then
+        MOC=/mingw64/bin/moc-qt6.exe
+        RCC=/mingw64/bin/rcc-qt6.exe
+        echo "✓ Found moc-qt6.exe at /mingw64/bin/"
+    elif [ -x /mingw64/bin/moc6 ]; then
+        MOC=/mingw64/bin/moc6
+        RCC=/mingw64/bin/rcc6
+        echo "✓ Found moc6 at /mingw64/bin/"
+    elif [ -x /mingw64/bin/moc6.exe ]; then
+        MOC=/mingw64/bin/moc6.exe
+        RCC=/mingw64/bin/rcc6.exe
+        echo "✓ Found moc6.exe at /mingw64/bin/"
+    elif [ -x /mingw64/bin/moc ]; then
+        MOC=/mingw64/bin/moc
+        RCC=/mingw64/bin/rcc
+        echo "✓ Found moc at /mingw64/bin/"
+    elif [ -x /mingw64/bin/moc.exe ]; then
+        MOC=/mingw64/bin/moc.exe
+        RCC=/mingw64/bin/rcc.exe
+        echo "✓ Found moc.exe at /mingw64/bin/"
+    elif [ -x /mingw64/qt6/bin/moc ]; then
+        MOC=/mingw64/qt6/bin/moc
+        RCC=/mingw64/qt6/bin/rcc
+        echo "✓ Found moc at /mingw64/qt6/bin/"
+    elif [ -x /mingw64/qt6/bin/moc.exe ]; then
+        MOC=/mingw64/qt6/bin/moc.exe
+        RCC=/mingw64/qt6/bin/rcc.exe
+        echo "✓ Found moc.exe at /mingw64/qt6/bin/"
+    elif [ -x /mingw64/lib/qt6/bin/moc ]; then
+        MOC=/mingw64/lib/qt6/bin/moc
+        RCC=/mingw64/lib/qt6/bin/rcc
+        echo "✓ Found moc at /mingw64/lib/qt6/bin/"
+    elif [ -x /mingw64/lib/qt6/bin/moc.exe ]; then
+        MOC=/mingw64/lib/qt6/bin/moc.exe
+        RCC=/mingw64/lib/qt6/bin/rcc.exe
+        echo "✓ Found moc.exe at /mingw64/lib/qt6/bin/"
+    elif [ -x /usr/lib/qt6/moc ]; then
+        MOC=/usr/lib/qt6/moc
+        RCC=/usr/lib/qt6/rcc
+    elif [ -x /usr/lib/qt6/libexec/moc ]; then
+        MOC=/usr/lib/qt6/libexec/moc
+        RCC=/usr/lib/qt6/libexec/rcc
+    elif command -v moc-qt6 >/dev/null 2>&1; then
+        MOC=moc-qt6
+        RCC=rcc-qt6
+    elif command -v moc6 >/dev/null 2>&1; then
+        MOC=moc6
+        RCC=rcc6
+    elif command -v moc >/dev/null 2>&1; then
+        MOC=moc
+        RCC=rcc
     else
-      RCC=rcc # Fallback to searching in PATH
+        echo "Error: moc not found. Install Qt6 development tools."
+        echo "Searched locations:"
+        echo "  - macOS Homebrew: /opt/homebrew/opt/qt/bin/moc, /opt/homebrew/opt/qt@6/bin/moc, /opt/homebrew/opt/qt6/bin/moc, /opt/homebrew/bin/moc"
+        echo "  - macOS Homebrew (Intel): /usr/local/opt/qt/bin/moc, /usr/local/opt/qt@6/bin/moc, /usr/local/opt/qt6/bin/moc, /usr/local/bin/moc"
+        echo "  - MSYS2: /mingw64/bin/moc, /mingw64/bin/moc.exe, /mingw64/qt6/bin/moc, /mingw64/qt6/bin/moc.exe, /mingw64/lib/qt6/bin/moc, /mingw64/lib/qt6/bin/moc.exe"
+        echo "  - Linux: /usr/lib/qt6/moc, /usr/lib/qt6/libexec/moc"
+        echo "  - PATH: moc-qt6, moc6, moc"
+        exit 1
     fi
-  # Check macOS Homebrew paths (Apple Silicon and Intel)
-  elif [ -x /opt/homebrew/opt/qt/bin/moc ]; then
-    MOC=/opt/homebrew/opt/qt/bin/moc
-    RCC=/opt/homebrew/opt/qt/bin/rcc
-  elif [ -x /opt/homebrew/opt/qt@6/bin/moc ]; then
-    MOC=/opt/homebrew/opt/qt@6/bin/moc
-    RCC=/opt/homebrew/opt/qt@6/bin/rcc
-  elif [ -x /usr/local/opt/qt/bin/moc ]; then
-    MOC=/usr/local/opt/qt/bin/moc
-    RCC=/usr/local/opt/qt/bin/rcc
-  elif [ -x /usr/local/opt/qt@6/bin/moc ]; then
-    MOC=/usr/local/opt/qt@6/bin/moc
-    RCC=/usr/local/opt/qt@6/bin/rcc
-  elif [ -x /opt/homebrew/bin/moc ]; then
-    MOC=/opt/homebrew/bin/moc
-    RCC=/opt/homebrew/bin/rcc
-  elif [ -x /usr/local/bin/moc ]; then
-    MOC=/usr/local/bin/moc
-    RCC=/usr/local/bin/rcc
-  # Check additional macOS Homebrew qt6 paths
-  elif [ -x /opt/homebrew/opt/qt6/bin/moc ]; then
-    MOC=/opt/homebrew/opt/qt6/bin/moc
-    RCC=/opt/homebrew/opt/qt6/bin/rcc
-  elif [ -x /usr/local/opt/qt6/bin/moc ]; then
-    MOC=/usr/local/opt/qt6/bin/moc
-    RCC=/usr/local/opt/qt6/bin/rcc
-  # Check MSYS2/MINGW64 paths (Windows) - executables have .exe extension
-  # Prioritize Qt6-specific variants first, check both with and without .exe
-  elif [ -x /mingw64/bin/moc-qt6 ]; then
-    MOC=/mingw64/bin/moc-qt6
-    RCC=/mingw64/bin/rcc-qt6
-    echo "✓ Found moc-qt6 at /mingw64/bin/"
-  elif [ -x /mingw64/bin/moc-qt6.exe ]; then
-    MOC=/mingw64/bin/moc-qt6.exe
-    RCC=/mingw64/bin/rcc-qt6.exe
-    echo "✓ Found moc-qt6.exe at /mingw64/bin/"
-  elif [ -x /mingw64/bin/moc6 ]; then
-    MOC=/mingw64/bin/moc6
-    RCC=/mingw64/bin/rcc6
-    echo "✓ Found moc6 at /mingw64/bin/"
-  elif [ -x /mingw64/bin/moc6.exe ]; then
-    MOC=/mingw64/bin/moc6.exe
-    RCC=/mingw64/bin/rcc6.exe
-    echo "✓ Found moc6.exe at /mingw64/bin/"
-  elif [ -x /mingw64/bin/moc ]; then
-    MOC=/mingw64/bin/moc
-    RCC=/mingw64/bin/rcc
-    echo "✓ Found moc at /mingw64/bin/"
-  elif [ -x /mingw64/bin/moc.exe ]; then
-    MOC=/mingw64/bin/moc.exe
-    RCC=/mingw64/bin/rcc.exe
-    echo "✓ Found moc.exe at /mingw64/bin/"
-  elif [ -x /mingw64/qt6/bin/moc ]; then
-    MOC=/mingw64/qt6/bin/moc
-    RCC=/mingw64/qt6/bin/rcc
-    echo "✓ Found moc at /mingw64/qt6/bin/"
-  elif [ -x /mingw64/qt6/bin/moc.exe ]; then
-    MOC=/mingw64/qt6/bin/moc.exe
-    RCC=/mingw64/qt6/bin/rcc.exe
-    echo "✓ Found moc.exe at /mingw64/qt6/bin/"
-  elif [ -x /mingw64/lib/qt6/bin/moc ]; then
-    MOC=/mingw64/lib/qt6/bin/moc
-    RCC=/mingw64/lib/qt6/bin/rcc
-    echo "✓ Found moc at /mingw64/lib/qt6/bin/"
-  elif [ -x /mingw64/lib/qt6/bin/moc.exe ]; then
-    MOC=/mingw64/lib/qt6/bin/moc.exe
-    RCC=/mingw64/lib/qt6/bin/rcc.exe
-    echo "✓ Found moc.exe at /mingw64/lib/qt6/bin/"
-  # Check Linux paths
-  elif [ -x /usr/lib/qt6/moc ]; then
-    MOC=/usr/lib/qt6/moc
-    RCC=/usr/lib/qt6/rcc
-  elif [ -x /usr/lib/qt6/libexec/moc ]; then
-    MOC=/usr/lib/qt6/libexec/moc
-    RCC=/usr/lib/qt6/libexec/rcc
-  # Check for Qt6-specific commands in PATH
-  elif command -v moc-qt6 >/dev/null 2>&1; then
-    MOC=moc-qt6
-    RCC=rcc-qt6
-  elif command -v moc6 >/dev/null 2>&1; then
-    MOC=moc6
-    RCC=rcc6
-  # Fallback to generic commands in PATH
-  elif command -v moc >/dev/null 2>&1; then
-    MOC=moc
-    RCC=rcc
-  else
-    echo "Error: moc not found. Install Qt6 development tools."
-    echo "Searched locations:"
-    echo "  - macOS Homebrew: /opt/homebrew/opt/qt/bin/moc, /opt/homebrew/opt/qt@6/bin/moc, /opt/homebrew/opt/qt6/bin/moc, /opt/homebrew/bin/moc"
-    echo "  - macOS Homebrew (Intel): /usr/local/opt/qt/bin/moc, /usr/local/opt/qt@6/bin/moc, /usr/local/opt/qt6/bin/moc, /usr/local/bin/moc"
-    echo "  - MSYS2: /mingw64/bin/moc, /mingw64/bin/moc.exe, /mingw64/qt6/bin/moc, /mingw64/qt6/bin/moc.exe, /mingw64/lib/qt6/bin/moc, /mingw64/lib/qt6/bin/moc.exe"
-    echo "  - Linux: /usr/lib/qt6/moc, /usr/lib/qt6/libexec/moc"
-    echo "  - PATH: moc-qt6, moc6, moc"
-    exit 1
 fi
 
 $MOC backup-manager-gui.hpp -o backup-manager-gui.moc.cpp
