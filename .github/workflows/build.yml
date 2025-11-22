@@ -100,6 +100,9 @@ jobs:
           cp /mingw64/bin/libb2-1.dll Releases/ || true
           cp /mingw64/bin/libdouble-conversion.dll Releases/ || true
           cp /mingw64/bin/libicuin78.dll Releases/ || true
+          cp /mingw64/bin/zlib1.dll Releases/ || true
+          cp /mingw64/bin/libicuuc78.dll Releases/ || true
+          cp /mingw64/bin/libpcre2-16-0.dll Releases/ || true
           # Copy icon if exists
           if [ -f dvx3-backup.png ]; then
             cp dvx3-backup.png Releases/
