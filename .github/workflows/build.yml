@@ -136,6 +136,16 @@ jobs:
           cp dvx3-backup.png Releases/
           fi
 
+          # Copy Qt platform plugins (e.g., qwindows.dll) to Releases/platforms
+          PLUGIN_DIR="/mingw64/plugins/platforms"
+          TARGET_DIR="Releases/platforms"
+          mkdir -p "$TARGET_DIR"
+          if [ -d "$PLUGIN_DIR" ]; then
+            cp "$PLUGIN_DIR"/*.dll "$TARGET_DIR"/
+          else
+            echo "Warning: Qt platform plugins directory not found: $PLUGIN_DIR"
+          fi
+
       - name: Compress EXE and DLLs with UPX
         shell: bash
         run: |
