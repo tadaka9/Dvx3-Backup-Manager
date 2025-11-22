@@ -115,6 +115,13 @@ elif [ -x /opt/homebrew/bin/moc ]; then
 elif [ -x /usr/local/bin/moc ]; then
     MOC=/usr/local/bin/moc
     RCC=/usr/local/bin/rcc
+# Check additional macOS Homebrew qt6 paths
+elif [ -x /opt/homebrew/opt/qt6/bin/moc ]; then
+    MOC=/opt/homebrew/opt/qt6/bin/moc
+    RCC=/opt/homebrew/opt/qt6/bin/rcc
+elif [ -x /usr/local/opt/qt6/bin/moc ]; then
+    MOC=/usr/local/opt/qt6/bin/moc
+    RCC=/usr/local/opt/qt6/bin/rcc
 # Check MSYS2/MINGW64 paths (Windows) - executables have .exe extension
 # Prioritize Qt6-specific variants first, check both with and without .exe
 elif [ -x /mingw64/bin/moc-qt6 ]; then
@@ -178,9 +185,9 @@ elif command -v moc >/dev/null 2>&1; then
 else
     echo "Error: moc not found. Install Qt6 development tools."
     echo "Searched locations:"
-    echo "  - macOS Homebrew: /opt/homebrew/opt/qt/bin/moc, /opt/homebrew/opt/qt@6/bin/moc, /opt/homebrew/bin/moc"
-    echo "  - macOS Homebrew (Intel): /usr/local/opt/qt/bin/moc, /usr/local/opt/qt@6/bin/moc, /usr/local/bin/moc"
-    echo "  - MSYS2: /mingw64/bin/moc.exe, /mingw64/qt6/bin/moc.exe, /mingw64/lib/qt6/bin/moc.exe"
+    echo "  - macOS Homebrew: /opt/homebrew/opt/qt/bin/moc, /opt/homebrew/opt/qt@6/bin/moc, /opt/homebrew/opt/qt6/bin/moc, /opt/homebrew/bin/moc"
+    echo "  - macOS Homebrew (Intel): /usr/local/opt/qt/bin/moc, /usr/local/opt/qt@6/bin/moc, /usr/local/opt/qt6/bin/moc, /usr/local/bin/moc"
+    echo "  - MSYS2: /mingw64/bin/moc, /mingw64/bin/moc.exe, /mingw64/qt6/bin/moc, /mingw64/qt6/bin/moc.exe, /mingw64/lib/qt6/bin/moc, /mingw64/lib/qt6/bin/moc.exe"
     echo "  - Linux: /usr/lib/qt6/moc, /usr/lib/qt6/libexec/moc"
     echo "  - PATH: moc-qt6, moc6, moc"
     exit 1
