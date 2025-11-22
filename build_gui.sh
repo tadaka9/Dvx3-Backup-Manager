@@ -277,6 +277,37 @@ fi
     -L. -ldvx3 $RPATH_FLAGS \
     -I.
 
+# Create qt.conf for local builds (helps Qt find plugins)
+echo ""
+echo "Creating qt.conf for plugin path configuration..."
+cat > qt.conf << 'EOF'
+[Paths]
+Plugins = .
+EOF
+
+# Copy Qt platform plugins for local testing (optional but helpful)
+case "$UNAME_OUT" in
+    MINGW*|MSYS*|CYGWIN*)
+        echo "Copying Qt platform plugins for Windows..."
+        mkdir -p platforms
+        
+        # Try multiple possible plugin locations
+        if [ -d "/mingw64/share/qt6/plugins/platforms" ]; then
+            cp /mingw64/share/qt6/plugins/platforms/*.dll platforms/ 2>/dev/null || true
+        elif [ -d "/mingw64/plugins/platforms" ]; then
+            cp /mingw64/plugins/platforms/*.dll platforms/ 2>/dev/null || true
+        elif [ -d "/mingw64/lib/qt6/plugins/platforms" ]; then
+            cp /mingw64/lib/qt6/plugins/platforms/*.dll platforms/ 2>/dev/null || true
+        fi
+        
+        if [ -f platforms/qwindows.dll ]; then
+            echo "✓ Copied qwindows.dll to platforms/"
+        else
+            echo "⚠ Warning: Could not copy qwindows.dll - you may need to copy it manually"
+        fi
+        ;;
+esac
+
 echo ""
 echo "✓ Build complete!"
 echo ""
@@ -287,3 +318,5 @@ if [ -f dvx3-backup.png ]; then
 else
     echo "No icon found; place dvx3-backup.png in project root to customize icon."
 fi
+echo ""
+echo "Note: qt.conf created to help Qt find platform plugins"

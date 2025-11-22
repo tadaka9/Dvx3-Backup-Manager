@@ -1310,6 +1310,20 @@ AboutDialog::AboutDialog(QWidget* parent)
 
 // Main entry point
 int main(int argc, char** argv) {
+    // Set Qt plugin path BEFORE creating QApplication
+    // This ensures Qt can find platform plugins (qwindows.dll on Windows)
+    #ifdef Q_OS_WIN
+    // On Windows, add the executable directory to the plugin search path
+    QString appDir = QCoreApplication::applicationDirPath();
+    QCoreApplication::addLibraryPath(appDir);
+    QCoreApplication::addLibraryPath(appDir + "/platforms");
+    QCoreApplication::addLibraryPath(appDir + "/plugins");
+    
+    // Also try relative paths for different deployment scenarios
+    QCoreApplication::addLibraryPath(appDir + "/../plugins");
+    QCoreApplication::addLibraryPath(appDir + "/../lib/qt6/plugins");
+    #endif
+    
     QApplication app(argc, argv);
     
     app.setApplicationName("Backup Manager");

@@ -137,14 +137,72 @@ jobs:
           fi
 
           # Copy Qt platform plugins (e.g., qwindows.dll) to Releases/platforms
-          PLUGIN_DIR="/mingw64/plugins/platforms"
+          echo "=== Copying Qt Platform Plugins ==="
+          PLUGIN_DIR="/mingw64/share/qt6/plugins/platforms"
           TARGET_DIR="Releases/platforms"
           mkdir -p "$TARGET_DIR"
+          
+          # Try multiple possible plugin locations
           if [ -d "$PLUGIN_DIR" ]; then
-            cp "$PLUGIN_DIR"/*.dll "$TARGET_DIR"/
+            echo "Found plugins at: $PLUGIN_DIR"
+            cp "$PLUGIN_DIR"/*.dll "$TARGET_DIR"/ 2>/dev/null || true
+          elif [ -d "/mingw64/plugins/platforms" ]; then
+            echo "Found plugins at: /mingw64/plugins/platforms"
+            cp /mingw64/plugins/platforms/*.dll "$TARGET_DIR"/ 2>/dev/null || true
+          elif [ -d "/mingw64/lib/qt6/plugins/platforms" ]; then
+            echo "Found plugins at: /mingw64/lib/qt6/plugins/platforms"
+            cp /mingw64/lib/qt6/plugins/platforms/*.dll "$TARGET_DIR"/ 2>/dev/null || true
           else
-            echo "Warning: Qt platform plugins directory not found: $PLUGIN_DIR"
+            echo "Warning: Qt platform plugins directory not found!"
+            echo "Searching for qwindows.dll..."
+            find /mingw64 -name "qwindows.dll" 2>/dev/null || true
           fi
+          
+          # Verify qwindows.dll was copied
+          if [ -f "$TARGET_DIR/qwindows.dll" ]; then
+            echo "✓ Successfully copied qwindows.dll"
+            ls -lh "$TARGET_DIR"/
+          else
+            echo "✗ ERROR: qwindows.dll not found!"
+            exit 1
+          fi
+          
+          # Copy Qt styles plugins (optional but recommended)
+          echo "=== Copying Qt Styles Plugins ==="
+          STYLES_DIR="/mingw64/share/qt6/plugins/styles"
+          STYLES_TARGET="Releases/styles"
+          mkdir -p "$STYLES_TARGET"
+          
+          if [ -d "$STYLES_DIR" ]; then
+            cp "$STYLES_DIR"/*.dll "$STYLES_TARGET"/ 2>/dev/null || true
+          elif [ -d "/mingw64/plugins/styles" ]; then
+            cp /mingw64/plugins/styles/*.dll "$STYLES_TARGET"/ 2>/dev/null || true
+          elif [ -d "/mingw64/lib/qt6/plugins/styles" ]; then
+            cp /mingw64/lib/qt6/plugins/styles/*.dll "$STYLES_TARGET"/ 2>/dev/null || true
+          fi
+          
+          # Copy Qt imageformats plugins (for icon support)
+          echo "=== Copying Qt Image Format Plugins ==="
+          IMAGEFORMATS_DIR="/mingw64/share/qt6/plugins/imageformats"
+          IMAGEFORMATS_TARGET="Releases/imageformats"
+          mkdir -p "$IMAGEFORMATS_TARGET"
+          
+          if [ -d "$IMAGEFORMATS_DIR" ]; then
+            cp "$IMAGEFORMATS_DIR"/*.dll "$IMAGEFORMATS_TARGET"/ 2>/dev/null || true
+          elif [ -d "/mingw64/plugins/imageformats" ]; then
+            cp /mingw64/plugins/imageformats/*.dll "$IMAGEFORMATS_TARGET"/ 2>/dev/null || true
+          elif [ -d "/mingw64/lib/qt6/plugins/imageformats" ]; then
+            cp /mingw64/lib/qt6/plugins/imageformats/*.dll "$IMAGEFORMATS_TARGET"/ 2>/dev/null || true
+          fi
+          
+          # Create qt.conf to tell Qt where to find plugins
+          echo "=== Creating qt.conf ==="
+          cat > Releases/qt.conf << 'EOF'
+[Paths]
+Plugins = .
+EOF
+          echo "✓ Created qt.conf"
+          cat Releases/qt.conf
 
       - name: Compress EXE and DLLs with UPX
         shell: bash
