@@ -1329,7 +1329,7 @@ int main(int argc, char** argv) {
     // Create QApplication
     QApplication app(argc, argv);
     
-    // Set Qt plugin paths AFTER creating QApplication
+    // Set Qt plugin paths and copy helper executables (Windows only)
     #ifdef Q_OS_WIN
     QString appDir = QCoreApplication::applicationDirPath();
     QCoreApplication::addLibraryPath(appDir);
@@ -1351,7 +1351,6 @@ int main(int argc, char** argv) {
     #ifdef Q_OS_WIN
     // On Windows, copy helper executables to config directory
     // This is necessary because QDir::setCurrent() changes the working directory
-    QString appDir = QCoreApplication::applicationDirPath();
     QStringList helpers = {"tar.exe", "zstd.exe", "sh.exe", 
                            "msys-2.0.dll", "msys-zstd-1.dll", "msys-lzma-5.dll",
                            "msys-iconv-2.dll", "msys-intl-8.dll"};
