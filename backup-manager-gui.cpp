@@ -1310,33 +1310,33 @@ AboutDialog::AboutDialog(QWidget* parent)
 
 // Main entry point
 int main(int argc, char** argv) {
-    // Create QApplication first (required for applicationDirPath)
+    #ifdef Q_OS_WIN
+    // On Windows, set PATH BEFORE any GLib/Qt initialization
+    // Get executable directory from argv[0]
+    std::string exePath = argv[0];
+    size_t lastSlash = exePath.find_last_of("\\/");
+    std::string exeDir = (lastSlash != std::string::npos) ? exePath.substr(0, lastSlash) : ".";
+    
+    // Get current PATH
+    const char* currentPathC = g_getenv("PATH");
+    std::string currentPath = currentPathC ? currentPathC : "";
+    
+    // Prepend executable directory to PATH using GLib
+    std::string newPath = exeDir + ";" + currentPath;
+    g_setenv("PATH", newPath.c_str(), TRUE);
+    #endif
+    
+    // Create QApplication
     QApplication app(argc, argv);
     
-    // Set Qt plugin path AFTER creating QApplication
-    // This ensures Qt can find platform plugins (qwindows.dll on Windows)
+    // Set Qt plugin paths AFTER creating QApplication
     #ifdef Q_OS_WIN
-    // On Windows, add the executable directory to the plugin search path
     QString appDir = QCoreApplication::applicationDirPath();
     QCoreApplication::addLibraryPath(appDir);
     QCoreApplication::addLibraryPath(appDir + "/platforms");
     QCoreApplication::addLibraryPath(appDir + "/plugins");
-    
-    // Also try relative paths for different deployment scenarios
     QCoreApplication::addLibraryPath(appDir + "/../plugins");
     QCoreApplication::addLibraryPath(appDir + "/../lib/qt6/plugins");
-    
-    // Add executable directory to PATH so helper programs can be found
-    // Use both Qt and GLib methods to ensure it works
-    QString currentPath = qEnvironmentVariable("PATH");
-    QString newPath = appDir + ";" + currentPath;
-    qputenv("PATH", newPath.toLocal8Bit());
-    
-    // Also set using GLib (which libdvx3 uses for process spawning)
-    std::string appDirStd = appDir.toStdString();
-    std::string currentPathStd = currentPath.toStdString();
-    std::string newPathStd = appDirStd + ";" + currentPathStd;
-    g_setenv("PATH", newPathStd.c_str(), TRUE);
     #endif
     
     app.setApplicationName("Backup Manager");
