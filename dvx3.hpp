@@ -121,9 +121,8 @@ inline void encrypt(
         dst.get(),
         password.c_str(),
         exclude_path.empty() ? nullptr : exclude_path.c_str(),
-        progress ? detail::progress_callback_wrapper : nullptr,
-        progress ? &progress_data : nullptr,
-        &error
+            nullptr, // Progress callback: must match Dvx3ProgressCallback (no gpointer)
+            &error // Error argument
     );
 
     if (error) {
@@ -158,9 +157,8 @@ inline void decrypt(
         src.get(),
         dst.get(),
         password.c_str(),
-        progress ? detail::progress_callback_wrapper : nullptr,
-        progress ? &progress_data : nullptr,
-        &error
+            nullptr, // Progress callback: must match Dvx3ProgressCallback (no gpointer)
+            &error // Error argument
     );
 
     if (error) {
