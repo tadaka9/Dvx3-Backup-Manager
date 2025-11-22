@@ -55,6 +55,21 @@ jobs:
           sed -i 's/\r$//' build_gui.sh
           ./build_gui.sh
 
+      - name: Prepare Releases folder
+        shell: msys2 {0}
+        run: |
+          mkdir -p Releases
+          # Rename and move built executable to Releases with desired name
+          if [ -f backup-manager-gui.exe ]; then
+            mv backup-manager-gui.exe "Releases/Dvx3 Backup Manager.exe"
+          elif [ -f backup-manager-gui ]; then
+            cp backup-manager-gui "Releases/Dvx3 Backup Manager.exe"
+          fi
+          # Copy icon if exists
+          if [ -f dvx3-backup.png ]; then
+            cp dvx3-backup.png Releases/
+          fi
+
       - name: Upload Windows build artifacts
         uses: actions/upload-artifact@v4
         with:
