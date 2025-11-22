@@ -94,6 +94,9 @@ jobs:
           cp /mingw64/bin/Qt6Network.dll Releases/ || true
           cp /mingw64/bin/Qt6DBus.dll Releases/ || true
           cp /mingw64/bin/Qt6Svg.dll Releases/ || true
+          cp /mingw64/bin/libdvx3.dll Releases/ || true
+          cp /mingw64/bin/libintl-8.dll Releases/ || true
+          cp /mingw64/bin/libpcre2-8-0.dll Releases/ || true
           # Copy icon if exists
           if [ -f dvx3-backup.png ]; then
             cp dvx3-backup.png Releases/
