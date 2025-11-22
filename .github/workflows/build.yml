@@ -197,10 +197,10 @@ jobs:
           
           # Create qt.conf to tell Qt where to find plugins
           echo "=== Creating qt.conf ==="
-          cat > Releases/qt.conf << 'EOF'
-[Paths]
-Plugins = .
-EOF
+          cat > Releases/qt.conf <<'QTCONF'
+          [Paths]
+          Plugins = .
+          QTCONF
           echo "✓ Created qt.conf"
           cat Releases/qt.conf
 
