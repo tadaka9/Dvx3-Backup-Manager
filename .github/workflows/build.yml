@@ -56,7 +56,7 @@ jobs:
           ./build_gui.sh
 
       - name: Upload Windows build artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Dvx3-Backup-Manager-Windows-Build
           path: Releases/
