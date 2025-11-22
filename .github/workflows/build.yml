@@ -51,4 +51,6 @@ jobs:
         shell: msys2 {0}
         run: |
           chmod +x build_gui.sh || true
+          # Fix line endings for build_gui.sh to Unix LF before build
+          sed -i 's/\r$//' build_gui.sh
           ./build_gui.sh
