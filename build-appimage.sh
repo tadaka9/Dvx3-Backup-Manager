@@ -186,4 +186,36 @@ Terminal=false
 EOF
 
 if [[ -f "$ICON" ]]; then
-    cp "$ICON
+    cp "$ICON" "$APPDIR/usr/share/icons/hicolor/256x256/apps/dvx3-backup.png"
+    log "Copied icon: $ICON"
+else
+    warn "Icon $ICON not found – AppImage will lack an icon."
+fi
+
+# -------------------------------------------------------------------------
+# 8️⃣ Create AppRun script
+# -------------------------------------------------------------------------
+log "Creating AppRun script"
+cat > "$APPDIR/AppRun" <<'EOF'
+#!/bin/bash
+HERE="$(dirname "$(readlink -f "${0}")")"
+export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH:-}"
+export QT_PLUGIN_PATH="${HERE}/usr/plugins:${QT_PLUGIN_PATH:-}"
+export QT_QPA_PLATFORM_PLUGIN_PATH="${HERE}/usr/plugins/platforms:${QT_QPA_PLATFORM_PLUGIN_PATH:-}"
+exec "${HERE}/usr/bin/backup-manager-gui" "$@"
+EOF
+chmod +x "$APPDIR/AppRun"
+
+# -------------------------------------------------------------------------
+# 9️⃣ Build the AppImage
+# -------------------------------------------------------------------------
+log "Building AppImage"
+if [[ ! -f "$APPIMAGETOOL" ]]; then
+    log "Downloading appimagetool..."
+    wget -q "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" -O "$APPIMAGETOOL"
+    chmod +x "$APPIMAGETOOL"
+fi
+
+"./$APPIMAGETOOL" --no-appstream "$APPDIR" "Dvx3BackupManager-$VERSION-x86_64.AppImage"
+
+log "AppImage created: Dvx3BackupManager-$VERSION-x86_64.AppImage"

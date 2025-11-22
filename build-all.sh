@@ -23,7 +23,8 @@ echo ""
 # 2. Linux AppImage (if on x86_64 Linux, not Windows)
 if [[ "$(uname -s)" == "Linux" ]] && [[ "$(uname -m)" == "x86_64" ]] && [[ -z "$MSYSTEM" ]]; then
     echo "▶ Building Linux AppImage..."
-    if ./build-appimage.sh 2>&1 | tail -5; then
+    ./build-appimage.sh 2>&1 | tail -5
+    if [ ${PIPESTATUS[0]} -eq 0 ]; then
         ((BUILD_COUNT++))
     else
         echo "⚠ AppImage build failed"
@@ -36,7 +37,8 @@ fi
 # 3. Raspberry Pi tarball (if on ARM)
 if [[ "$(uname -m)" =~ ^arm ]] || [[ "$(uname -m)" == "aarch64" ]]; then
     echo "▶ Building Raspberry Pi package..."
-    if ./build-raspberry.sh 2>&1 | tail -5; then
+    ./build-raspberry.sh 2>&1 | tail -5
+    if [ ${PIPESTATUS[0]} -eq 0 ]; then
         ((BUILD_COUNT++))
     else
         echo "⚠ Raspberry Pi build failed"
@@ -47,8 +49,13 @@ fi
 # 4. macOS (only on macOS)
 if [[ "$OSTYPE" == "darwin"* ]]; then
     echo "▶ Building for macOS..."
-    if [ -f build-macos.sh ] && ./build-macos.sh 2>&1 | tail -5; then
-        ((BUILD_COUNT++))
+    if [ -f build-macos.sh ]; then
+        ./build-macos.sh 2>&1 | tail -5
+        if [ ${PIPESTATUS[0]} -eq 0 ]; then
+            ((BUILD_COUNT++))
+        else
+            echo "⚠ macOS build failed"
+        fi
     else
         echo "⚠ macOS build not available or failed"
     fi

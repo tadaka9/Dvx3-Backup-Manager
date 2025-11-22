@@ -178,7 +178,8 @@ private static int cmd_encrypt(string[] args) throws Error {
         }
     );
 
-    progress.finish(total_size, out_file.query_info(FileAttribute.STANDARD_SIZE, FileQueryInfoFlags.NONE).get_attribute_uint64(FileAttribute.STANDARD_SIZE));
+    uint64 output_bytes = out_file.query_info(FileAttribute.STANDARD_SIZE, FileQueryInfoFlags.NONE).get_attribute_uint64(FileAttribute.STANDARD_SIZE);
+    progress.finish(total_size, output_bytes);
     
     GLib.stdout.printf("%s\n", colour_wrap("✅ Encrypted backup → " + out_file_path, GRN));
     GLib.stdout.printf("Time: %.2fs\n", timer.elapsed());
@@ -199,7 +200,7 @@ private static int cmd_decrypt(string[] args) throws Error {
     ctx.add_main_entries(entries, null);
     ctx.parse(ref args);
 
-    if (args.length != 2 || pwd == null) {
+    if (args.length != 2 || pwd == null || out_dir == null) {
         GLib.stderr.printf("Usage: %s decrypt <encrypted.dvx3> -p <pwd> -o <output_dir>\n", args[0]);
         return 1;
     }
@@ -210,16 +211,7 @@ private static int cmd_decrypt(string[] args) throws Error {
         return 1;
     }
 
-    File dst_dir;
-    if (out_dir != null) {
-        dst_dir = File.new_for_commandline_arg(out_dir);
-    } else {
-        var base_name = enc_file.get_basename();
-        if (base_name.has_suffix(".dvx3")) {
-            base_name = base_name.substring(0, base_name.length - 5);
-        }
-        dst_dir = enc_file.get_parent().get_child(base_name);
-    }
+    File dst_dir = File.new_for_commandline_arg(out_dir);
 
     var enc_size = enc_file.query_info(FileAttribute.STANDARD_SIZE, FileQueryInfoFlags.NONE).get_attribute_uint64(FileAttribute.STANDARD_SIZE);
     var progress = new ConsoleProgress("Decrypt+Extract", enc_size);
@@ -235,7 +227,8 @@ private static int cmd_decrypt(string[] args) throws Error {
         }
     );
 
-    progress.finish(enc_size, enc_size);
+    uint64 extracted_size = compute_total_size(dst_dir, null);
+    progress.finish(enc_size, extracted_size);
     
     GLib.stdout.printf("%s\n", colour_wrap("✅ Extracted to " + dst_dir.get_path(), GRN));
     GLib.stdout.printf("Time: %.2fs\n", timer.elapsed());
