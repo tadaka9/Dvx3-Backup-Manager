@@ -248,6 +248,8 @@ else
     touch resources.rcc.cpp
 fi
 
+# Add a trailing newline at end of file to fix syntax error
+
 # 5. Compile and link GUI
 echo "[5/5] Compiling Qt6 GUI..."
 # Set platform-specific rpath
