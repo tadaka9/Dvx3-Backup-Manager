@@ -1,346 +1,56 @@
-name: Build Backup Manager
+name: Release
 
 on:
   push:
     branches:
-      - clean-version
-  pull_request:
-
+      - main
 jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v3
-
-      - name: Install MSYS2
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: >
-            mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-qt6-base
-            mingw-w64-x86_64-qt6-tools
-            mingw-w64-x86_64-pkg-config
-            mingw-w64-x86_64-vala
-            mingw-w64-x86_64-json-glib
-            mingw-w64-x86_64-libsodium
-
-      - name: Verify Qt6 installation
-        shell: msys2 {0}
-        run: |
-          echo "Checking Qt6Widgets with pkg-config"
-          pkg-config --modversion Qt6Widgets
-          echo "Searching for moc in MSYS2 directories"
-          ls -l /mingw64/bin/moc.exe || true
-          ls -l /mingw64/qt6/bin/moc.exe || true
-          ls -l /mingw64/lib/qt6/bin/moc.exe || true
-          echo "moc in PATH:"
-          which moc || true
-  
-          echo "PATH environment variable:"
-          echo $PATH
-  
-          echo "Listing moc executables recursively under /mingw64"
-          find /mingw64 -name "moc*.exe" || true
-  
-          echo "List installed Qt6 packages"
-          pacman -Qs qt6
-          build-linux:
-            runs-on: ubuntu-latest
-            steps:
-              - uses: actions/checkout@v3
-
-              - name: Install dependencies
-                run: |
-                  sudo apt-get update
-                  sudo apt-get install -y build-essential qt6-base-dev qt6-base-plugins qt6-gtk-platformtheme qt6-tools pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick
-
-              - name: Build all components
-                run: |
-                  chmod +x build-all.sh
-                  ./build-all.sh
-
-              - name: Upload Linux build artifacts
-                uses: actions/upload-artifact@v4
-                with:
-                  name: Dvx3-Backup-Manager-Linux-Build
-                  path: |
-                    backup-manager
-                    backup-manager-gui
-                    dvx3
-                    libdvx3.so
-
-      - name: Install ImageMagick for icon conversion
-        run: sudo apt-get update && sudo apt-get install -y imagemagick
-        if: runner.os == 'Linux'
-    
-      - name: Convert PNG to ICO for Windows icon embedding
-        run: convert dvx3-backup.png -define icon:auto-resize=64,48,32,16 dvx3-backup.ico
-        working-directory: ${{ github.workspace }}
-        if: runner.os == 'Linux'
-
-      - name: Build Backup Manager GUI
-        shell: msys2 {0}
-        run: |
-          chmod +x build_gui.sh || true
-          # Fix line endings for build_gui.sh to Unix LF before build
-          sed -i 's/\r$//' build_gui.sh
-          ./build_gui.sh
-      
-      - name: Build dvx3 CLI tool
-        shell: msys2 {0}
-        run: |
-          chmod +x build.sh || true
-          sed -i 's/\r$//' build.sh
-          ./build.sh || echo "CLI build failed, continuing..."
-
-      - name: Prepare Releases folder
-        shell: msys2 {0}
-        run: |
-          mkdir -p Releases
-          # Rename and move built executable to Releases with desired name
-          if [ -f backup-manager-gui.exe ]; then
-            mv backup-manager-gui.exe "Releases/Dvx3 Backup Manager.exe"
-          elif [ -f backup-manager-gui ]; then
-            cp backup-manager-gui "Releases/Dvx3 Backup Manager.exe"
+    - uses: actions/checkout@v4
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - name: Install dependencies
+      run: pip install pyinstaller
+    - name: Build executable
+      run: |
+        cd src
+        pyinstaller --onefile --name "Dvx3 Backup Manager" dvx_backup_manager.py
+    - name: Compress with UPX
+      shell: bash
+      run: |
+        # Download UPX Windows binary if on Windows runner
+        if [[ "$RUNNER_OS" == "Windows" ]] || [[ "$(uname -s)" == MINGW* ]]; then
+          echo "Downloading UPX for Windows"
+          curl -L -o upx.zip https://github.com/upx/upx/releases/download/v4.0.2/upx-4.0.2-win64.zip
+          unzip -q upx.zip
+          UPX_PATH="./upx-4.0.2-win64/upx.exe"
+        else
+          echo "Assuming Linux runner: using system upx"
+          UPX_PATH="upx"
+        fi
+        
+        # Compress main EXE
+        if [ -f Releases/Dvx3\ Backup\ Manager.exe ]; then
+          "$UPX_PATH" --best --lzma "Releases/Dvx3 Backup Manager.exe" || echo "Failed to compress main exe, continuing..."
+        fi
+        
+        # Compress DLLs (skip MSYS2 DLLs and executables as they can't be compressed)
+        for dll in Releases/*.dll; do
+          if [[ "$dll" == *"msys-"* ]]; then
+            echo "Skipping MSYS2 DLL: $dll"
+            continue
           fi
-          
-          # Copy dvx3 CLI tool (helper program for backups)
-          if [ -f dvx3.exe ]; then
-            cp dvx3.exe Releases/
-            echo "✓ Copied dvx3.exe CLI tool"
-          elif [ -f dvx3 ]; then
-            cp dvx3 Releases/dvx3.exe
-            echo "✓ Copied dvx3 CLI tool"
-          else
-            echo "⚠ Warning: dvx3 CLI tool not found - backups may not work"
-          fi
-          
-          # Copy tar and zstd executables (required by libdvx3 for backup operations)
-          echo "=== Copying tar and zstd executables ==="
-          if [ -f /usr/bin/tar.exe ]; then
-            cp /usr/bin/tar.exe Releases/
-            echo "✓ Copied tar.exe"
-          elif [ -f /usr/bin/tar ]; then
-            cp /usr/bin/tar Releases/tar.exe
-            echo "✓ Copied tar"
-          else
-            echo "✗ ERROR: tar not found - backups will not work!"
-          fi
-          
-          if [ -f /usr/bin/zstd.exe ]; then
-            cp /usr/bin/zstd.exe Releases/
-            echo "✓ Copied zstd.exe"
-          elif [ -f /usr/bin/zstd ]; then
-            cp /usr/bin/zstd Releases/zstd.exe
-            echo "✓ Copied zstd"
-          else
-            echo "✗ ERROR: zstd not found - backups will not work!"
-          fi
-          
-          # Copy sh.exe (shell required for tar/zstd pipeline)
-          if [ -f /usr/bin/sh.exe ]; then
-            cp /usr/bin/sh.exe Releases/
-            echo "✓ Copied sh.exe"
-          elif [ -f /usr/bin/sh ]; then
-            cp /usr/bin/sh Releases/sh.exe
-            echo "✓ Copied sh"
-          fi
-          
-          # Copy msys-2.0.dll (required by MSYS2 executables)
-          if [ -f /usr/bin/msys-2.0.dll ]; then
-            cp /usr/bin/msys-2.0.dll Releases/
-            echo "✓ Copied msys-2.0.dll"
-          fi
-          
-          # Copy msys-zstd-1.dll (required by zstd)
-          if [ -f /usr/bin/msys-zstd-1.dll ]; then
-            cp /usr/bin/msys-zstd-1.dll Releases/
-            echo "✓ Copied msys-zstd-1.dll"
-          fi
-          
-          # Copy msys-lzma-5.dll (required by tar)
-          if [ -f /usr/bin/msys-lzma-5.dll ]; then
-            cp /usr/bin/msys-lzma-5.dll Releases/
-            echo "✓ Copied msys-lzma-5.dll"
-          fi
-          
-          # Copy msys-iconv-2.dll (required by tar)
-          if [ -f /usr/bin/msys-iconv-2.dll ]; then
-            cp /usr/bin/msys-iconv-2.dll Releases/
-            echo "✓ Copied msys-iconv-2.dll"
-          fi
-          
-          # Copy msys-intl-8.dll (required by tar)
-          if [ -f /usr/bin/msys-intl-8.dll ]; then
-            cp /usr/bin/msys-intl-8.dll Releases/
-            echo "✓ Copied msys-intl-8.dll"
-          fi
-          # Copy libdvx3.dll from build output if exists
-          if [ -f libdvx3.dll ]; then
-            cp libdvx3.dll Releases/ || true
-          elif [ -f libdvx3.so ]; then
-            cp libdvx3.so Releases/ || true
-          fi
-          # Function to copy DLL only if it exists
-          copy_if_exists() {
-            if [ -f "$1" ]; then
-              cp "$1" Releases/
-            else
-              echo "Warning: DLL $1 not found!"
-            fi
-          }
-          # List of DLLs to copy from mingw64/bin
-          dll_list=(
-            /mingw64/bin/libgio-2.0-0.dll
-            /mingw64/bin/libglib-2.0-0.dll
-            /mingw64/bin/libgcc_s_seh-1.dll
-            /mingw64/bin/libgobject-2.0-0.dll
-            /mingw64/bin/libstdc++-6.dll
-            /mingw64/bin/libwinpthread-1.dll
-            /mingw64/bin/libffi-8.dll
-            /mingw64/bin/libbz2-1.dll
-            /mingw64/bin/libzstd.dll
-            /mingw64/bin/zlib1.dll
-            /mingw64/bin/libicuuc78.dll
-            /mingw64/bin/libicuin78.dll
-            /mingw64/bin/libintl-8.dll
-            /mingw64/bin/libpcre2-8-0.dll
-            /mingw64/bin/libpcre2-16-0.dll
-            /mingw64/bin/libpcre2-16-0.dll
-          /mingw64/bin/libb2-1.dll
-          /mingw64/bin/libdouble-conversion.dll
-          /mingw64/bin/libfreetype-6.dll
-          /mingw64/bin/libharfbuzz-0.dll
-          /mingw64/bin/libgmodule-2.0-0.dll
-          /mingw64/bin/libsodium-26.dll
-          /mingw64/bin/libjson-glib-1.0.dll
-          /mingw64/bin/libjson-glib-1.0-0.dll
-          /mingw64/bin/libmd4c.dll
-          /mingw64/bin/libpng16-16.dll
-          /mingw64/bin/libiconv-2.dll
-          /mingw64/bin/libicudt78.dll
-          /mingw64/bin/libbrotlicommon.dll
-          /mingw64/bin/libbrotlidec.dll
-          /mingw64/bin/libgraphite2.dll
-          /mingw64/bin/Qt6Core.dll
-          /mingw64/bin/Qt6Gui.dll
-          /mingw64/bin/Qt6Widgets.dll
-          /mingw64/bin/Qt6Network.dll
-          /mingw64/bin/Qt6DBus.dll
-          )
-          # Copy DLLs if they exist
-          for dll in "${dll_list[@]}"; do
-            copy_if_exists "$dll"
-          done
-          # Copy icon if exists
-          if [ -f dvx3-backup.png ]; then
-          cp dvx3-backup.png Releases/
-          fi
-
-          # Copy Qt platform plugins (e.g., qwindows.dll) to Releases/platforms
-          echo "=== Copying Qt Platform Plugins ==="
-          PLUGIN_DIR="/mingw64/share/qt6/plugins/platforms"
-          TARGET_DIR="Releases/platforms"
-          mkdir -p "$TARGET_DIR"
-          
-          # Try multiple possible plugin locations
-          if [ -d "$PLUGIN_DIR" ]; then
-            echo "Found plugins at: $PLUGIN_DIR"
-            cp "$PLUGIN_DIR"/*.dll "$TARGET_DIR"/ 2>/dev/null || true
-          elif [ -d "/mingw64/plugins/platforms" ]; then
-            echo "Found plugins at: /mingw64/plugins/platforms"
-            cp /mingw64/plugins/platforms/*.dll "$TARGET_DIR"/ 2>/dev/null || true
-          elif [ -d "/mingw64/lib/qt6/plugins/platforms" ]; then
-            echo "Found plugins at: /mingw64/lib/qt6/plugins/platforms"
-            cp /mingw64/lib/qt6/plugins/platforms/*.dll "$TARGET_DIR"/ 2>/dev/null || true
-          else
-            echo "Warning: Qt platform plugins directory not found!"
-            echo "Searching for qwindows.dll..."
-            find /mingw64 -name "qwindows.dll" 2>/dev/null || true
-          fi
-          
-          # Verify qwindows.dll was copied
-          if [ -f "$TARGET_DIR/qwindows.dll" ]; then
-            echo "✓ Successfully copied qwindows.dll"
-            ls -lh "$TARGET_DIR"/
-          else
-            echo "✗ ERROR: qwindows.dll not found!"
-            exit 1
-          fi
-          
-          # Copy Qt styles plugins (optional but recommended)
-          echo "=== Copying Qt Styles Plugins ==="
-          STYLES_DIR="/mingw64/share/qt6/plugins/styles"
-          STYLES_TARGET="Releases/styles"
-          mkdir -p "$STYLES_TARGET"
-          
-          if [ -d "$STYLES_DIR" ]; then
-            cp "$STYLES_DIR"/*.dll "$STYLES_TARGET"/ 2>/dev/null || true
-          elif [ -d "/mingw64/plugins/styles" ]; then
-            cp /mingw64/plugins/styles/*.dll "$STYLES_TARGET"/ 2>/dev/null || true
-          elif [ -d "/mingw64/lib/qt6/plugins/styles" ]; then
-            cp /mingw64/lib/qt6/plugins/styles/*.dll "$STYLES_TARGET"/ 2>/dev/null || true
-          fi
-          
-          # Copy Qt imageformats plugins (for icon support)
-          echo "=== Copying Qt Image Format Plugins ==="
-          IMAGEFORMATS_DIR="/mingw64/share/qt6/plugins/imageformats"
-          IMAGEFORMATS_TARGET="Releases/imageformats"
-          mkdir -p "$IMAGEFORMATS_TARGET"
-          
-          if [ -d "$IMAGEFORMATS_DIR" ]; then
-            cp "$IMAGEFORMATS_DIR"/*.dll "$IMAGEFORMATS_TARGET"/ 2>/dev/null || true
-          elif [ -d "/mingw64/plugins/imageformats" ]; then
-            cp /mingw64/plugins/imageformats/*.dll "$IMAGEFORMATS_TARGET"/ 2>/dev/null || true
-          elif [ -d "/mingw64/lib/qt6/plugins/imageformats" ]; then
-            cp /mingw64/lib/qt6/plugins/imageformats/*.dll "$IMAGEFORMATS_TARGET"/ 2>/dev/null || true
-          fi
-          
-          # Create qt.conf to tell Qt where to find plugins
-          echo "=== Creating qt.conf ==="
-          cat > Releases/qt.conf <<'QTCONF'
-          [Paths]
-          Plugins = .
-          QTCONF
-          echo "✓ Created qt.conf"
-          cat Releases/qt.conf
-
-      - name: Compress EXE and DLLs with UPX
-        shell: bash
-        run: |
-          # Download UPX Windows binary if on Windows runner
-          if [[ "$RUNNER_OS" == "Windows" ]] || [[ "$(uname -s)" == MINGW* ]]; then
-            echo "Downloading UPX for Windows"
-            curl -L -o upx.zip https://github.com/upx/upx/releases/download/v4.0.2/upx-4.0.2-win64.zip
-            unzip -q upx.zip
-            UPX_PATH="./upx-4.0.2-win64/upx.exe"
-          else
-            echo "Assuming Linux runner: using system upx"
-            UPX_PATH="upx"
-          fi
-
-          # Compress main EXE
-          if [ -f Releases/Dvx3\ Backup\ Manager.exe ]; then
-            "$UPX_PATH" --best --lzma "Releases/Dvx3 Backup Manager.exe" || echo "Failed to compress main exe, continuing..."
-          fi
-
-          # Compress DLLs (skip MSYS2 DLLs and executables as they can't be compressed)
-          for dll in Releases/*.dll; do
-            # Skip MSYS2 DLLs (they have writable shared sections)
-            if [[ "$dll" == *"msys-"* ]]; then
-              echo "Skipping MSYS2 DLL: $dll"
-              continue
-            fi
-            "$UPX_PATH" --best --lzma "$dll" || echo "Failed to compress $dll, continuing..."
-          done
-          
-          # Note: tar.exe, zstd.exe, sh.exe are MSYS2 executables and cannot be compressed with UPX
-          echo "Note: MSYS2 executables (tar.exe, zstd.exe, sh.exe) are not compressed (not compatible with UPX)"
-
-      - name: Upload Windows build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: Dvx3-Backup-Manager-Windows-Build
-          path: Releases/
+          "$UPX_PATH" --best --lzma "$dll" || echo "Failed to compress $dll, continuing..."
+        done
+        
+        # Note: tar.exe, zstd.exe, sh.exe are MSYS2 executables and cannot be compressed with UPX
+        echo "Note: MSYS2 executables (tar.exe, zstd.exe, sh.exe) are not compressed (not compatible with UPX)"
+    - name: Upload Windows build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: Dvx3-Backup-Manager-Windows-Build
+        path: Releases/
