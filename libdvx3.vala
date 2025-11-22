@@ -466,23 +466,48 @@ namespace Dvx3 {
         }
 #else
         /* Non-POSIX fallback: original shell pipeline with static estimate */
+        /* On Windows, use absolute paths to executables in current directory */
+        string sh_path = "sh";
+        string tar_path = "tar";
+        string zstd_path = "zstd";
+        
+        // Try to find executables in current directory (Windows)
+        var cwd = Environment.get_current_dir();
+        var sh_exe = File.new_for_path(Path.build_filename(cwd, "sh.exe"));
+        var tar_exe = File.new_for_path(Path.build_filename(cwd, "tar.exe"));
+        var zstd_exe = File.new_for_path(Path.build_filename(cwd, "zstd.exe"));
+        
+        if (sh_exe.query_exists()) {
+            sh_path = sh_exe.get_path();
+        }
+        if (tar_exe.query_exists()) {
+            tar_path = tar_exe.get_path();
+        }
+        if (zstd_exe.query_exists()) {
+            zstd_path = zstd_exe.get_path();
+        }
+        
         string[] pipeline_cmd;
         if (exclude_path != null) {
             var exclude_rel = exclude_path.has_prefix(src_path + "/") 
                 ? exclude_path.substring(src_path.length + 1) 
                 : exclude_path;
             pipeline_cmd = {
-                "sh", "-c",
-                "tar -c --exclude='%s' -C '%s' . | zstd -T16 -22 -c".printf(
+                sh_path, "-c",
+                "'%s' -c --exclude='%s' -C '%s' . | '%s' -T16 -22 -c".printf(
+                    tar_path.replace("'", "'\\''"),
                     exclude_rel.replace("'", "'\\''"),
-                    src_path.replace("'", "'\\''")
+                    src_path.replace("'", "'\\''"),
+                    zstd_path.replace("'", "'\\''")
                 )
             };
         } else {
             pipeline_cmd = {
-                "sh", "-c",
-                "tar -c -C '%s' . | zstd -T16 -22 -c".printf(
-                    src_path.replace("'", "'\\''")
+                sh_path, "-c",
+                "'%s' -c -C '%s' . | '%s' -T16 -22 -c".printf(
+                    tar_path.replace("'", "'\\''"),
+                    src_path.replace("'", "'\\''"),
+                    zstd_path.replace("'", "'\\''")
                 )
             };
         }
@@ -493,7 +518,7 @@ namespace Dvx3 {
             null,
             pipeline_cmd,
             null,
-            SpawnFlags.SEARCH_PATH | SpawnFlags.DO_NOT_REAP_CHILD,
+            SpawnFlags.DO_NOT_REAP_CHILD,  // Remove SEARCH_PATH, use absolute paths
             null,
             out child_pid,
             null,
