@@ -106,16 +106,20 @@ jobs:
             /mingw64/bin/libpcre2-8-0.dll
             /mingw64/bin/libpcre2-16-0.dll
             /mingw64/bin/libpcre2-16-0.dll
-            /mingw64/bin/libb2-1.dll
-            /mingw64/bin/libdouble-conversion.dll
-            /mingw64/bin/libfreetype-6.dll
-            /mingw64/bin/libharfbuzz-0.dll
-            /mingw64/bin/libgmodule-2.0-0.dll
-            /mingw64/bin/Qt6Core.dll
-            /mingw64/bin/Qt6Gui.dll
-            /mingw64/bin/Qt6Widgets.dll
-            /mingw64/bin/Qt6Network.dll
-            /mingw64/bin/Qt6DBus.dll
+          /mingw64/bin/libb2-1.dll
+          /mingw64/bin/libdouble-conversion.dll
+          /mingw64/bin/libfreetype-6.dll
+          /mingw64/bin/libharfbuzz-0.dll
+          /mingw64/bin/libgmodule-2.0-0.dll
+          /mingw64/bin/libsodium-26.dll
+          /mingw64/bin/libjson-glib-1.0.dll
+          /mingw64/bin/libmd4c.dll
+          /mingw64/bin/libpng16-16.dll
+          /mingw64/bin/Qt6Core.dll
+          /mingw64/bin/Qt6Gui.dll
+          /mingw64/bin/Qt6Widgets.dll
+          /mingw64/bin/Qt6Network.dll
+          /mingw64/bin/Qt6DBus.dll
           )
           # Copy DLLs if they exist
           for dll in "${dll_list[@]}"; do
@@ -125,6 +129,19 @@ jobs:
           if [ -f dvx3-backup.png ]; then
           cp dvx3-backup.png Releases/
           fi
+
+      - name: Compress EXE and DLLs with UPX
+        run: |
+          # Install UPX
+          sudo apt-get update && sudo apt-get install -y upx-ucl
+          # Compress EXE
+          if [ -f Releases/Dvx3\ Backup\ Manager.exe ]; then
+            upx --best --lzma "Releases/Dvx3 Backup Manager.exe"
+          fi
+          # Compress DLLs
+          for dll in Releases/*.dll; do
+            upx --best --lzma "$dll"
+          done
 
       - name: Upload Windows build artifacts
         uses: actions/upload-artifact@v4
