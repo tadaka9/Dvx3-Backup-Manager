@@ -65,6 +65,26 @@ jobs:
           elif [ -f backup-manager-gui ]; then
             cp backup-manager-gui "Releases/Dvx3 Backup Manager.exe"
           fi
+          # Copy required DLLs from MSYS2 directories to Releases folder for standalone run
+          cp /mingw64/bin/libgio-2.0-0.dll Releases/ || true
+          cp /mingw64/bin/libglib-2.0-0.dll Releases/ || true
+          cp /mingw64/bin/libgcc_s_seh-1.dll Releases/ || true
+          cp /mingw64/bin/libgobject-2.0-0.dll Releases/ || true
+          cp /mingw64/bin/libstdc++-6.dll Releases/ || true
+          cp /mingw64/bin/libwinpthread-1.dll Releases/ || true
+          cp /mingw64/bin/libffi-7.dll Releases/ || true
+          cp /mingw64/bin/libpcre16-0.dll Releases/ || true
+          cp /mingw64/bin/libffi-8.dll Releases/ || true
+          cp /mingw64/bin/libpcre-1.dll Releases/ || true
+          cp /mingw64/bin/libbz2-1.dll Releases/ || true
+          cp /mingw64/bin/libzstd.dll Releases/ || true
+          cp /mingw64/bin/libz.dll Releases/ || true
+          cp /mingw64/bin/Qt6Core.dll Releases/ || true
+          cp /mingw64/bin/Qt6Gui.dll Releases/ || true
+          cp /mingw64/bin/Qt6Widgets.dll Releases/ || true
+          cp /mingw64/bin/Qt6Network.dll Releases/ || true
+          cp /mingw64/bin/Qt6DBus.dll Releases/ || true
+          cp /mingw64/bin/Qt6Svg.dll Releases/ || true
           # Copy icon if exists
           if [ -f dvx3-backup.png ]; then
             cp dvx3-backup.png Releases/

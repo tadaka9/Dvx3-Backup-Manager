@@ -257,7 +257,20 @@ case "$UNAME_OUT" in
         ;;
 esac
 
-"$CXX_COMPILER" -fPIC backup-manager-gui.cpp backup-manager-gui.moc.cpp resources.rcc.cpp \
+# Compile Windows resource file for icon embedding if present
+if [ "$UNAME_OUT" = "MINGW64_NT-10.0" ] || echo "$UNAME_OUT" | grep -qi mingw; then
+    if [ -f resources.rc ] && command -v windres >/dev/null 2>&1; then
+        echo "Compiling Windows resource file"
+        windres resources.rc -O COFF -o resources.o
+        RESOURCE_OBJ="resources.o"
+    else
+        RESOURCE_OBJ=""
+    fi
+else
+    RESOURCE_OBJ=""
+fi
+
+"$CXX_COMPILER" -fPIC backup-manager-gui.cpp backup-manager-gui.moc.cpp resources.rcc.cpp $RESOURCE_OBJ \
     -o backup-manager-gui \
     -std=c++17 \
     $(pkg-config --cflags --libs Qt6Widgets glib-2.0 $GIO_LIBS json-glib-1.0 libsodium) \
