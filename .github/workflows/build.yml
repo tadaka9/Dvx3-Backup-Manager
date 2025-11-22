@@ -92,6 +92,67 @@ jobs:
           else
             echo "⚠ Warning: dvx3 CLI tool not found - backups may not work"
           fi
+          
+          # Copy tar and zstd executables (required by libdvx3 for backup operations)
+          echo "=== Copying tar and zstd executables ==="
+          if [ -f /usr/bin/tar.exe ]; then
+            cp /usr/bin/tar.exe Releases/
+            echo "✓ Copied tar.exe"
+          elif [ -f /usr/bin/tar ]; then
+            cp /usr/bin/tar Releases/tar.exe
+            echo "✓ Copied tar"
+          else
+            echo "✗ ERROR: tar not found - backups will not work!"
+          fi
+          
+          if [ -f /usr/bin/zstd.exe ]; then
+            cp /usr/bin/zstd.exe Releases/
+            echo "✓ Copied zstd.exe"
+          elif [ -f /usr/bin/zstd ]; then
+            cp /usr/bin/zstd Releases/zstd.exe
+            echo "✓ Copied zstd"
+          else
+            echo "✗ ERROR: zstd not found - backups will not work!"
+          fi
+          
+          # Copy sh.exe (shell required for tar/zstd pipeline)
+          if [ -f /usr/bin/sh.exe ]; then
+            cp /usr/bin/sh.exe Releases/
+            echo "✓ Copied sh.exe"
+          elif [ -f /usr/bin/sh ]; then
+            cp /usr/bin/sh Releases/sh.exe
+            echo "✓ Copied sh"
+          fi
+          
+          # Copy msys-2.0.dll (required by MSYS2 executables)
+          if [ -f /usr/bin/msys-2.0.dll ]; then
+            cp /usr/bin/msys-2.0.dll Releases/
+            echo "✓ Copied msys-2.0.dll"
+          fi
+          
+          # Copy msys-zstd-1.dll (required by zstd)
+          if [ -f /usr/bin/msys-zstd-1.dll ]; then
+            cp /usr/bin/msys-zstd-1.dll Releases/
+            echo "✓ Copied msys-zstd-1.dll"
+          fi
+          
+          # Copy msys-lzma-5.dll (required by tar)
+          if [ -f /usr/bin/msys-lzma-5.dll ]; then
+            cp /usr/bin/msys-lzma-5.dll Releases/
+            echo "✓ Copied msys-lzma-5.dll"
+          fi
+          
+          # Copy msys-iconv-2.dll (required by tar)
+          if [ -f /usr/bin/msys-iconv-2.dll ]; then
+            cp /usr/bin/msys-iconv-2.dll Releases/
+            echo "✓ Copied msys-iconv-2.dll"
+          fi
+          
+          # Copy msys-intl-8.dll (required by tar)
+          if [ -f /usr/bin/msys-intl-8.dll ]; then
+            cp /usr/bin/msys-intl-8.dll Releases/
+            echo "✓ Copied msys-intl-8.dll"
+          fi
           # Copy libdvx3.dll from build output if exists
           if [ -f libdvx3.dll ]; then
             cp libdvx3.dll Releases/ || true
