@@ -8,6 +8,7 @@
  */
 
 using GLib;
+using GLib as GLibLibAlias;
 using Json;
 using Sodium;
 
@@ -473,9 +474,9 @@ namespace Dvx3 {
         
         // Try to find executables in current directory (Windows)
         var cwd = Environment.get_current_dir();
-        var sh_exe = File.new_for_path(Path.build_filename(cwd, "sh.exe"));
-        var tar_exe = File.new_for_path(Path.build_filename(cwd, "tar.exe"));
-        var zstd_exe = File.new_for_path(Path.build_filename(cwd, "zstd.exe"));
+        var sh_exe = File.new_for_path(GLibLibAlias.Path.build_filename(cwd, "sh.exe"));
+        var tar_exe = File.new_for_path(GLibLibAlias.Path.build_filename(cwd, "tar.exe"));
+        var zstd_exe = File.new_for_path(GLibLibAlias.Path.build_filename(cwd, "zstd.exe"));
         
         if (sh_exe.query_exists()) {
             sh_path = sh_exe.get_path();
