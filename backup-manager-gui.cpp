@@ -1347,6 +1347,24 @@ int main(int argc, char** argv) {
     // Set config directory
     QString config_dir = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + "/backup-manager";
     QDir().mkpath(config_dir);
+    
+    #ifdef Q_OS_WIN
+    // On Windows, copy helper executables to config directory
+    // This is necessary because QDir::setCurrent() changes the working directory
+    QString appDir = QCoreApplication::applicationDirPath();
+    QStringList helpers = {"tar.exe", "zstd.exe", "sh.exe", 
+                           "msys-2.0.dll", "msys-zstd-1.dll", "msys-lzma-5.dll",
+                           "msys-iconv-2.dll", "msys-intl-8.dll"};
+    
+    for (const QString& helper : helpers) {
+        QString src = appDir + "/" + helper;
+        QString dst = config_dir + "/" + helper;
+        if (QFile::exists(src) && !QFile::exists(dst)) {
+            QFile::copy(src, dst);
+        }
+    }
+    #endif
+    
     QDir::setCurrent(config_dir);
     
     backup_gui::BackupManagerWindow window;
