@@ -47,6 +47,15 @@ jobs:
           echo "List installed Qt6 packages"
           pacman -Qs qt6
 
+      - name: Install ImageMagick for icon conversion
+        run: sudo apt-get update && sudo apt-get install -y imagemagick
+        if: runner.os == 'Linux'
+    
+      - name: Convert PNG to ICO for Windows icon embedding
+        run: convert dvx3-backup.png -define icon:auto-resize=64,48,32,16 dvx3-backup.ico
+        working-directory: ${{ github.workspace }}
+        if: runner.os == 'Linux'
+
       - name: Build Backup Manager GUI
         shell: msys2 {0}
         run: |
