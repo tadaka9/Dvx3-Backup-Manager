@@ -74,38 +74,56 @@ jobs:
           elif [ -f backup-manager-gui ]; then
             cp backup-manager-gui "Releases/Dvx3 Backup Manager.exe"
           fi
-          # Copy required DLLs from MSYS2 directories to Releases folder for standalone run
-          cp /mingw64/bin/libgio-2.0-0.dll Releases/ || true
-          cp /mingw64/bin/libglib-2.0-0.dll Releases/ || true
-          cp /mingw64/bin/libgcc_s_seh-1.dll Releases/ || true
-          cp /mingw64/bin/libgobject-2.0-0.dll Releases/ || true
-          cp /mingw64/bin/libstdc++-6.dll Releases/ || true
-          cp /mingw64/bin/libwinpthread-1.dll Releases/ || true
-          cp /mingw64/bin/libffi-7.dll Releases/ || true
-          cp /mingw64/bin/libpcre16-0.dll Releases/ || true
-          cp /mingw64/bin/libffi-8.dll Releases/ || true
-          cp /mingw64/bin/libpcre-1.dll Releases/ || true
-          cp /mingw64/bin/libbz2-1.dll Releases/ || true
-          cp /mingw64/bin/libzstd.dll Releases/ || true
-          cp /mingw64/bin/libz.dll Releases/ || true
-          cp /mingw64/bin/Qt6Core.dll Releases/ || true
-          cp /mingw64/bin/Qt6Gui.dll Releases/ || true
-          cp /mingw64/bin/Qt6Widgets.dll Releases/ || true
-          cp /mingw64/bin/Qt6Network.dll Releases/ || true
-          cp /mingw64/bin/Qt6DBus.dll Releases/ || true
-          cp /mingw64/bin/Qt6Svg.dll Releases/ || true
-          cp /mingw64/bin/libdvx3.dll Releases/ || true
-          cp /mingw64/bin/libintl-8.dll Releases/ || true
-          cp /mingw64/bin/libpcre2-8-0.dll Releases/ || true
-          cp /mingw64/bin/libb2-1.dll Releases/ || true
-          cp /mingw64/bin/libdouble-conversion.dll Releases/ || true
-          cp /mingw64/bin/libicuin78.dll Releases/ || true
-          cp /mingw64/bin/zlib1.dll Releases/ || true
-          cp /mingw64/bin/libicuuc78.dll Releases/ || true
-          cp /mingw64/bin/libpcre2-16-0.dll Releases/ || true
+          # Copy libdvx3.dll from build output if exists
+          if [ -f libdvx3.dll ]; then
+            cp libdvx3.dll Releases/ || true
+          elif [ -f libdvx3.so ]; then
+            cp libdvx3.so Releases/ || true
+          fi
+          # Function to copy DLL only if it exists
+          copy_if_exists() {
+            if [ -f "$1" ]; then
+              cp "$1" Releases/
+            else
+              echo "Warning: DLL $1 not found!"
+            fi
+          }
+          # List of DLLs to copy from mingw64/bin
+          dll_list=(
+            /mingw64/bin/libgio-2.0-0.dll
+            /mingw64/bin/libglib-2.0-0.dll
+            /mingw64/bin/libgcc_s_seh-1.dll
+            /mingw64/bin/libgobject-2.0-0.dll
+            /mingw64/bin/libstdc++-6.dll
+            /mingw64/bin/libwinpthread-1.dll
+            /mingw64/bin/libffi-8.dll
+            /mingw64/bin/libbz2-1.dll
+            /mingw64/bin/libzstd.dll
+            /mingw64/bin/zlib1.dll
+            /mingw64/bin/libicuuc78.dll
+            /mingw64/bin/libicuin78.dll
+            /mingw64/bin/libintl-8.dll
+            /mingw64/bin/libpcre2-8-0.dll
+            /mingw64/bin/libpcre2-16-0.dll
+            /mingw64/bin/libpcre2-16-0.dll
+            /mingw64/bin/libb2-1.dll
+            /mingw64/bin/libdouble-conversion.dll
+            /mingw64/bin/libfreetype-6.dll
+            /mingw64/bin/libharfbuzz-0.dll
+            /mingw64/bin/libgmodule-2.0-0.dll
+            /mingw64/bin/Qt6Core.dll
+            /mingw64/bin/Qt6Gui.dll
+            /mingw64/bin/Qt6Widgets.dll
+            /mingw64/bin/Qt6Network.dll
+            /mingw64/bin/Qt6DBus.dll
+          )
+          # Copy DLLs if they exist
+          for dll in "${dll_list[@]}"; do
+            copy_if_exists "$dll"
+          done
           # Copy icon if exists
           if [ -f dvx3-backup.png ]; then
-            cp dvx3-backup.png Releases/
+          cp dvx3-backup.png Releases/
           fi
 
       - name: Upload Windows build artifacts
