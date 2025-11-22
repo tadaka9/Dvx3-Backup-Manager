@@ -3,7 +3,7 @@ name: Build Backup Manager
 on:
   push:
     branches:
-      - clean-verison
+      - clean-version
   pull_request:
 
 jobs:
