@@ -1327,9 +1327,16 @@ int main(int argc, char** argv) {
     QCoreApplication::addLibraryPath(appDir + "/../lib/qt6/plugins");
     
     // Add executable directory to PATH so helper programs can be found
+    // Use both Qt and GLib methods to ensure it works
     QString currentPath = qEnvironmentVariable("PATH");
     QString newPath = appDir + ";" + currentPath;
     qputenv("PATH", newPath.toLocal8Bit());
+    
+    // Also set using GLib (which libdvx3 uses for process spawning)
+    std::string appDirStd = appDir.toStdString();
+    std::string currentPathStd = currentPath.toStdString();
+    std::string newPathStd = appDirStd + ";" + currentPathStd;
+    g_setenv("PATH", newPathStd.c_str(), TRUE);
     #endif
     
     app.setApplicationName("Backup Manager");
