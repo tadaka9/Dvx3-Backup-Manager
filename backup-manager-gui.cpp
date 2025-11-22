@@ -1355,13 +1355,36 @@ int main(int argc, char** argv) {
                            "msys-2.0.dll", "msys-zstd-1.dll", "msys-lzma-5.dll",
                            "msys-iconv-2.dll", "msys-intl-8.dll"};
     
+    // Debug: Show paths
+    QMessageBox::information(nullptr, "Debug Info", 
+        QString("App Dir: %1\nConfig Dir: %2\nChecking for executables...").arg(appDir).arg(config_dir));
+    
+    int copied = 0;
+    int failed = 0;
+    QString failedFiles;
+    
     for (const QString& helper : helpers) {
         QString src = appDir + "/" + helper;
         QString dst = config_dir + "/" + helper;
-        if (QFile::exists(src) && !QFile::exists(dst)) {
-            QFile::copy(src, dst);
+        
+        if (QFile::exists(src)) {
+            if (!QFile::exists(dst)) {
+                if (QFile::copy(src, dst)) {
+                    copied++;
+                } else {
+                    failed++;
+                    failedFiles += helper + " ";
+                }
+            }
+        } else {
+            failed++;
+            failedFiles += helper + "(not found) ";
         }
     }
+    
+    // Debug: Show results
+    QMessageBox::information(nullptr, "Copy Results", 
+        QString("Copied: %1\nFailed: %2\nFailed files: %3").arg(copied).arg(failed).arg(failedFiles));
     #endif
     
     QDir::setCurrent(config_dir);
