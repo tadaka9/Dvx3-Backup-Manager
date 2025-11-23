@@ -25,18 +25,20 @@ G_BEGIN_DECLS
 #endif
 #endif
 
-typedef void (*Dvx3ProgressCallback) (guint64 processed, guint64 total, guint64 output_bytes);
+typedef void (*Dvx3ProgressCallback) (guint64 processed, guint64 total, guint64 output_bytes, gpointer user_data);
 
 VALA_EXTERN void dvx3_encrypt (GFile* src_dir,
                    GFile* out_file,
                    const gchar* password,
                    const gchar* exclude_path,
                    Dvx3ProgressCallback progress,
+                   gpointer progress_target,
                    GError** error);
 VALA_EXTERN void dvx3_decrypt (GFile* enc_file,
                    GFile* dst_dir,
                    const gchar* password,
                    Dvx3ProgressCallback progress,
+                   gpointer progress_target,
                    GError** error);
 
 G_END_DECLS

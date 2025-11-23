@@ -313,6 +313,13 @@ echo "✓ Build complete!"
 echo ""
 echo "Run with: ./backup-manager-gui"
 echo ""
+echo "Setting QT_QPA_PLATFORM_PLUGIN_PATH for Linux/Arch..."
+if [[ "$UNAME_OUT" == "Linux" ]]; then
+    export QT_QPA_PLATFORM_PLUGIN_PATH=/usr/lib/qt6/plugins/platforms
+    echo "export QT_QPA_PLATFORM_PLUGIN_PATH=/usr/lib/qt6/plugins/platforms" >> env.sh
+    echo "✓ QT_QPA_PLATFORM_PLUGIN_PATH set for local run."
+fi
+echo ""
 if [ -f dvx3-backup.png ]; then
     echo "Icon embedded from dvx3-backup.png"
 else
