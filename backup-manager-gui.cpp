@@ -472,7 +472,8 @@ void BackupManagerWindow::setup_ui() {
         "  background: #fbfdff;"
         "}"
     );
-    history_table->horizontalHeader()->setStretchLastSection(true);
+    // Disable stretch on last section: let the Job column fill remaining space
+    history_table->horizontalHeader()->setStretchLastSection(false);
     // Use a comfortable row height based on font metrics to prevent clipping.
     // We'll compute a base height from the table's font and increase it if the
     // Date/Time column uses a larger font.
@@ -480,6 +481,8 @@ void BackupManagerWindow::setup_ui() {
     const int minRowHeight = 40;
     int rowHeight = std::max(minRowHeight, baseComputedHeight);
     history_table->verticalHeader()->setDefaultSectionSize(rowHeight);
+    history_table->verticalHeader()->setMinimumSectionSize(rowHeight);
+    history_table->verticalHeader()->setMinimumSectionSize(rowHeight);
     history_table->verticalHeader()->setSectionResizeMode(QHeaderView::Fixed);
     history_table->verticalHeader()->setVisible(false);
     // Prevent the table items from word-wrapping, which could change row height unexpectedly
@@ -487,10 +490,15 @@ void BackupManagerWindow::setup_ui() {
     history_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     history_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     history_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Interactive);
-    history_table->setColumnWidth(0, 150); // Date/Time
-    history_table->setColumnWidth(1, 250); // Job
-    history_table->setColumnWidth(2, 90);  // Size
-    history_table->setColumnWidth(3, 80);  // Ratio
+    history_table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    history_table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    history_table->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+    history_table->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Interactive);
+    history_table->setColumnWidth(0, 190); // Date/Time
+    history_table->setColumnWidth(1, 350); // Job (will stretch if window bigger)
+    history_table->setColumnWidth(2, 100);  // Size
+    history_table->setColumnWidth(3, 90);  // Ratio
+    history_table->setColumnWidth(4, 120); // Status
     
     history_layout->addWidget(history_label);
     history_layout->addWidget(history_table);
@@ -709,6 +717,13 @@ void BackupManagerWindow::refresh_history() {
         } else {
             status_item->setForeground(Qt::darkGreen);
         }
+        // Slightly larger and bold font for status so it is visible at a glance
+        QFont statusFont = history_table->font();
+        int stPoint = statusFont.pointSize();
+        if (stPoint > 0) statusFont.setPointSize(stPoint + 1);
+        else statusFont.setPixelSize(statusFont.pixelSize() > 0 ? statusFont.pixelSize() + 1 : 14);
+        statusFont.setBold(true);
+        status_item->setFont(statusFont);
         history_table->setItem(row, 4, status_item);
         history_table->item(row, 4)->setTextAlignment(Qt::AlignVCenter | Qt::AlignCenter);
         // Ensure the row uses the fixed height so vertical compression doesn't happen
