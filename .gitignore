@@ -10,6 +10,7 @@
 *.rcc.cpp
 gen-c/
 build/
+tests/build/
 backup-manager
 backup-manager-gui
 backup-manager-gui.exe

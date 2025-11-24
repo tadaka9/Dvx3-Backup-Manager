@@ -1,6 +1,0 @@
-/home/dvx3/Scaricati/Dvx3-Backup-Manager/tests/build/CMakeFiles/dvx3c.dir
-/home/dvx3/Scaricati/Dvx3-Backup-Manager/tests/build/CMakeFiles/test_simple.dir
-/home/dvx3/Scaricati/Dvx3-Backup-Manager/tests/build/CMakeFiles/test_exclusion.dir
-/home/dvx3/Scaricati/Dvx3-Backup-Manager/tests/build/CMakeFiles/test.dir
-/home/dvx3/Scaricati/Dvx3-Backup-Manager/tests/build/CMakeFiles/edit_cache.dir
-/home/dvx3/Scaricati/Dvx3-Backup-Manager/tests/build/CMakeFiles/rebuild_cache.dir

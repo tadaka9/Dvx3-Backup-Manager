@@ -1,5 +1,0 @@
-test_simple_NOT_BUILT 0 0
-test_exclusion_NOT_BUILT 0 0
-Dvx3Basic.EncryptDecryptRoundtrip 4 0.0682994
-Dvx3Backup.ExcludeBackupDir 4 0.0365143
----

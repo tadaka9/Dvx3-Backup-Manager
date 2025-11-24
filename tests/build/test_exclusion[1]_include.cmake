@@ -1,5 +1,0 @@
-if(EXISTS "/home/dvx3/Scaricati/Dvx3-Backup-Manager/tests/build/test_exclusion[1]_tests.cmake")
-  include("/home/dvx3/Scaricati/Dvx3-Backup-Manager/tests/build/test_exclusion[1]_tests.cmake")
-else()
-  add_test(test_exclusion_NOT_BUILT test_exclusion_NOT_BUILT)
-endif()
