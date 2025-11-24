@@ -1,0 +1,17 @@
+{
+  "tests": 1,
+  "name": "AllTests",
+  "testsuites": [
+    {
+      "name": "Dvx3Basic",
+      "tests": 1,
+      "testsuite": [
+        {
+          "name": "EncryptDecryptRoundtrip",
+          "file": "\/home\/dvx3\/Scaricati\/Dvx3-Backup-Manager\/tests\/test_simple.cpp",
+          "line": 8
+        }
+      ]
+    }
+  ]
+}

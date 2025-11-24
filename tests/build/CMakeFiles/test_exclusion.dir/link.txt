@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG CMakeFiles/test_exclusion.dir/test_exclusion.cpp.o -o test_exclusion  /usr/lib/libgtest_main.so.1.17.0 libdvx3c.a -ljson-glib-1.0 -lgio-2.0 -lgobject-2.0 -lglib-2.0 -lsodium /usr/lib/libgtest.so.1.17.0

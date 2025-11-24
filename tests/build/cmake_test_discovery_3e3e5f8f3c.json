@@ -1,0 +1,17 @@
+{
+  "tests": 1,
+  "name": "AllTests",
+  "testsuites": [
+    {
+      "name": "Dvx3Backup",
+      "tests": 1,
+      "testsuite": [
+        {
+          "name": "ExcludeBackupDir",
+          "file": "\/home\/dvx3\/Scaricati\/Dvx3-Backup-Manager\/tests\/test_exclusion.cpp",
+          "line": 9
+        }
+      ]
+    }
+  ]
+}

@@ -1,12 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Minimal test harness: run each test executable and report status
+# Minimal test harness: prefer running ctest if available, otherwise fallback to running known test binaries.
 
 TESTS=(
-  test-simple-backup
-  test-exclusion
+  tests/test_simple
+  tests/test_exclusion
 )
+
+# If tests built via CMake, run ctest in the tests/build directory
+if command -v ctest >/dev/null 2>&1 && [ -d tests/build ]; then
+  echo "Running ctest in tests/build..."
+  pushd tests/build || true
+  ctest --output-on-failure || exit 1
+  popd || true
+  exit 0
+fi
 
 EXITCODE=0
 for t in "${TESTS[@]}"; do

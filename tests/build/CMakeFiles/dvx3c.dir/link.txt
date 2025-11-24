@@ -1,0 +1,2 @@
+/usr/bin/ar qc libdvx3c.a "CMakeFiles/dvx3c.dir/home/dvx3/Scaricati/Dvx3-Backup-Manager/gen-c/libdvx3.c.o"
+/usr/bin/ranlib libdvx3c.a

@@ -8,8 +8,12 @@
 #include <iostream>
 #include <iomanip>
 #include <limits>
+#if defined(_WIN32) || defined(_WIN64)
+#include <conio.h>
+#else
 #include <termios.h>
 #include <unistd.h>
+#endif
 
 using namespace backup;
 
@@ -28,6 +32,22 @@ std::string get_input(const std::string& prompt) {
 std::string get_password(const std::string& prompt) {
     std::cout << prompt;
     std::string password;
+#if defined(_WIN32) || defined(_WIN64)
+    // Windows: use getch from <conio.h> to read without echo
+    int ch;
+    while ((ch = _getch()) != EOF && ch != '\r' && ch != '\n') {
+        if (ch == '\b' || ch == 127) {
+            if (!password.empty()) {
+                password.pop_back();
+            }
+        } else {
+            password.push_back((char)ch);
+        }
+    }
+    std::cout << "\n";
+    return password;
+#else
+    // POSIX: disable terminal echo via termios
     
     // Disable terminal echo
     termios oldt;
@@ -44,6 +64,7 @@ std::string get_password(const std::string& prompt) {
     
     std::cout << "\n";
     return password;
+#endif
 }
 
 void print_menu() {

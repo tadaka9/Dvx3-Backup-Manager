@@ -1,0 +1,5 @@
+# Backup History
+# timestamp job_name archive_path original_size compressed_size success error
+1764023836 t1 /tmp/dvx3-excl-224973/src/backups/t1_20251124_233716.dvx3 1 661 1
+1764024128 t1 /tmp/dvx3-excl-225948/src/backups/t1_20251124_234208.dvx3 1 660 1
+1764024142 t1 /tmp/dvx3-excl-226142/src/backups/t1_20251124_234222.dvx3 1 660 1
