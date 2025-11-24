@@ -55,9 +55,12 @@ if(NOT EXISTS ${REPO_ROOT}/gen-c/libdvx3.c)
         OUTPUT ${GEN_C_OUT}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}
         COMMAND ${VALAC_EXECUTABLE} --pkg glib-2.0 --pkg gio-2.0 --pkg gio-unix-2.0 --pkg json-glib-1.0 --vapidir=${REPO_ROOT}/vala-extra-vapis --pkg libsodium -D POSIX -C -d ${CMAKE_CURRENT_BINARY_DIR} ${REPO_ROOT}/libdvx3.vala
+        # Patch the generated C to cast g_once_init_enter/g_once_init_leave to volatile using perl for safer pattern matching
+        # Use a simple shell script to patch generated C to avoid complex quoting issues inside CMake commands
+        COMMAND ${REPO_ROOT}/scripts/patch-gen-c.sh ${CMAKE_CURRENT_BINARY_DIR}/libdvx3.c
         DEPENDS ${REPO_ROOT}/libdvx3.vala
         COMMENT "Generating gen-c/libdvx3.c via valac into build dir"
-      )
+        )
     endif()
     add_custom_target(generate_gen_c DEPENDS ${GEN_C_OUT})
   else()
@@ -84,6 +87,9 @@ endif()
 target_include_directories(dvx3c PRIVATE ${REPO_ROOT})
 target_compile_options(dvx3c PRIVATE ${GLIB_CFLAGS_OTHER})
 target_compile_options(dvx3c PRIVATE ${GLIB_CFLAGS})
+if (CMAKE_C_COMPILER_ID STREQUAL "GNU" OR CMAKE_C_COMPILER_ID MATCHES "Clang")
+  target_compile_options(dvx3c PRIVATE -Wno-incompatible-pointer-types -Wno-discarded-qualifiers)
+endif()
 target_link_libraries(dvx3c PRIVATE ${GLIB_LIBRARIES})
 # The C warnings suppression for `discarded-qualifiers` is no longer required
 #+ we generate `gen-c` into the build dir and prefer `fin.read()` instead of

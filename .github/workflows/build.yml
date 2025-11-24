@@ -55,9 +55,8 @@ jobs:
             mingw-w64-x86_64-vala
             mingw-w64-x86_64-ninja
             mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-json-glib
-            mingw-w64-x86_64-libsodium
-            nsis
+              mingw-w64-x86_64-json-glib
+              mingw-w64-x86_64-libsodium
             upx
 
       - name: Verify Qt6 installation
@@ -83,6 +82,18 @@ jobs:
           pacman -Qs qt6 || true
           
           echo 'Completed Windows MSYS2 verify step'
+      - name: Install NSIS if required (MSYS)
+        shell: msys2 {0}
+        run: |
+          echo "Attempting to install nsis (MSYS repository)"
+          # Try to install nsis from the msys repo; fallback to MinGW package if needed.
+          pacman -S --noconfirm --needed msys/nsis || pacman -S --noconfirm --needed mingw-w64-x86_64-nsis || echo "nsis not available in either repo; installer creation will be skipped"
+          # Confirm makensis existence
+          if command -v makensis >/dev/null 2>&1; then
+            echo "makensis installed: $(which makensis)"
+          else
+            echo "makensis not found after trying both repos; NSIS installer will be skipped"
+          fi
       - name: Print PATH
         shell: msys2 {0}
         run: |

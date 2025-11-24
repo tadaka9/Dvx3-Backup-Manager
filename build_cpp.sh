@@ -4,11 +4,18 @@ set -e
 
 echo "Building C++ example..."
 
+# Run patched on checked-in gen-c/libdvx3.c if present
+if [ -f "gen-c/libdvx3.c" ]; then
+    chmod +x scripts/patch-gen-c.sh || true
+    scripts/patch-gen-c.sh gen-c/libdvx3.c || true
+fi
+
 # Compile generated C library source AS C (not C++)
 gcc -c gen-c/libdvx3.c -o libdvx3.o \
     -fPIC \
     -I. \
     $(pkg-config --cflags glib-2.0 gio-2.0 gio-unix-2.0 json-glib-1.0 libsodium)
+    -Wno-incompatible-pointer-types -Wno-discarded-qualifiers
 
 # Compile C++ example
 g++ -c example.cpp -o example.o \

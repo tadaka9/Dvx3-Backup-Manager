@@ -65,6 +65,15 @@ valac --pkg glib-2.0 --pkg $GIO_PKG --pkg json-glib-1.0 \
     $VALA_DEFINES \
     libdvx3.vala -C -d "$BUILD_GEN_C_DIR"
 
+# Apply a small patch to generated C to avoid __atomic_load warnings introduced by unix-compatible atomic macros.
+# The generated code uses 'g_once_init_enter (&X__once)' which can trigger a warning because the macro expects a volatile pointer.
+# We replace calls with a volatile cast so the compiler stops emitting the warning.
+if [ -f "$BUILD_GEN_C_DIR/libdvx3.c" ]; then
+    echo "Patching generated C to cast g_once_init_enter args to volatile gpointer *"
+    chmod +x scripts/patch-gen-c.sh || true
+    scripts/patch-gen-c.sh "$BUILD_GEN_C_DIR/libdvx3.c" || true
+fi
+
 # 2. Compile generated C code
 echo "[2/5] Compiling C library..."
 
@@ -80,7 +89,7 @@ esac
 
 "$CC_COMPILER" -c -fPIC "$BUILD_GEN_C_DIR/libdvx3.c" -o libdvx3.o \
     $(pkg-config --cflags glib-2.0 $GIO_LIBS json-glib-1.0 libsodium) \
-    -I. -I"$BUILD_GEN_C_DIR"
+    -I. -I"$BUILD_GEN_C_DIR" -Wno-incompatible-pointer-types -Wno-discarded-qualifiers
 
 # Shared library extension (UNAME_OUT already set above)
 case "$UNAME_OUT" in

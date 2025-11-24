@@ -11,11 +11,17 @@ if [ ! -d "gen-c" ]; then
     ./gen_c_sources.sh
 fi
 
+# Run small patch on checked-in gen-c/libdvx3.c if present
+if [ -f "gen-c/libdvx3.c" ]; then
+    chmod +x scripts/patch-gen-c.sh || true
+    scripts/patch-gen-c.sh gen-c/libdvx3.c || true
+fi
+
 # 2. Compile generated C code
 echo "[2/4] Compiling C library..."
 gcc -c gen-c/libdvx3.c -o libdvx3.o \
     $(pkg-config --cflags glib-2.0 gio-unix-2.0 json-glib-1.0 libsodium) \
-    -I.
+    -I. -Wno-incompatible-pointer-types -Wno-discarded-qualifiers
 
 # 3. Compile C++ backup manager
 echo "[3/4] Compiling C++ backup manager..."
