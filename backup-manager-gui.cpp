@@ -474,6 +474,15 @@ void BackupManagerWindow::setup_ui() {
     );
     // Disable stretch on last section: let the Job column fill remaining space
     history_table->horizontalHeader()->setStretchLastSection(false);
+    // Make the Date/Time header more prominent
+    if (history_table->horizontalHeaderItem(0)) {
+        QFont hdrFont = history_table->horizontalHeaderItem(0)->font();
+        int hp = hdrFont.pointSize();
+        if (hp > 0) hdrFont.setPointSize(hp + 1);
+        else hdrFont.setPixelSize(hdrFont.pixelSize() + 2);
+        hdrFont.setBold(true);
+        history_table->horizontalHeaderItem(0)->setFont(hdrFont);
+    }
     // Use a comfortable row height based on font metrics to prevent clipping.
     // We'll compute a base height from the table's font and increase it if the
     // Date/Time column uses a larger font.
@@ -499,6 +508,14 @@ void BackupManagerWindow::setup_ui() {
     history_table->setColumnWidth(2, 100);  // Size
     history_table->setColumnWidth(3, 90);  // Ratio
     history_table->setColumnWidth(4, 120); // Status
+    if (history_table->horizontalHeaderItem(4)) {
+        QFont hdrFont2 = history_table->horizontalHeaderItem(4)->font();
+        int hp2 = hdrFont2.pointSize();
+        if (hp2 > 0) hdrFont2.setPointSize(hp2 + 1);
+        else hdrFont2.setPixelSize(hdrFont2.pixelSize() + 2);
+        hdrFont2.setBold(true);
+        history_table->horizontalHeaderItem(4)->setFont(hdrFont2);
+    }
     
     history_layout->addWidget(history_label);
     history_layout->addWidget(history_table);
