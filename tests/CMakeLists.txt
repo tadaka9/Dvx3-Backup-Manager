@@ -26,14 +26,10 @@ pkg_check_modules(GLIB REQUIRED glib-2.0 gio-2.0 json-glib-1.0 libsodium)
 enable_testing()
 
 # If gen-c is not present, attempt to generate it via valac for test builds.
-message(STATUS "CMake current list dir: ${CMAKE_CURRENT_LIST_DIR}")
-message(STATUS "Repo root: ${REPO_ROOT}")
-message(STATUS "CMake build dir: ${CMAKE_CURRENT_BINARY_DIR}")
 if(NOT EXISTS ${REPO_ROOT}/gen-c/libdvx3.c)
   find_program(VALAC_EXECUTABLE valac)
   if(VALAC_EXECUTABLE)
-    message(STATUS "Found valac at ${VALAC_EXECUTABLE}")
-    message(STATUS "Valac found: ${VALAC_EXECUTABLE}. Generating gen-c source files for tests...")
+    message(STATUS "Generating gen-c source files for tests via valac: ${VALAC_EXECUTABLE}")
     # Use add_custom_command to declare the output file, allowing CMake to determine
     # the target language even when the source doesn't exist yet.
     # Generate the C output into the build directory so CMake can determine linking language
