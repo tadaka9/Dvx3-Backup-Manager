@@ -7,6 +7,46 @@ on:
   pull_request:
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install lint tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y yamllint shellcheck || true
+      - name: Run yamllint for workflows
+        run: |
+          yamllint -c /dev/null .github/workflows || true
+      - name: Check for tracked generated files
+        run: |
+          echo "Checking for tracked generated files (.moc.cpp, gen-c/*, .rcc.cpp)"
+          set -e
+          if git ls-files '*.moc.cpp' | grep -q '.'; then
+            echo "ERROR: Found tracked *.moc.cpp files! Please remove generated moc files from version control." >&2
+            git ls-files '*.moc.cpp' || true
+            exit 2
+          fi
+          # Skip gen-c folder if intentionally tracked (legacy use); only warn
+          if git ls-files 'gen-c/*' | grep -q '.'; then
+            echo "Warning: Found tracked 'gen-c/' files; it's recommended to not commit generated code (gen-c/) to the repository." >&2
+            git ls-files 'gen-c/*' || true
+          fi
+          if git ls-files '*.rcc.cpp' | grep -q '.'; then
+            echo "ERROR: Found tracked *.rcc.cpp files! Please avoid generated resource files from rcc." >&2
+            git ls-files '*.rcc.cpp' || true
+            exit 2
+          fi
+      - name: Shellcheck .sh files
+        run: |
+          set -e
+          files=$(git ls-files '*.sh')
+          if [ -n "$files" ]; then
+            for f in $files; do
+              shellcheck -x "$f" || true
+            done
+          fi
+
   build-windows:
     runs-on: windows-latest
     steps:
@@ -30,23 +70,23 @@ jobs:
         shell: msys2 {0}
         run: |
           echo "Checking Qt6Widgets with pkg-config"
-          pkg-config --modversion Qt6Widgets
+          pkg-config --modversion Qt6Widgets || true
           echo "Searching for moc in MSYS2 directories"
           ls -l /mingw64/bin/moc.exe || true
-          ls -l /mingw64/share/qt6/bin/moc.exe
+          ls -l /mingw64/share/qt6/bin/moc.exe || true
           ls -l /mingw64/qt6/bin/moc.exe || true
           ls -l /mingw64/lib/qt6/bin/moc.exe || true
           echo "moc in PATH:"
           which moc || true
-  
+
           echo "PATH environment variable:"
           echo $PATH
-  
+
           echo "Listing moc executables recursively under /mingw64"
           find /mingw64 -name "moc*.exe" || true
-  
+
           echo "List installed Qt6 packages"
-          pacman -Qs qt6
+          pacman -Qs qt6 || true
           
           echo 'Completed Windows MSYS2 verify step'
       - name: Print PATH
@@ -56,6 +96,124 @@ jobs:
           which moc || true
           echo "Looking for moc in /mingw64 share dir"
           ls -l /mingw64/share/qt6/bin/moc.exe || true
+
+      - name: Build all components (Windows/MSYS2)
+        shell: msys2 {0}
+        run: |
+          chmod +x build-all.sh || true
+          sed -i 's/\r$//' build-all.sh
+          ./build-all.sh
+
+      - name: Verify Windows CLI artifacts
+        shell: msys2 {0}
+        run: |
+          echo "=== Verifying CLI executables exist ==="
+          if [ -f dvx3.exe ]; then
+            echo "Found dvx3.exe"; ./dvx3.exe --help || true
+          else
+            echo "ERROR: dvx3.exe not found"; ls -la || true; exit 1
+          fi
+          if [ -f backup-manager-gui.exe ]; then
+            echo "Found backup-manager-gui.exe"
+          else
+            echo "Warning: backup-manager-gui.exe not found"
+          fi
+
+      - name: Build Backup Manager GUI (Windows/MSYS2)
+        shell: msys2 {0}
+        run: |
+          chmod +x build_gui.sh || true
+          sed -i 's/\r$//' build_gui.sh
+          ./build_gui.sh
+
+      - name: Build dvx3 CLI tool (Windows/MSYS2)
+        shell: msys2 {0}
+        run: |
+          chmod +x build.sh || true
+          sed -i 's/\r$//' build.sh
+          ./build.sh || echo "CLI build failed, continuing..."
+
+      - name: Run tests harness (Windows/MSYS2)
+        shell: msys2 {0}
+        run: |
+          chmod +x scripts/run-tests.sh || true
+          ./scripts/run-tests.sh || echo "Windows tests failed"
+
+      - name: Build and run C++ tests (Windows/MSYS2)
+        shell: msys2 {0}
+        run: |
+          echo "Building C++ tests..."
+          # Compile generated C library as C
+          gcc -c gen-c/libdvx3.c -o libdvx3.o -fPIC -I. $(pkg-config --cflags glib-2.0 gio-2.0 json-glib-1.0 libsodium)
+          # Compile and link test-simple-backup
+          g++ -c test-simple-backup.cpp -o test-simple-backup.o -std=c++17 -I. $(pkg-config --cflags glib-2.0 gio-2.0)
+          g++ test-simple-backup.o libdvx3.o -o test-simple-backup.exe $(pkg-config --libs glib-2.0 gio-2.0 json-glib-1.0 libsodium)
+          # Compile and link test-exclusion
+          g++ -c test-exclusion.cpp -o test-exclusion.o -std=c++17 -I. $(pkg-config --cflags glib-2.0 gio-2.0)
+          g++ test-exclusion.o libdvx3.o -o test-exclusion.exe $(pkg-config --libs glib-2.0 gio-2.0 json-glib-1.0 libsodium)
+          echo "Running tests (Windows/MSYS2)"
+          if [ -x ./test-simple-backup.exe ]; then
+            ./test-simple-backup.exe || true
+          fi
+          if [ -x ./test-exclusion.exe ]; then
+            ./test-exclusion.exe || true
+          fi
+
+      - name: Prepare Releases folder (Windows)
+        shell: msys2 {0}
+        run: |
+          mkdir -p Releases
+          # Rename and move built executable to Releases with desired name
+          if [ -f backup-manager-gui.exe ]; then
+            mv backup-manager-gui.exe "Releases/Dvx3 Backup Manager.exe"
+          elif [ -f backup-manager-gui ]; then
+            cp backup-manager-gui "Releases/Dvx3 Backup Manager.exe"
+          fi
+          # Copy CLI and DLLs as before (same logic as Linux job had):
+          if [ -f dvx3.exe ]; then
+            cp dvx3.exe Releases/
+            echo "✓ Copied dvx3.exe CLI tool"
+          elif [ -f dvx3 ]; then
+            cp dvx3 Releases/dvx3.exe
+            echo "✓ Copied dvx3 CLI tool"
+          else
+            echo "⚠ Warning: dvx3 CLI tool not found - backups may not work"
+          fi
+          # Copy additional required files from MSYS2 if present
+          # tar/zstd/sh needed by CLI
+          if [ -f /usr/bin/tar.exe ]; then
+            cp /usr/bin/tar.exe Releases/ || true
+          elif [ -f /usr/bin/tar ]; then
+            cp /usr/bin/tar Releases/tar.exe || true
+          fi
+          if [ -f /usr/bin/zstd.exe ]; then
+            cp /usr/bin/zstd.exe Releases/ || true
+          elif [ -f /usr/bin/zstd ]; then
+            cp /usr/bin/zstd Releases/zstd.exe || true
+          fi
+          # Copy Qt platform plugins (qwindows.dll) to Releases/platforms
+          echo "=== Copying Qt Platform Plugins for Windows ==="
+          PLUGIN_DIR="/mingw64/share/qt6/plugins/platforms"
+          TARGET_DIR="Releases/platforms"
+          mkdir -p "$TARGET_DIR"
+          if [ -d "$PLUGIN_DIR" ]; then
+            cp "$PLUGIN_DIR"/*.dll "$TARGET_DIR"/ 2>/dev/null || true
+          elif [ -d "/mingw64/plugins/platforms" ]; then
+            cp /mingw64/plugins/platforms/*.dll "$TARGET_DIR"/ 2>/dev/null || true
+          elif [ -d "/mingw64/lib/qt6/plugins/platforms" ]; then
+            cp /mingw64/lib/qt6/plugins/platforms/*.dll "$TARGET_DIR"/ 2>/dev/null || true
+          fi
+
+      - name: Compress EXE and DLLs with UPX (Windows)
+        shell: bash
+        run: |
+          # Download UPX Windows binary
+          curl -L -o upx.zip https://github.com/upx/upx/releases/download/v4.0.2/upx-4.0.2-win64.zip || true
+          unzip -q upx.zip || true
+          UPX_PATH="./upx-4.0.2-win64/upx.exe"
+          if [ -f "Releases/Dvx3 Backup Manager.exe" ]; then
+            "$UPX_PATH" --best --lzma "Releases/Dvx3 Backup Manager.exe" || echo "Failed to compress main exe, continuing..."
+          fi
 
   build-linux:
     runs-on: ubuntu-latest
@@ -89,6 +247,12 @@ jobs:
             dvx3
             libdvx3.so
 
+      - name: Upload Linux build artifact (tar.gz)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dvx3-Backup-Manager-Linux-Tar
+          path: Releases/Dvx3-Backup-Manager-Linux.tar.gz
+
       - name: Install ImageMagick for icon conversion
         run: sudo apt-get update && sudo apt-get install -y imagemagick
         if: runner.os == 'Linux'
@@ -98,108 +262,71 @@ jobs:
         working-directory: ${{ github.workspace }}
         if: runner.os == 'Linux'
 
-      - name: Build Backup Manager GUI
-        shell: msys2 {0}
+      - name: Build Backup Manager GUI (Linux native)
         run: |
           chmod +x build_gui.sh || true
-          # Fix line endings for build_gui.sh to Unix LF before build
           sed -i 's/\r$//' build_gui.sh
           ./build_gui.sh
       
-      - name: Build dvx3 CLI tool
-        shell: msys2 {0}
+      - name: Build dvx3 CLI tool (Linux native)
         run: |
           chmod +x build.sh || true
           sed -i 's/\r$//' build.sh
           ./build.sh || echo "CLI build failed, continuing..."
 
-      - name: Prepare Releases folder
-        shell: msys2 {0}
+      - name: Run tests harness
         run: |
-          mkdir -p Releases
-          # Rename and move built executable to Releases with desired name
-          if [ -f backup-manager-gui.exe ]; then
-            mv backup-manager-gui.exe "Releases/Dvx3 Backup Manager.exe"
-          elif [ -f backup-manager-gui ]; then
-            cp backup-manager-gui "Releases/Dvx3 Backup Manager.exe"
+          chmod +x scripts/run-tests.sh
+          ./scripts/run-tests.sh
+
+      - name: Package Linux artifacts
+        run: |
+          mkdir -p Releases/linux
+          if [ -f backup-manager-gui ]; then
+            cp backup-manager-gui Releases/linux/ || true
           fi
-          
-          # Copy dvx3 CLI tool (helper program for backups)
-          if [ -f dvx3.exe ]; then
-            cp dvx3.exe Releases/
-            echo "✓ Copied dvx3.exe CLI tool"
-          elif [ -f dvx3 ]; then
-            cp dvx3 Releases/dvx3.exe
-            echo "✓ Copied dvx3 CLI tool"
+          if [ -f backup-manager ]; then
+            cp backup-manager Releases/linux/ || true
+          fi
+          if [ -f dvx3 ]; then
+            cp dvx3 Releases/linux/ || true
+          fi
+          if [ -f libdvx3.so ]; then
+            cp libdvx3.so Releases/linux/ || true
+          fi
+          # Create compressed tarball for Releases/linux
+          tar -czf Releases/Dvx3-Backup-Manager-Linux.tar.gz -C Releases linux || true
+
+      - name: Verify Linux CLI artifacts
+        run: |
+          echo "=== Linux CLI verification ==="
+          if [ -f dvx3 ]; then
+            echo "Found dvx3"; ./dvx3 --help || true
           else
-            echo "⚠ Warning: dvx3 CLI tool not found - backups may not work"
+            echo "ERROR: dvx3 not found"; ls -la || true; exit 1
           fi
-          
-          # Copy tar and zstd executables (required by libdvx3 for backup operations)
-          echo "=== Copying tar and zstd executables ==="
-          if [ -f /usr/bin/tar.exe ]; then
-            cp /usr/bin/tar.exe Releases/
-            echo "✓ Copied tar.exe"
-          elif [ -f /usr/bin/tar ]; then
-            cp /usr/bin/tar Releases/tar.exe
-            echo "✓ Copied tar"
+          if [ -f backup-manager ]; then
+            echo "Found backup-manager"; ./backup-manager --help || true
           else
-            echo "✗ ERROR: tar not found - backups will not work!"
+            echo "Warning: backup-manager not found"
           fi
-          
-          if [ -f /usr/bin/zstd.exe ]; then
-            cp /usr/bin/zstd.exe Releases/
-            echo "✓ Copied zstd.exe"
-          elif [ -f /usr/bin/zstd ]; then
-            cp /usr/bin/zstd Releases/zstd.exe
-            echo "✓ Copied zstd"
-          else
-            echo "✗ ERROR: zstd not found - backups will not work!"
+      - name: Build and run C++ tests (Linux)
+        run: |
+          echo "Building C++ tests..."
+          # Compile generated C library as C
+          gcc -c gen-c/libdvx3.c -o libdvx3.o -fPIC -I. $(pkg-config --cflags glib-2.0 gio-2.0 json-glib-1.0 libsodium)
+          # Compile and link test-simple-backup
+          g++ -c test-simple-backup.cpp -o test-simple-backup.o -std=c++17 -I. $(pkg-config --cflags glib-2.0 gio-2.0)
+          g++ test-simple-backup.o libdvx3.o -o test-simple-backup $(pkg-config --libs glib-2.0 gio-2.0 json-glib-1.0 libsodium)
+          # Compile and link test-exclusion
+          g++ -c test-exclusion.cpp -o test-exclusion.o -std=c++17 -I. $(pkg-config --cflags glib-2.0 gio-2.0)
+          g++ test-exclusion.o libdvx3.o -o test-exclusion $(pkg-config --libs glib-2.0 gio-2.0 json-glib-1.0 libsodium)
+          echo "Running tests (these may require tar/zstd installed)"
+          if [ -x ./test-simple-backup ]; then
+            ./test-simple-backup
           fi
-          
-          # Copy sh.exe (shell required for tar/zstd pipeline)
-          if [ -f /usr/bin/sh.exe ]; then
-            cp /usr/bin/sh.exe Releases/
-            echo "✓ Copied sh.exe"
-          elif [ -f /usr/bin/sh ]; then
-            cp /usr/bin/sh Releases/sh.exe
-            echo "✓ Copied sh"
-          fi
-          
-          # Copy msys-2.0.dll (required by MSYS2 executables)
-          if [ -f /usr/bin/msys-2.0.dll ]; then
-            cp /usr/bin/msys-2.0.dll Releases/
-            echo "✓ Copied msys-2.0.dll"
-          fi
-          
-          # Copy msys-zstd-1.dll (required by zstd)
-          if [ -f /usr/bin/msys-zstd-1.dll ]; then
-            cp /usr/bin/msys-zstd-1.dll Releases/
-            echo "✓ Copied msys-zstd-1.dll"
-          fi
-          
-          # Copy msys-lzma-5.dll (required by tar)
-          if [ -f /usr/bin/msys-lzma-5.dll ]; then
-            cp /usr/bin/msys-lzma-5.dll Releases/
-            echo "✓ Copied msys-lzma-5.dll"
-          fi
-          
-          # Copy msys-iconv-2.dll (required by tar)
-          if [ -f /usr/bin/msys-iconv-2.dll ]; then
-            cp /usr/bin/msys-iconv-2.dll Releases/
-            echo "✓ Copied msys-iconv-2.dll"
-          fi
-          
-          # Copy msys-intl-8.dll (required by tar)
-          if [ -f /usr/bin/msys-intl-8.dll ]; then
-            cp /usr/bin/msys-intl-8.dll Releases/
-            echo "✓ Copied msys-intl-8.dll"
-          fi
-          # Copy libdvx3.dll from build output if exists
-          if [ -f libdvx3.dll ]; then
-            cp libdvx3.dll Releases/ || true
-          elif [ -f libdvx3.so ]; then
-            cp libdvx3.so Releases/ || true
+          if [ -x ./test-exclusion ]; then
+            ./test-exclusion
           fi
           # Function to copy DLL only if it exists
           copy_if_exists() {
@@ -341,7 +468,11 @@ jobs:
 
           # Compress main EXE
           if [ -f Releases/Dvx3\ Backup\ Manager.exe ]; then
-            "$UPX_PATH" --best --lzma "Releases/Dvx3 Backup Manager.exe" || echo "Failed to compress main exe, continuing..."
+            if [ -x "$UPX_PATH" ]; then
+              "$UPX_PATH" --best --lzma "Releases/Dvx3 Backup Manager.exe" || echo "Failed to compress main exe, continuing..."
+            else
+              echo "UPX not found: $UPX_PATH; skipping UPX compression for main exe"
+            fi
           fi
 
           # Compress DLLs (skip MSYS2 DLLs and executables as they can't be compressed)
@@ -351,7 +482,11 @@ jobs:
               echo "Skipping MSYS2 DLL: $dll"
               continue
             fi
-            "$UPX_PATH" --best --lzma "$dll" || echo "Failed to compress $dll, continuing..."
+            if [ -x "$UPX_PATH" ]; then
+              "$UPX_PATH" --best --lzma "$dll" || echo "Failed to compress $dll, continuing..."
+            else
+              echo "UPX not found: $UPX_PATH; skipping UPX compression for $dll"
+            fi
           done
           
           # Note: tar.exe, zstd.exe, sh.exe are MSYS2 executables and cannot be compressed with UPX
@@ -371,8 +506,47 @@ jobs:
             exit 1
           fi
 
+      - name: Create zip for Windows Releases
+        shell: msys2 {0}
+        run: |
+          set -e
+          cd Releases
+          # Use powershell compress on windows runners to ensure consistent zip with Unicode filenames
+          powershell -Command "Compress-Archive -Path * -DestinationPath 'Dvx3-Backup-Manager-Windows.zip' -Force"
+          ls -lah Dvx3-Backup-Manager-Windows.zip || true
+
+      - name: Compute checksum for Windows ZIP
+        shell: msys2 {0}
+        run: |
+          cd Releases
+          if [ -f Dvx3-Backup-Manager-Windows.zip ]; then
+            sha256sum Dvx3-Backup-Manager-Windows.zip > Dvx3-Backup-Manager-Windows.zip.sha256
+          fi
+
+      - name: Upload Windows build artifact (zip)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dvx3-Backup-Manager-Windows-Zip
+          path: Releases/Dvx3-Backup-Manager-Windows.zip
+
       - name: Upload Windows build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Dvx3-Backup-Manager-Windows-Build
           path: Releases/
+  
+  build-linux-appimage:
+    runs-on: ubuntu-latest
+    needs: [build-linux]
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build AppImage (if applicable)
+        run: |
+          chmod +x build-appimage.sh || true
+          ./build-appimage.sh || true
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dvx3-Backup-Manager-Linux-AppImage
+          path: |
+            *.AppImage

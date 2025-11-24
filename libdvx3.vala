@@ -63,13 +63,7 @@ namespace Dvx3 {
     }
 
     /* Big-endian helpers */
-    private uint8[] uint64_to_be (uint64 v) {
-        uint8[] buf = new uint8[8];
-        for (int i = 0; i < 8; i++) {
-            buf[7 - i] = (uint8) (v >> (i * 8));
-        }
-        return buf;
-    }
+    // uint64_to_be helper is defined in main.vala for CLI usage; avoid duplicate definition here
 
     private uint8[] uint32_to_be (uint32 v) {
         uint8[] buf = new uint8[4];
@@ -300,7 +294,7 @@ namespace Dvx3 {
         );
 
         // Relay thread: tar stdout -> zstd stdin
-        Thread<void*> relay = new Thread<void*>("dvx3-relay", () => {
+        new Thread<void*>("dvx3-relay", () => {
             uint8[] rbuf = new uint8[CHUNK_SIZE];
             while (true) {
                 ssize_t r = posix_read(tar_out_fd, rbuf, CHUNK_SIZE);
@@ -318,7 +312,7 @@ namespace Dvx3 {
         });
 
         // Monitor thread: periodically query tar totals via SIGUSR1 and parse stderr
-        Thread<void*> monitor = new Thread<void*>("dvx3-monitor", () => {
+        new Thread<void*>("dvx3-monitor", () => {
             uint8[] ebuf = new uint8[4096];
             string pending = "";
             while (true) {
@@ -350,12 +344,11 @@ namespace Dvx3 {
                                     if (c >= '0' && c <= '9') digits += c.to_string();
                                 }
                                 if (digits.length > 0) {
-                                    try {
-                                        uint64 v = (uint64) int64.parse(digits);
-                                        original_processed = v;
-                                    } catch (Error e) {
-                                        // ignore parse errors
+                                    uint64 v = 0;
+                                    for (int di = 0; di < digits.length; di++) {
+                                        v = v * 10 + (uint64) (digits[di] - '0');
                                     }
+                                    original_processed = v;
                                 }
                             }
                         }
@@ -400,6 +393,8 @@ namespace Dvx3 {
         posix_waitpid (tar_pid, out st2, 0);
         Process.close_pid (zstd_pid);
         Process.close_pid (tar_pid);
+
+        // Threads will exit once file descriptors are closed; no join required here
 
         // Check exit status properly (POSIX wait status encoding)
         // WIFEXITED(s) = ((s & 0x7F) == 0), WEXITSTATUS(s) = (s >> 8) & 0xFF
@@ -592,12 +587,18 @@ namespace Dvx3 {
         uint64 enc_bytes = enc_info.get_attribute_uint64 (FileAttribute.STANDARD_SIZE);
 
         var fin = enc_file.read();
-        uint8[] len_buf = fin.read_bytes(4).get_data();
+        var _len_gb = fin.read_bytes(4);
+        uint8[] len_buf = new uint8[4];
+        for (int _i = 0; _i < 4; _i++)
+            len_buf[_i] = _len_gb.get_data()[_i];
         if (len_buf.length != 4)
             throw new IOError.FAILED("Missing header length");
         
         uint32 hlen = be_to_uint32(len_buf);
-        uint8[] hdr_json_raw = fin.read_bytes((size_t)hlen).get_data();
+        var _hdr_gb = fin.read_bytes((size_t)hlen);
+        uint8[] hdr_json_raw = new uint8[hlen];
+        for (size_t _i = 0; _i < (size_t)hlen; _i++)
+            hdr_json_raw[(int)_i] = _hdr_gb.get_data()[(int)_i];
         
         // Header is zero-padded; find actual JSON end (first null byte)
         size_t actual_json_len = 0;
@@ -649,13 +650,19 @@ namespace Dvx3 {
             null);
 
         for (uint64 i = 0; i < chunks; i++) {
-            uint8[] nonce = fin.read_bytes((uint)Sodium.Symmetric.NONCE_BYTES).get_data();
+            var _nonce_gb = fin.read_bytes((uint)Sodium.Symmetric.NONCE_BYTES);
+            uint8[] nonce = new uint8[(int)Sodium.Symmetric.NONCE_BYTES];
+            for (int _j = 0; _j < (int)Sodium.Symmetric.NONCE_BYTES; _j++)
+                nonce[_j] = _nonce_gb.get_data()[_j];
             if (nonce.length != Sodium.Symmetric.NONCE_BYTES)
                 throw new IOError.FAILED ("Truncated nonce at chunk %s".printf(i.to_string()));
 
             uint64 expected_plain = (i == chunks - 1) ? last : CHUNK_SIZE;
             uint64 ct_len = expected_plain + SECRETBOX_MAC;
-            uint8[] ct = fin.read_bytes((size_t)ct_len).get_data();
+            var _ct_gb = fin.read_bytes((size_t)ct_len);
+            uint8[] ct = new uint8[(int)ct_len];
+            for (int _k = 0; _k < (int)ct_len; _k++)
+                ct[_k] = _ct_gb.get_data()[_k];
             if (ct.length != (size_t)ct_len)
                 throw new IOError.FAILED ("Truncated ciphertext at chunk %s".printf(i.to_string()));
 
