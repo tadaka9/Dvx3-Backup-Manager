@@ -65,7 +65,14 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential qt6-base-dev qt6-base-plugins qt6-gtk-platformtheme qt6-tools pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick
+          # Try to install Qt6 and development tools in one go; some packages differ across Ubuntu versions
+          sudo apt-get install -y build-essential pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick || true
+          QT_PKGS=(qt6-base-dev qt6-tools-dev qt6-gtk-platformtheme qt6base-dev-tools qt6-base-plugins qt6-tools)
+          echo "Attempting to install Qt packages: ${QT_PKGS[*]}"
+          if ! sudo apt-get install -y "${QT_PKGS[@]}"; then
+            echo "⤷ Qt package install failed, trying a narrower, more common set..."
+            sudo apt-get install -y qt6-base-dev qt6-tools-dev || true
+          fi
 
       - name: Build all components
         run: |
