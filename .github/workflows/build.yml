@@ -723,6 +723,11 @@ jobs:
     if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main')
     steps:
       - uses: actions/checkout@v3
+      - name: Install packaging dependencies
+        run: |
+          set -ex
+          sudo apt-get update
+          sudo apt-get install -y imagemagick tar zstd || true
       - name: Download Linux build artifacts
         uses: actions/download-artifact@v4
         with:
@@ -740,3 +745,17 @@ jobs:
         with:
           name: Dvx3-Backup-Manager-Linux-Tar
           path: Releases/Dvx3-Backup-Manager-Linux.tar.gz
+      - name: CI diagnostics on failure (package-linux)
+        if: failure()
+        run: |
+          set -ex
+          echo "=== Packaging failure diagnostics ==="
+          echo "Releases contents:"; ls -la Releases || true
+          if [ -f Releases/Dvx3-Backup-Manager-Linux.tar.gz ]; then
+            echo "Tarball contents:"; tar -tzf Releases/Dvx3-Backup-Manager-Linux.tar.gz | head -n 40 || true
+          fi
+          # Inspect packages
+          if [ -f Releases/linux/backup-manager-gui ]; then
+            echo "readelf backup-manager-gui:"; readelf -h Releases/linux/backup-manager-gui || true
+            echo "ldd backup-manager-gui:"; LD_LIBRARY_PATH=Releases/linux/lib ldd Releases/linux/backup-manager-gui || true
+          fi
