@@ -466,15 +466,24 @@ void BackupManagerWindow::setup_ui() {
         "  font-weight: 600;"
         "}"
         "QTableWidget::item {"
-        "  padding: 6px;"
+        "  padding: 8px 6px;"
         "}"
         "QTableWidget::item:hover {"
         "  background: #fbfdff;"
         "}"
     );
     history_table->horizontalHeader()->setStretchLastSection(true);
+    // Use a comfortable row height based on font metrics to prevent clipping
+    int rowHeight = history_table->fontMetrics().height() + 12; // add padding
+    history_table->verticalHeader()->setDefaultSectionSize(rowHeight);
+    history_table->verticalHeader()->setVisible(false);
     history_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     history_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    history_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Interactive);
+    history_table->setColumnWidth(0, 150); // Date/Time
+    history_table->setColumnWidth(1, 250); // Job
+    history_table->setColumnWidth(2, 90);  // Size
+    history_table->setColumnWidth(3, 80);  // Ratio
     
     history_layout->addWidget(history_label);
     history_layout->addWidget(history_table);
@@ -655,13 +664,17 @@ void BackupManagerWindow::refresh_history() {
         
         QDateTime dt = QDateTime::fromSecsSinceEpoch(rec.timestamp);
         history_table->setItem(row, 0, new QTableWidgetItem(dt.toString("yyyy-MM-dd hh:mm:ss")));
+        history_table->item(row, 0)->setTextAlignment(Qt::AlignVCenter | Qt::AlignLeft);
         history_table->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(rec.job_name)));
+        history_table->item(row, 1)->setTextAlignment(Qt::AlignVCenter | Qt::AlignLeft);
         history_table->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(dvx3::format_size(rec.compressed_size))));
+        history_table->item(row, 2)->setTextAlignment(Qt::AlignVCenter | Qt::AlignRight);
         
         QString ratio = rec.success ? QString::number(rec.compression_ratio(), 'f', 1) + "%" : "-";
         history_table->setItem(row, 3, new QTableWidgetItem(ratio));
+        history_table->item(row, 3)->setTextAlignment(Qt::AlignVCenter | Qt::AlignCenter);
         
-        QString status = rec.success ? "✓ Success" : "✗ Failed";
+        QString status = rec.success ? "Success" : "Failed";
         auto* status_item = new QTableWidgetItem(status);
         if (!rec.success) {
             status_item->setForeground(Qt::red);
@@ -669,6 +682,7 @@ void BackupManagerWindow::refresh_history() {
             status_item->setForeground(Qt::darkGreen);
         }
         history_table->setItem(row, 4, status_item);
+        history_table->item(row, 4)->setTextAlignment(Qt::AlignVCenter | Qt::AlignCenter);
         
         row++;
     }
