@@ -233,18 +233,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/ccache
+          key: ${{ runner.os }}-ccache-${{ hashFiles('**/*.c','**/*.cpp','**/*.h') }}-v1
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
 
       - name: Install dependencies
         run: |
           set -ex
           sudo apt-get update
           # Try to install Qt6 and development tools in one go; some packages differ across Ubuntu versions
-          sudo apt-get install -y build-essential pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build || true
+          sudo apt-get install -y build-essential pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache || true
           QT_PKGS=(qt6-base-dev qt6-tools-dev qt6-gtk-platformtheme qt6base-dev-tools qt6-base-plugins qt6-tools)
           echo "Attempting to install Qt packages: ${QT_PKGS[*]}"
           if ! sudo apt-get install -y "${QT_PKGS[@]}"; then
             echo "⤷ Qt package install failed, trying a narrower, more common set..."
             sudo apt-get install -y qt6-base-dev qt6-tools-dev || true
+      - name: Configure ccache and env
+        run: |
+          set -ex
+          ccache -M 5G || true
+          echo "CCACHE_DIR=/home/runner/.cache/ccache" >> $GITHUB_ENV
+          echo "CC=ccache gcc" >> $GITHUB_ENV
+          echo "CXX=ccache g++" >> $GITHUB_ENV
           fi
 
       - name: Ensure static libsodium available (build if required)
@@ -322,6 +338,25 @@ jobs:
           echo "Built files:"; ls -la backup-manager* dvx3* || true
           echo "gen-c contents:"; ls -la gen-c || true
           echo "Which tar/zstd?:"; which tar || true; which zstd || true
+          echo "=== Extra diagnostics: check libsodium static archives and libdvx3 ==="
+          if [ -f /usr/local/lib/libsodium.a ]; then
+            echo "Found /usr/local/lib/libsodium.a - content listing (first 20):"; ar t /usr/local/lib/libsodium.a | head -n 20 || true
+            tmpd=$(mktemp -d)
+            (cd "$tmpd" && ar x /usr/local/lib/libsodium.a) || true
+            for o in "$tmpd"/*.o; do
+              echo "---- readelf -h $o ----"; readelf -h "$o" || true
+              echo "---- readelf -r $o ----"; readelf -r "$o" | sed -n '1,120p' || true
+            done
+            rm -rf "$tmpd"
+          fi
+          if [ -f /usr/lib/libsodium.a ]; then
+            echo "Found /usr/lib/libsodium.a - content listing (first 20):"; ar t /usr/lib/libsodium.a | head -n 20 || true
+          fi
+          if [ -f libdvx3.so ]; then
+            echo "libdvx3.so readelf -h"; readelf -h libdvx3.so || true
+            echo "libdvx3.so readelf -r"; readelf -r libdvx3.so | sed -n '1,160p' || true
+            echo "libdvx3.so readelf -d"; readelf -d libdvx3.so || true
+          fi
 
       - name: Install ImageMagick for icon conversion
         run: |
@@ -360,13 +395,7 @@ jobs:
           chmod +x scripts/run-tests.sh
           ./scripts/run-tests.sh
 
-      - name: Package Linux artifacts
-        run: |
-          set -ex
-          chmod +x scripts/package-linux.sh
-          ./scripts/package-linux.sh
-          # Create compressed tarball for Releases/linux
-          tar -czf Releases/Dvx3-Backup-Manager-Linux.tar.gz -C Releases linux || true
+      # Packaging moved to a release-only job `package-linux` to avoid running packaging on every PR/CI run.
 
       - name: Check binary runtime dependencies (Linux)
         run: |
@@ -687,3 +716,27 @@ jobs:
           name: Dvx3-Backup-Manager-Linux-AppImage
           path: |
             *.AppImage
+
+  package-linux:
+    runs-on: ubuntu-latest
+    needs: [build-linux]
+    if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main')
+    steps:
+      - uses: actions/checkout@v3
+      - name: Download Linux build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: Dvx3-Backup-Manager-Linux-Build
+          path: .
+      - name: Run packaging script
+        run: |
+          set -ex
+          chmod +x scripts/package-linux.sh || true
+          ./scripts/package-linux.sh || true
+          # Create compressed tarball for Releases/linux
+          tar -czf Releases/Dvx3-Backup-Manager-Linux.tar.gz -C Releases linux || true
+      - name: Upload packaged Linux build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dvx3-Backup-Manager-Linux-Tar
+          path: Releases/Dvx3-Backup-Manager-Linux.tar.gz
