@@ -357,6 +357,20 @@ jobs:
           # Note: tar.exe, zstd.exe, sh.exe are MSYS2 executables and cannot be compressed with UPX
           echo "Note: MSYS2 executables (tar.exe, zstd.exe, sh.exe) are not compressed (not compatible with UPX)"
 
+      - name: Verify Releases contents (Windows)
+        shell: msys2 {0}
+        run: |
+          echo "=== Releases directory contents ==="
+          ls -la Releases || true
+          echo "TOTAL SIZE:"; du -sh Releases || true
+          if [ ! -d Releases ] || [ -z "$(ls -A Releases 2>/dev/null)" ]; then
+            echo "ERROR: Releases directory is empty or missing. Dumping some diagnostics..."
+            echo "Contents of workspace root:"; ls -la || true
+            echo "Listing /mingw64/bin for common files:"; ls -la /mingw64/bin | grep -E 'backup-manager|dvx3|Qt6|tar|zstd' || true
+            echo "Listing plugin 'platforms' dir:"; ls -la /mingw64/share/qt6/plugins/platforms || true
+            exit 1
+          fi
+
       - name: Upload Windows build artifacts
         uses: actions/upload-artifact@v4
         with:
