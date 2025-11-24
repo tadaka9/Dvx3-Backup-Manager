@@ -13,11 +13,13 @@ jobs:
       - uses: actions/checkout@v3
       - name: Install lint tools
         run: |
+          set -e
           sudo apt-get update
-          sudo apt-get install -y yamllint shellcheck || true
+          sudo apt-get install -y yamllint shellcheck
       - name: Run yamllint for workflows
         run: |
-          yamllint -c /dev/null .github/workflows || true
+          set -e
+          yamllint -c /dev/null .github/workflows
       - name: Validate GitHub Actions (actionlint)
         uses: rhysd/actionlint@v1
       - name: Check for tracked generated files
@@ -31,7 +33,7 @@ jobs:
           files=$(git ls-files '*.sh')
           if [ -n "$files" ]; then
             for f in $files; do
-              shellcheck -x "$f" || true
+              shellcheck -x "$f"
             done
           fi
 
