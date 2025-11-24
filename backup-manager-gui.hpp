@@ -13,6 +13,7 @@
 #include <QLabel>
 #include <QProgressBar>
 #include <QTextEdit>
+#include <QPlainTextEdit>
 #include <QGroupBox>
 #include <QSpinBox>
 #include <QComboBox>
@@ -51,16 +52,12 @@
 namespace backup_gui {
 
 // Animated gradient background widget
-class PsychedelicBackground : public QWidget {
+class PlainBackground : public QWidget {
     Q_OBJECT
 public:
-    PsychedelicBackground(QWidget* parent = nullptr);
-    
+    explicit PlainBackground(QWidget* parent = nullptr);
 protected:
     void paintEvent(QPaintEvent*) override;
-    
-private:
-    int hue_offset;
 };
 
 // Configuration for compression and archiving
@@ -137,7 +134,7 @@ private:
     // UI Components
     QListWidget* job_list;
     QTableWidget* history_table;
-    QTextEdit* log_display;
+    QPlainTextEdit* log_display;
     QProgressBar* progress_bar;
     QLabel* status_label;
     

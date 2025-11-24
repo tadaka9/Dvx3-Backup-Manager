@@ -5,6 +5,7 @@
 #include "backup-manager-gui.hpp"
 #include <QApplication>
 #include <QGridLayout>
+#include <QStyleFactory>
 #include <QSplitter>
 #include <QHeaderView>
 #include <QDateTime>
@@ -19,42 +20,15 @@
 
 namespace backup_gui {
 
-// Animated gradient background implementation
-PsychedelicBackground::PsychedelicBackground(QWidget* parent) : QWidget(parent), hue_offset(0) {
-    setAttribute(Qt::WA_StyledBackground, false);
-    setAttribute(Qt::WA_OpaquePaintEvent, false);
-    
-    // Animation timer
-    auto* timer = new QTimer(this);
-    connect(timer, &QTimer::timeout, this, [this]() {
-        hue_offset = (hue_offset + 2) % 360;
-        update();
-    });
-    timer->start(50); // 20 FPS
+// Plain neutral background implementation
+PlainBackground::PlainBackground(QWidget* parent) : QWidget(parent) {
+    // Render via palette to keep a neutral look
+    setAutoFillBackground(true);
 }
 
-void PsychedelicBackground::paintEvent(QPaintEvent*) {
+void PlainBackground::paintEvent(QPaintEvent* ev) {
     QPainter p(this);
-    p.setRenderHint(QPainter::Antialiasing);
-    
-    // Multi-layer animated gradient
-    QLinearGradient grad1(0, 0, width(), height());
-    grad1.setColorAt(0.0, QColor::fromHsv((hue_offset + 280) % 360, 200, 40));
-    grad1.setColorAt(0.5, QColor::fromHsv((hue_offset + 320) % 360, 180, 25));
-    grad1.setColorAt(1.0, QColor::fromHsv((hue_offset + 200) % 360, 190, 35));
-    
-    p.fillRect(rect(), grad1);
-    
-    // Overlay radial gradients for depth
-    QRadialGradient rad1(width() * 0.3, height() * 0.3, width() * 0.6);
-    rad1.setColorAt(0.0, QColor::fromHsv((hue_offset + 180) % 360, 255, 80, 30));
-    rad1.setColorAt(1.0, QColor(0, 0, 0, 0));
-    p.fillRect(rect(), rad1);
-    
-    QRadialGradient rad2(width() * 0.7, height() * 0.7, width() * 0.5);
-    rad2.setColorAt(0.0, QColor::fromHsv((hue_offset + 60) % 360, 255, 100, 40));
-    rad2.setColorAt(1.0, QColor(0, 0, 0, 0));
-    p.fillRect(rect(), rad2);
+    p.fillRect(rect(), palette().window());
     
     // Animated grid overlay
     p.setPen(QPen(QColor(0, 255, 255, 15), 1));
@@ -268,13 +242,9 @@ CompressionConfig JobConfigDialog::get_compression_config() const {
 // BackupManagerWindow implementation
 BackupManagerWindow::BackupManagerWindow(QWidget* parent)
     : QMainWindow(parent) {
-    setWindowTitle("◈ DVX3 QUANTUM BACKUP SYSTEM ◈");
-    resize(1400, 900);
+    setWindowTitle("DVX3 Backup Manager");
+    resize(1100, 700);
     
-    // Psychedelic background
-    auto* bg = new PsychedelicBackground(this);
-    bg->setGeometry(0, 0, 1400, 900);
-    bg->lower();
     
     setup_menu();
     setup_ui();
@@ -298,39 +268,36 @@ void BackupManagerWindow::setup_menu() {
     auto* menu_bar = menuBar();
     menu_bar->setStyleSheet(
         "QMenuBar {"
-        "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-        "    stop:0 rgba(100, 0, 200, 0.7), stop:0.5 rgba(0, 150, 200, 0.7), stop:1 rgba(100, 0, 200, 0.7));"
-        "  color: #00ffff;"
-        "  font-family: 'Monospace';"
-        "  font-weight: bold;"
-        "  padding: 5px;"
-        "  border-bottom: 2px solid rgba(0, 255, 255, 0.5);"
+        "  background-color: #f5f7fa;"
+        "  color: #222222;"
+        "  font-family: 'Segoe UI', 'Helvetica', 'Arial', sans-serif;"
+        "  font-weight: 600;"
+        "  font-size: 13px;"
+        "  padding: 6px;"
+        "  border-bottom: 1px solid #e0e0e0;"
         "}"
         "QMenuBar::item {"
-        "  padding: 5px 15px;"
+        "  padding: 6px 12px;"
         "  background: transparent;"
         "}"
         "QMenuBar::item:selected {"
-        "  background: rgba(0, 255, 255, 0.3);"
-        "  border-radius: 5px;"
+        "  background-color: #e9efff;"
         "}"
         "QMenu {"
-        "  background: rgba(20, 0, 40, 0.95);"
-        "  border: 2px solid rgba(0, 255, 255, 0.6);"
-        "  border-radius: 8px;"
-        "  color: #00ffff;"
-        "  font-family: 'Monospace';"
+        "  background: #ffffff;"
+        "  border: 1px solid #e0e0e0;"
+        "  border-radius: 6px;"
+        "  color: #333333;"
         "}"
         "QMenu::item {"
-        "  padding: 8px 25px;"
+        "  padding: 6px 16px;"
         "}"
         "QMenu::item:selected {"
-        "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-        "    stop:0 rgba(255, 0, 255, 0.5), stop:1 rgba(0, 255, 255, 0.5));"
+        "  background: #e9efff;"
         "}"
     );
-    auto* file_menu = menu_bar->addMenu("⚡ &SYSTEM");
-    auto* help_menu = menu_bar->addMenu("◉ &INFO");
+    auto* file_menu = menu_bar->addMenu("System");
+    auto* help_menu = menu_bar->addMenu("Info");
     
     settings_action = new QAction("&Settings", this);
     settings_action->setShortcut(QKeySequence::Preferences);
@@ -366,96 +333,82 @@ void BackupManagerWindow::setup_ui() {
     auto* job_widget = new QWidget();
     job_widget->setStyleSheet(
         "QWidget {"
-        "  background: qlineargradient(x1:0, y1:0, x2:1, y2:1, "
-        "    stop:0 rgba(80, 0, 180, 0.15), stop:1 rgba(0, 120, 180, 0.15));"
-        "  border: 2px solid qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-        "    stop:0 rgba(0, 255, 255, 0.6), stop:0.5 rgba(255, 0, 255, 0.6), stop:1 rgba(255, 255, 0, 0.6));"
-        "  border-radius: 15px;"
-        "  padding: 10px;"
+        "  background: #ffffff;"
+        "  border: 1px solid #dcdcdc;"
+        "  border-radius: 10px;"
+        "  padding: 8px;"
         "}"
     );
-    auto* shadow1 = new QGraphicsDropShadowEffect();
-    shadow1->setBlurRadius(30);
-    shadow1->setColor(QColor(0, 255, 255, 100));
-    shadow1->setOffset(0, 0);
-    job_widget->setGraphicsEffect(shadow1);
+    // Minimal professional UI: no heavy drop shadows - keep subtle outline only
     auto* job_layout = new QVBoxLayout(job_widget);
     
-    auto* job_label = new QLabel("⚡ <b>BACKUP SEQUENCES</b> ⚡");
+    auto* job_label = new QLabel("Backup Jobs");
     job_label->setStyleSheet(
-        "color: #00ffff; "
-        "font-family: 'Monospace'; "
-        "font-size: 14px; "
-        ""
+        "color: #222222; "
+        "font-family: 'Segoe UI', 'Helvetica', 'Arial', sans-serif; "
+        "font-size: 13px; "
+        "font-weight: 700; "
         "background: transparent;"
         "border: none;"
-        "padding: 5px;"
+        "padding: 4px;"
     );
     job_label->setAlignment(Qt::AlignCenter);
     job_list = new QListWidget();
     job_list->setStyleSheet(
         "QListWidget {"
-        "  background: rgba(10, 10, 30, 0.5);"
-        "  border: 1px solid rgba(0, 255, 255, 0.3);"
-        "  border-radius: 10px;"
-        "  color: #00ff88;"
-        "  font-family: 'Monospace';"
-        "  font-size: 11px;"
-        "  padding: 5px;"
-        "  selection-background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-        "    stop:0 rgba(255, 0, 255, 0.4), stop:1 rgba(0, 255, 255, 0.4));"
+        "  background: transparent;"
+        "  border: none;"
+        "  color: #222222;"
+        "  font-family: 'Segoe UI', 'Helvetica', 'Arial', sans-serif;"
+        "  font-size: 12px;"
+        "  padding: 4px;"
         "}"
         "QListWidget::item {"
         "  padding: 8px;"
-        "  border-bottom: 1px solid rgba(0, 255, 255, 0.1);"
+        "  border-bottom: 1px solid #f1f1f1;"
         "}"
         "QListWidget::item:hover {"
-        "  background: rgba(0, 255, 255, 0.15);"
-        "  border-left: 3px solid #ff00ff;"
+        "  background: #f8faff;"
         "}"
         "QListWidget::item:selected {"
-        "  border-left: 3px solid #00ffff;"
-        "  "
+        "  background: #e9efff;"
         "}"
     );
     
     auto* job_btn_layout = new QHBoxLayout();
     
-    QString neon_btn_style = 
+    QString flat_btn_style = 
         "QPushButton {"
-        "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
-        "    stop:0 rgba(100, 0, 200, 0.6), stop:1 rgba(0, 150, 255, 0.6));"
-        "  border: 2px solid rgba(0, 255, 255, 0.6);"
-        "  border-radius: 12px;"
-        "  color: #00ffff;"
-        "  font-family: 'Monospace';"
-        "  font-size: 11px;"
-        "  font-weight: bold;"
-        "  padding: 10px 15px;"
-        "  "
+        "  background: #2d6cdf;"
+        "  border: none;"
+        "  border-radius: 6px;"
+        "  color: #ffffff;"
+        "  font-family: 'Segoe UI', 'Helvetica', 'Arial', sans-serif;"
+        "  font-size: 12px;"
+        "  padding: 6px 12px;"
         "}"
         "QPushButton:hover {"
-        "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
-        "    stop:0 rgba(150, 0, 255, 0.8), stop:1 rgba(0, 200, 255, 0.8));"
-        "  border: 2px solid rgba(255, 0, 255, 0.8);"
+        "  background: #2a5bd4;"
         "}"
         "QPushButton:pressed {"
-        "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
-        "    stop:0 rgba(200, 0, 255, 0.9), stop:1 rgba(0, 255, 255, 0.9));"
+        "  background: #1f4fb1;"
         "}"
         "QPushButton:disabled {"
-        "  background: rgba(40, 40, 60, 0.3);"
-        "  border: 2px solid rgba(100, 100, 120, 0.3);"
-        "  color: rgba(100, 100, 120, 0.5);"
-        "  "
+        "  background: #e9edf6;"
+        "  color: #9aa6d2;"
+        "}"
+        "QPushButton.secondary {"
+        "  background: #f1f5f9;"
+        "  color: #222222;"
+        "  border: 1px solid #e2e8f0;"
         "}";
     
-    add_job_btn = new QPushButton("⊕ ADD");
-    add_job_btn->setStyleSheet(neon_btn_style);
-    edit_job_btn = new QPushButton("✎ EDIT");
-    edit_job_btn->setStyleSheet(neon_btn_style);
-    remove_job_btn = new QPushButton("⊗ REMOVE");
-    remove_job_btn->setStyleSheet(neon_btn_style);
+    add_job_btn = new QPushButton("Add");
+        add_job_btn->setStyleSheet(flat_btn_style);
+    edit_job_btn = new QPushButton("Edit");
+        edit_job_btn->setStyleSheet(flat_btn_style);
+    remove_job_btn = new QPushButton("Remove");
+        remove_job_btn->setStyleSheet(flat_btn_style);
     
     job_btn_layout->addWidget(add_job_btn);
     job_btn_layout->addWidget(edit_job_btn);
@@ -471,61 +424,52 @@ void BackupManagerWindow::setup_ui() {
     auto* history_widget = new QWidget();
     history_widget->setStyleSheet(
         "QWidget {"
-        "  background: qlineargradient(x1:0, y1:0, x2:1, y2:1, "
-        "    stop:0 rgba(0, 120, 180, 0.15), stop:1 rgba(180, 0, 120, 0.15));"
-        "  border: 2px solid qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-        "    stop:0 rgba(255, 255, 0, 0.6), stop:0.5 rgba(0, 255, 255, 0.6), stop:1 rgba(255, 0, 255, 0.6));"
-        "  border-radius: 15px;"
-        "  padding: 10px;"
+        "  background: #ffffff;"
+        "  border: 1px solid #dcdcdc;"
+        "  border-radius: 10px;"
+        "  padding: 8px;"
         "}"
     );
-    auto* shadow2 = new QGraphicsDropShadowEffect();
-    shadow2->setBlurRadius(30);
-    shadow2->setColor(QColor(255, 255, 0, 100));
-    shadow2->setOffset(0, 0);
-    history_widget->setGraphicsEffect(shadow2);
+    // No heavy drop shadow for history widget; prefer clean border
     auto* history_layout = new QVBoxLayout(history_widget);
     
-    auto* history_label = new QLabel("⌘ <b>QUANTUM HISTORY LOG</b> ⌘");
+    auto* history_label = new QLabel("History Log");
     history_label->setStyleSheet(
-        "color: #ffff00; "
-        "font-family: 'Monospace'; "
-        "font-size: 14px; "
-        ""
+        "color: #333333; "
+        "font-family: 'Segoe UI', 'Helvetica', 'Arial', sans-serif; "
+        "font-size: 13px; "
+        "font-weight: 700; "
         "background: transparent;"
         "border: none;"
-        "padding: 5px;"
+        "padding: 4px;"
     );
     history_label->setAlignment(Qt::AlignCenter);
     history_table = new QTableWidget();
     history_table->setColumnCount(5);
-    history_table->setHorizontalHeaderLabels({"⟐ DATE/TIME", "⚙ JOB", "⊡ SIZE", "◎ RATIO", "◉ STATUS"});
+    history_table->setHorizontalHeaderLabels({"Date/Time", "Job", "Size", "Ratio", "Status"});
     history_table->setStyleSheet(
         "QTableWidget {"
-        "  background: rgba(10, 10, 30, 0.5);"
-        "  border: 1px solid rgba(255, 255, 0, 0.3);"
-        "  border-radius: 10px;"
-        "  color: #ffff00;"
-        "  font-family: 'Monospace';"
-        "  font-size: 10px;"
-        "  gridline-color: rgba(0, 255, 255, 0.2);"
-        "  selection-background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-        "    stop:0 rgba(255, 255, 0, 0.4), stop:1 rgba(255, 0, 255, 0.4));"
+        "  background: #ffffff;"
+        "  border: 1px solid #e9e9e9;"
+        "  border-radius: 6px;"
+        "  color: #222222;"
+        "  font-family: 'Segoe UI', 'Helvetica', 'Arial', sans-serif;"
+        "  font-size: 11px;"
+        "  gridline-color: #f1f1f1;"
+        "  selection-background-color: #e9efff;"
         "}"
         "QHeaderView::section {"
-        "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
-        "    stop:0 rgba(100, 0, 200, 0.7), stop:1 rgba(0, 100, 200, 0.7));"
-        "  color: #00ffff;"
-        "  border: 1px solid rgba(0, 255, 255, 0.4);"
+        "  background: #f6f8fb;"
+        "  color: #333333;"
+        "  border: 1px solid #e0e0e0;"
         "  padding: 6px;"
-        "  font-weight: bold;"
-        "  "
+        "  font-weight: 600;"
         "}"
         "QTableWidget::item {"
-        "  padding: 5px;"
+        "  padding: 6px;"
         "}"
         "QTableWidget::item:hover {"
-        "  background: rgba(255, 255, 0, 0.15);"
+        "  background: #fbfdff;"
         "}"
     );
     history_table->horizontalHeader()->setStretchLastSection(true);
@@ -543,37 +487,31 @@ void BackupManagerWindow::setup_ui() {
     // Middle: Action buttons
     auto* action_layout = new QHBoxLayout();
     
-    run_backup_btn = new QPushButton("▶ RUN BACKUP");
+    run_backup_btn = new QPushButton("Run Backup");
     run_backup_btn->setStyleSheet(
         "QPushButton {"
-        "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
-        "    stop:0 rgba(0, 200, 0, 0.7), stop:1 rgba(0, 150, 0, 0.7));"
-        "  border: 2px solid rgba(0, 255, 0, 0.8);"
-        "  border-radius: 12px;"
-        "  color: #00ff00;"
-        "  font-family: 'Monospace';"
-        "  font-size: 12px;"
-        "  font-weight: bold;"
-        "  padding: 12px 25px;"
-        "  "
+        "  background: #2d6cdf;"
+        "  border: none;"
+        "  color: #ffffff;"
+        "  border-radius: 8px;"
+        "  font-family: 'Segoe UI', 'Helvetica', 'Arial', sans-serif;"
+        "  font-size: 13px;"
+        "  font-weight: 700;"
+        "  padding: 10px 20px;"
         "}"
         "QPushButton:hover {"
-        "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
-        "    stop:0 rgba(0, 255, 0, 0.9), stop:1 rgba(0, 200, 0, 0.9));"
-        "  border: 2px solid rgba(0, 255, 0, 1);"
+        "  background: #2a5bd4;"
         "}"
         "QPushButton:disabled {"
-        "  background: rgba(40, 60, 40, 0.3);"
-        "  border: 2px solid rgba(100, 120, 100, 0.3);"
-        "  color: rgba(100, 120, 100, 0.5);"
-        "  "
+        "  background: #e9edf6;"
+        "  color: #9aa6d2;"
         "}"
     );
     
-    restore_btn = new QPushButton("◀ RESTORE");
-    restore_btn->setStyleSheet(neon_btn_style);
-    cleanup_btn = new QPushButton("⟲ CLEANUP");
-    cleanup_btn->setStyleSheet(neon_btn_style);
+    restore_btn = new QPushButton("Restore");
+        restore_btn->setStyleSheet(flat_btn_style);
+    cleanup_btn = new QPushButton("Cleanup");
+        cleanup_btn->setStyleSheet(flat_btn_style);
     
     action_layout->addWidget(run_backup_btn);
     action_layout->addWidget(restore_btn);
@@ -583,42 +521,34 @@ void BackupManagerWindow::setup_ui() {
     main_layout->addLayout(action_layout);
     
     // Bottom: Progress and log
-    auto* progress_group = new QGroupBox("◈ QUANTUM STATUS MATRIX ◈");
+    auto* progress_group = new QGroupBox("System Status");
     progress_group->setStyleSheet(
         "QGroupBox {"
-        "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-        "    stop:0 rgba(180, 0, 180, 0.2), stop:0.5 rgba(0, 180, 180, 0.2), stop:1 rgba(180, 0, 180, 0.2));"
-        "  border: 2px solid qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-        "    stop:0 rgba(255, 0, 255, 0.7), stop:0.5 rgba(0, 255, 255, 0.7), stop:1 rgba(255, 0, 255, 0.7));"
-        "  border-radius: 15px;"
-        "  padding: 25px 15px 15px 15px;"
-        "  font-family: 'Monospace';"
-        "  font-size: 13px;"
-        "  font-weight: bold;"
-        "  color: #ff00ff;"
-        "  "
+        "  background: #ffffff;"
+        "  border: 1px solid #e0e0e0;"
+        "  border-radius: 8px;"
+        "  padding: 12px 10px;"
+        "  font-family: 'Segoe UI', 'Helvetica', 'Arial', sans-serif;"
+        "  font-size: 12px;"
+        "  font-weight: 600;"
+        "  color: #333333;"
         "}"
         "QGroupBox::title {"
         "  subcontrol-origin: margin;"
-        "  subcontrol-position: top center;"
-        "  padding: 5px 20px;"
+        "  subcontrol-position: top left;"
+        "  padding: 2px 8px;"
         "}"
     );
-    auto* shadow3 = new QGraphicsDropShadowEffect();
-    shadow3->setBlurRadius(40);
-    shadow3->setColor(QColor(255, 0, 255, 120));
-    shadow3->setOffset(0, 0);
-    progress_group->setGraphicsEffect(shadow3);
+    // No drop shadow for group boxes in minimal theme
     auto* progress_layout = new QVBoxLayout(progress_group);
     
-    status_label = new QLabel("◈ SYSTEM READY ◈");
+    status_label = new QLabel("System Ready");
     status_label->setStyleSheet(
-        "color: #00ff88; "
-        "font-family: 'Monospace'; "
+        "color: #333333; "
+        "font-family: 'Segoe UI', 'Helvetica', 'Arial', sans-serif; "
         "font-size: 12px; "
-        "font-weight: bold; "
-        " "
-        "padding: 5px;"
+        "font-weight: 600; "
+        "padding: 4px;"
         "background: transparent;"
         "border: none;"
     );
@@ -627,39 +557,33 @@ void BackupManagerWindow::setup_ui() {
     progress_bar->setValue(0);
     progress_bar->setStyleSheet(
         "QProgressBar {"
-        "  background: rgba(10, 10, 30, 0.6);"
-        "  border: 2px solid rgba(0, 255, 255, 0.5);"
-        "  border-radius: 12px;"
+        "  background: #f3f6f8;"
+        "  border: 1px solid #e0e0e0;"
+        "  border-radius: 6px;"
         "  text-align: center;"
-        "  color: #00ffff;"
-        "  font-family: 'Monospace';"
+        "  color: #333333;"
+        "  font-family: 'Segoe UI', 'Helvetica', 'Arial', sans-serif;"
         "  font-size: 12px;"
-        "  font-weight: bold;"
-        "  "
-        "  min-height: 30px;"
+        "  min-height: 18px;"
         "}"
         "QProgressBar::chunk {"
-        "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-        "    stop:0 rgba(255, 0, 255, 0.8), "
-        "    stop:0.5 rgba(0, 255, 255, 0.8), "
-        "    stop:1 rgba(255, 0, 255, 0.8));"
-        "  border-radius: 10px;"
+        "  background: #2d6cdf;"
+        "  border-radius: 6px;"
         "}"
     );
     
-    log_display = new QTextEdit();
+    log_display = new QPlainTextEdit();
     log_display->setReadOnly(true);
     log_display->setMaximumHeight(150);
     log_display->setStyleSheet(
-        "QTextEdit {"
-        "  background: rgba(0, 0, 0, 0.7);"
-        "  border: 1px solid rgba(0, 255, 136, 0.4);"
-        "  border-radius: 8px;"
-        "  color: #00ff88;"
-        "  font-family: 'Monospace';"
-        "  font-size: 10px;"
+        "QPlainTextEdit {"
+        "  background: #fafbfd;"
+        "  border: 1px solid #e6eef9;"
+        "  border-radius: 6px;"
+        "  color: #333333;"
+        "  font-family: 'Courier New', monospace;"
+        "  font-size: 11px;"
         "  padding: 8px;"
-        "  selection-background-color: rgba(0, 255, 136, 0.3);"
         "}"
     );
     
@@ -767,7 +691,7 @@ void BackupManagerWindow::add_job() {
             manager.add_job(job);
             refresh_job_list();
             update_status();
-            log_display->append(QString("Added job: %1").arg(QString::fromStdString(job.name)));
+            log_display->appendPlainText(QString("Added job: %1").arg(QString::fromStdString(job.name)));
         } catch (const std::exception& e) {
             QMessageBox::critical(this, "Error", QString("Failed to add job: %1").arg(e.what()));
         }
@@ -791,7 +715,7 @@ void BackupManagerWindow::edit_job() {
                     compression_config = dialog.get_compression_config();
                     manager.add_job(new_job);
                     refresh_job_list();
-                    log_display->append(QString("Updated job: %1").arg(QString::fromStdString(new_job.name)));
+                    log_display->appendPlainText(QString("Updated job: %1").arg(QString::fromStdString(new_job.name)));
                 } catch (const std::exception& e) {
                     QMessageBox::critical(this, "Error", QString("Failed to update job: %1").arg(e.what()));
                 }
@@ -824,7 +748,7 @@ void BackupManagerWindow::remove_job() {
             manager.remove_job(job_name.toStdString());
             refresh_job_list();
             update_status();
-            log_display->append(QString("Removed job: %1").arg(job_name));
+            log_display->appendPlainText(QString("Removed job: %1").arg(job_name));
         } catch (const std::exception& e) {
             QMessageBox::critical(this, "Error", QString("Failed to remove job: %1").arg(e.what()));
         }
@@ -843,7 +767,7 @@ void BackupManagerWindow::run_backup() {
     remove_job_btn->setEnabled(false);
     progress_bar->setValue(0);
     status_label->setText(QString("Running backup: %1...").arg(job_name));
-    log_display->append(QString("\n=== Starting backup: %1 ===").arg(job_name));
+    log_display->appendPlainText(QString("\n=== Starting backup: %1 ===").arg(job_name));
     
     // TODO: Use compression_config to build tar/zstd command with custom options
     
@@ -931,15 +855,15 @@ void BackupManagerWindow::run_backup() {
                 
                 if (record.success) {
                     status_label->setText("Backup completed successfully!");
-                    log_display->append(QString("✓ Backup completed"));
-                    log_display->append(QString("  Archive: %1").arg(QString::fromStdString(record.archive_path)));
-                    log_display->append(QString("  Size: %1 → %2 (%3% saved)")
+                    log_display->appendPlainText(QString("[OK] Backup completed"));
+                    log_display->appendPlainText(QString("  Archive: %1").arg(QString::fromStdString(record.archive_path)));
+                    log_display->appendPlainText(QString("  Size: %1 → %2 (%3% saved)")
                         .arg(QString::fromStdString(dvx3::format_size(record.original_size)))
                         .arg(QString::fromStdString(dvx3::format_size(record.compressed_size)))
                         .arg(record.compression_ratio(), 0, 'f', 1));
                 } else {
                     status_label->setText("Backup failed!");
-                    log_display->append(QString("✗ Backup failed: %1").arg(QString::fromStdString(record.error_message)));
+                    log_display->appendPlainText(QString("[FAIL] Backup failed: %1").arg(QString::fromStdString(record.error_message)));
                 }
                 
                 refresh_history();
@@ -954,7 +878,7 @@ void BackupManagerWindow::run_backup() {
                 edit_job_btn->setEnabled(true);
                 remove_job_btn->setEnabled(true);
                 QMessageBox::critical(this, "Error", QString("Backup failed: %1").arg(e.what()));
-                log_display->append(QString("✗ Error: %1").arg(e.what()));
+                log_display->appendPlainText(QString("[ERROR] Error: %1").arg(e.what()));
                 on_job_selected(); // Re-enable buttons based on selection
             }, Qt::QueuedConnection);
         }
@@ -1124,7 +1048,7 @@ void BackupManagerWindow::restore_backup() {
         remove_job_btn->setEnabled(false);
         progress_bar->setValue(0);
         status_label->setText("Restoring backup...");
-        log_display->append(QString("\n=== Restoring from: %1 ===").arg(archive));
+        log_display->appendPlainText(QString("\n=== Restoring from: %1 ===").arg(archive));
         
         auto start_time = std::chrono::steady_clock::now();
         
@@ -1185,9 +1109,9 @@ void BackupManagerWindow::restore_backup() {
                     progress_bar->setValue(10000);
                     progress_bar->setFormat("100.00%");
                     status_label->setText("Restore completed successfully!");
-                    log_display->append("✓ Restore completed successfully!");
-                    log_display->append(QString("  Restored to: %1").arg(dest));
-                    log_display->append(QString("  Time: %1s").arg(duration.count()));
+                    log_display->appendPlainText("[OK] Restore completed successfully!");
+                    log_display->appendPlainText(QString("  Restored to: %1").arg(dest));
+                    log_display->appendPlainText(QString("  Time: %1s").arg(duration.count()));
                     
                     QMessageBox::information(this, "Success", 
                         QString("Backup restored successfully to:\n%1").arg(dest));
@@ -1204,7 +1128,7 @@ void BackupManagerWindow::restore_backup() {
                     edit_job_btn->setEnabled(true);
                     remove_job_btn->setEnabled(true);
                     status_label->setText("Restore failed!");
-                    log_display->append(QString("✗ Restore failed: %1").arg(QString::fromStdString(error_msg)));
+                    log_display->appendPlainText(QString("[FAIL] Restore failed: %1").arg(QString::fromStdString(error_msg)));
                     QMessageBox::critical(this, "Restore Failed", 
                         QString("Failed to restore backup:\n%1").arg(QString::fromStdString(error_msg)));
                     on_job_selected(); // Re-enable buttons based on selection
@@ -1225,7 +1149,7 @@ void BackupManagerWindow::cleanup_old() {
     if (reply == QMessageBox::Yes) {
         try {
             manager.cleanup_old_backups();
-            log_display->append("✓ Cleanup completed");
+            log_display->appendPlainText("[OK] Cleanup completed");
             refresh_history();
         } catch (const std::exception& e) {
             QMessageBox::critical(this, "Error", QString("Cleanup failed: %1").arg(e.what()));
@@ -1397,6 +1321,23 @@ int main(int argc, char** argv) {
     app.setApplicationName("Backup Manager");
     app.setOrganizationName("BackupManager");
     
+    // Use a neutral Fusion-style palette for professional UI
+    QApplication::setStyle(QStyleFactory::create("Fusion"));
+    QPalette palette;
+    palette.setColor(QPalette::Window, QColor(245, 247, 250));
+    palette.setColor(QPalette::WindowText, QColor(33, 37, 41));
+    palette.setColor(QPalette::Base, QColor(255, 255, 255));
+    palette.setColor(QPalette::AlternateBase, QColor(240, 243, 246));
+    palette.setColor(QPalette::ToolTipBase, QColor(255, 255, 220));
+    palette.setColor(QPalette::ToolTipText, QColor(33, 37, 41));
+    palette.setColor(QPalette::Text, QColor(33, 37, 41));
+    palette.setColor(QPalette::Button, QColor(245, 247, 250));
+    palette.setColor(QPalette::ButtonText, QColor(33, 37, 41));
+    palette.setColor(QPalette::BrightText, QColor(255, 0, 0));
+    palette.setColor(QPalette::Highlight, QColor(45, 108, 205));
+    palette.setColor(QPalette::HighlightedText, QColor(255, 255, 255));
+    QApplication::setPalette(palette);
+
     // Set config directory
     QString config_dir = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + "/backup-manager";
     QDir().mkpath(config_dir);
