@@ -66,6 +66,7 @@ target_include_directories(dvx3c PRIVATE ${REPO_ROOT})
 target_compile_options(dvx3c PRIVATE ${GLIB_CFLAGS_OTHER})
 target_compile_options(dvx3c PRIVATE ${GLIB_CFLAGS})
 target_link_libraries(dvx3c PRIVATE ${GLIB_LIBRARIES})
+target_compile_options(dvx3c PRIVATE -Wno-discarded-qualifiers -Wno-incompatible-pointer-types)
 
 # GLib compile options for test targets: added after target creation
 

@@ -56,6 +56,8 @@ jobs:
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-json-glib
             mingw-w64-x86_64-libsodium
+            nsis
+            upx
 
       - name: Verify Qt6 installation
         shell: msys2 {0}
@@ -116,6 +118,18 @@ jobs:
           chmod +x build_gui.sh || true
           sed -i 's/\r$//' build_gui.sh
           ./build_gui.sh
+
+      - name: Deploy Qt dependencies (Windows/MSYS2)
+        shell: msys2 {0}
+        run: |
+          if command -v windeployqt >/dev/null 2>&1; then
+            echo "Running windeployqt to deploy Qt dependencies into Releases/"
+            mkdir -p Releases
+            windeployqt --dir Releases backup-manager-gui || windeployqt --dir Releases backup-manager-gui.exe || true
+            echo "Contents of Releases after windeployqt:"; ls -la Releases || true
+          else
+            echo "windeployqt not installed; skipping Qt deployment"
+          fi
 
       - name: Build dvx3 CLI tool (Windows/MSYS2)
         shell: msys2 {0}
