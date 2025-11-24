@@ -6,7 +6,7 @@
 #include <QApplication>
 #include <QGridLayout>
 #include <QStyleFactory>
-#include <QSplitter>
+    const int minRowHeight = 52;
 #include <QHeaderView>
 #include <QDateTime>
 #include <QStandardPaths>
@@ -677,12 +677,12 @@ void BackupManagerWindow::refresh_history() {
         QFont dtFont = history_table->font();
         int curPoint = dtFont.pointSize();
         if (curPoint > 0) {
-            dtFont.setPointSize(curPoint + 1);
+            dtFont.setPointSize(curPoint + 3);
         } else {
             // If point size not set, use pixel size as fallback; add a couple pixels
             int curPixel = dtFont.pixelSize();
             if (curPixel <= 0) curPixel = 12; // default fallback
-            dtFont.setPixelSize(curPixel + 2);
+            dtFont.setPixelSize(curPixel + 6);
         }
         dtFont.setBold(false);
         dt_item->setFont(dtFont);
