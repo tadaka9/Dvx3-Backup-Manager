@@ -107,8 +107,27 @@ case "$UNAME_OUT" in
         ;;
 esac
 
+# Prefer static libsodium (when available) to avoid runtime library mismatches on target systems
+SODIUM_STATIC_LINK=""
+if [ "${FORCE_STATIC_LIBSODIUM:-0}" -eq 1 ]; then
+    if [ -f /usr/lib/libsodium.a ] || [ -f /usr/lib/x86_64-linux-gnu/libsodium.a ] || [ -f /usr/local/lib/libsodium.a ]; then
+        echo "FORCE_STATIC_LIBSODIUM=1: Linking libsodium statically into libdvx3"
+        SODIUM_STATIC_LINK='-Wl,-Bstatic -lsodium -Wl,-Bdynamic'
+    else
+        echo "FORCE_STATIC_LIBSODIUM=1 requested, but static libsodium (.a) not found. Aborting." >&2
+        exit 1
+    fi
+else
+    if [ -f /usr/lib/libsodium.a ] || [ -f /usr/lib/x86_64-linux-gnu/libsodium.a ] || [ -f /usr/local/lib/libsodium.a ]; then
+        echo "Static libsodium found: linking statically into libdvx3"
+        SODIUM_STATIC_LINK='-Wl,-Bstatic -lsodium -Wl,-Bdynamic'
+    else
+        SODIUM_STATIC_LINK=$(pkg-config --libs libsodium || echo "-lsodium")
+    fi
+fi
+
 "$CC_COMPILER" $SHARED_FLAGS -o libdvx3.$SHARED_EXT libdvx3.o \
-    $(pkg-config --libs glib-2.0 $GIO_LIBS json-glib-1.0 libsodium)
+    $(pkg-config --libs glib-2.0 $GIO_LIBS json-glib-1.0) $SODIUM_STATIC_LINK
 
 # 3. Compile backup-manager implementation
 echo "[3/5] Compiling backup manager library..."

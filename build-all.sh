@@ -46,6 +46,17 @@ if [[ "$(uname -m)" =~ ^arm ]] || [[ "$(uname -m)" == "aarch64" ]]; then
     echo ""
 fi
 
+# Create Releases/linux tar if we are on Linux and the packaging script exists
+if [[ "$(uname -s)" == "Linux" ]] && [[ -f scripts/package-linux.sh ]]; then
+    echo "▶ Packaging Linux binaries into Releases/linux"
+    chmod +x scripts/package-linux.sh || true
+    ./scripts/package-linux.sh || true
+    # Create compressed tarball for Releases/linux
+    mkdir -p Releases
+    tar -czf Releases/Dvx3-Backup-Manager-Linux.tar.gz -C Releases linux || true
+    echo "";
+fi
+
 # 4. macOS (only on macOS)
 if [[ "$OSTYPE" == "darwin"* ]]; then
     echo "▶ Building for macOS..."

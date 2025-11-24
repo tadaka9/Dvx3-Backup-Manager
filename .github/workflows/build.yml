@@ -247,9 +247,31 @@ jobs:
             sudo apt-get install -y qt6-base-dev qt6-tools-dev || true
           fi
 
+      - name: Ensure static libsodium available (build if required)
+        run: |
+          set -ex
+          if [ "${FORCE_STATIC_LIBSODIUM:-0}" -eq 1 ]; then
+            if [ -f /usr/lib/libsodium.a ] || [ -f /usr/lib/x86_64-linux-gnu/libsodium.a ] || [ -f /usr/local/lib/libsodium.a ]; then
+              echo "Static libsodium already present"
+            else
+              echo "Static libsodium not found; building from source"
+              wget -qO /tmp/libsodium.tar.gz https://download.libsodium.org/libsodium/releases/libsodium-1.0.20.tar.gz
+              tar -xzf /tmp/libsodium.tar.gz -C /tmp
+              pushd /tmp/libsodium-1.0.20
+              ./configure --prefix=/usr/local
+              make -j$(nproc)
+              sudo make install
+              sudo ldconfig
+              popd
+            fi
+          else
+            echo "FORCE_STATIC_LIBSODIUM not set; skipping libsodium static build"
+          fi
+
       - name: Build all components
         run: |
           set -ex
+          export FORCE_STATIC_LIBSODIUM=1
           chmod +x build-all.sh
           ./build-all.sh
 
@@ -302,6 +324,7 @@ jobs:
       - name: Build Backup Manager GUI (Linux native)
         run: |
           set -ex
+          export FORCE_STATIC_LIBSODIUM=1
           chmod +x build_gui.sh || true
           sed -i 's/\r$//' build_gui.sh
           ./build_gui.sh
@@ -309,6 +332,7 @@ jobs:
       - name: Build dvx3 CLI tool (Linux native)
         run: |
           set -ex
+          export FORCE_STATIC_LIBSODIUM=1
           chmod +x build.sh || true
           sed -i 's/\r$//' build.sh
           ./build.sh || echo "CLI build failed, continuing..."
@@ -322,21 +346,44 @@ jobs:
       - name: Package Linux artifacts
         run: |
           set -ex
-          mkdir -p Releases/linux
-          if [ -f backup-manager-gui ]; then
-            cp backup-manager-gui Releases/linux/ || true
-          fi
-          if [ -f backup-manager ]; then
-            cp backup-manager Releases/linux/ || true
-          fi
-          if [ -f dvx3 ]; then
-            cp dvx3 Releases/linux/ || true
-          fi
-          if [ -f libdvx3.so ]; then
-            cp libdvx3.so Releases/linux/ || true
-          fi
+          chmod +x scripts/package-linux.sh
+          ./scripts/package-linux.sh
           # Create compressed tarball for Releases/linux
           tar -czf Releases/Dvx3-Backup-Manager-Linux.tar.gz -C Releases linux || true
+
+      - name: Check binary runtime dependencies (Linux)
+        run: |
+          set -ex
+          echo "=== Checking runtime dependencies for built binaries ==="
+          for bin in backup-manager backup-manager-gui dvx3; do
+            if [ -f "$bin" ]; then
+              echo "Checking $bin"
+              ldd "$bin" | sed -n '1,200p'
+              missing=$(ldd "$bin" | grep 'not found' || true)
+              if [ -n "$missing" ]; then
+                echo "WARNING: Missing run-time dependencies for $bin:"; echo "$missing"
+              fi
+            else
+              echo "Binary $bin not present; skipping ldd check"
+            fi
+          done
+
+      - name: Verify packaged binaries (Releases/linux)
+        run: |
+          set -ex
+          if [ -d Releases/linux ]; then
+            echo "Checking packaged binaries ldd with bundled libs"
+            LD_LIBRARY_PATH=Releases/linux/lib ldd Releases/linux/backup-manager-gui || true
+            # Run CLI wrappers to verify packaged CLI binaries start
+            if [ -x Releases/linux/run-dvx3.sh ]; then
+              Releases/linux/run-dvx3.sh --help || true
+            fi
+            if [ -x Releases/linux/run-backup-manager.sh ]; then
+              Releases/linux/run-backup-manager.sh --help || true
+            fi
+          else
+            echo "No Releases/linux dir found; skipping packaged binary verification"
+          fi
 
       - name: Verify Linux CLI artifacts
         run: |
@@ -608,6 +655,11 @@ jobs:
     needs: [build-linux]
     steps:
       - uses: actions/checkout@v3
+      - name: Download Linux build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: Dvx3-Backup-Manager-Linux-Build
+          path: .
       - name: Build AppImage (if applicable)
         run: |
           chmod +x build-appimage.sh || true

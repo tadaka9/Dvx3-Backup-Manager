@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Dvx3 Backup Manager
+Comment=Secure encrypted backup manager with Qt6 GUI
+Exec=backup-manager-gui
+Icon=dvx3-backup
+Categories=System;Utility;Archiving;
+Terminal=false

@@ -32,8 +32,26 @@ g++ -c backup-manager.cpp -o backup-manager-impl.o \
 
 # 4. Link final executable
 echo "[4/4] Linking backup-manager executable..."
+SODIUM_STATIC_LINK=""
+if [ "${FORCE_STATIC_LIBSODIUM:-0}" -eq 1 ]; then
+    if [ -f /usr/lib/libsodium.a ] || [ -f /usr/lib/x86_64-linux-gnu/libsodium.a ] || [ -f /usr/local/lib/libsodium.a ]; then
+        echo "FORCE_STATIC_LIBSODIUM=1: Linking libsodium statically into backup-manager"
+        SODIUM_STATIC_LINK='-Wl,-Bstatic -lsodium -Wl,-Bdynamic'
+    else
+        echo "FORCE_STATIC_LIBSODIUM=1 requested, but static libsodium (.a) not found. Aborting." >&2
+        exit 1
+    fi
+else
+    if [ -f /usr/lib/libsodium.a ] || [ -f /usr/lib/x86_64-linux-gnu/libsodium.a ] || [ -f /usr/local/lib/libsodium.a ]; then
+        echo "Static libsodium found: linking statically into backup-manager"
+        SODIUM_STATIC_LINK='-Wl,-Bstatic -lsodium -Wl,-Bdynamic'
+    else
+        SODIUM_STATIC_LINK=$(pkg-config --libs libsodium || echo "-lsodium")
+    fi
+fi
+
 g++ libdvx3.o backup-manager-impl.o -o backup-manager \
-    $(pkg-config --libs glib-2.0 gio-unix-2.0 json-glib-1.0 libsodium) \
+    $(pkg-config --libs glib-2.0 gio-unix-2.0 json-glib-1.0) $SODIUM_STATIC_LINK \
     -lstdc++fs
 
 echo ""

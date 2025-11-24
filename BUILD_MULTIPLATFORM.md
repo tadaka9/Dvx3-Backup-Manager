@@ -491,3 +491,40 @@ chmod +x build-*.sh build-all.sh
 ./build-windows.sh       # Windows (cross-compile)
 ./build-raspberry.sh     # Raspberry Pi
 ```
+
+## Linux release packaging
+
+After building the Linux artifacts (`backup-manager-gui`, `backup-manager`, `dvx3`, and `libdvx3.so`), the repository includes a packaging script which bundles the binaries together with their runtime libraries into `Releases/linux` and creates convenient wrapper scripts.
+
+Usage:
+Notes:
+- The packaging script will copy runtime libraries into `Releases/linux/lib`, but excludes some non-portable system libraries (e.g., `libsystemd`, `libcap`, `libgomp`) to avoid copying kernel/platform-specific components. If you need to include systemd-related functionality, use AppImage or install the appropriate libs on target systems.
+
+CI details:
+- The `build-linux` job sets `FORCE_STATIC_LIBSODIUM=1` and builds a static `libsodium` into `/usr/local` if a static archive is not available. This ensures `libdvx3` is built with static `libsodium` for portability on CI-built artifacts. For local builds, set `FORCE_STATIC_LIBSODIUM=1` to reproduce the CI behavior (requires a static `libsodium` installed locally or building it from source).
+
+
+```bash
+chmod +x scripts/package-linux.sh
+./scripts/package-linux.sh
+# This creates Releases/linux containing:
+# - backup-manager-gui, backup-manager, dvx3
+# - libdvx3.so and a `lib/` folder with required shared libraries
+# - run-gui.sh, run-backup-manager.sh, run-dvx3.sh wrappers
+# - A tarball Releases/Dvx3-Backup-Manager-Linux.tar.gz
+```
+
+Run the GUI with the provided wrapper so it uses the bundled libraries:
+
+```bash
+cd Releases/linux
+./run-gui.sh
+```
+
+And for CLI:
+
+```bash
+./run-dvx3.sh --help
+./run-backup-manager.sh list
+```
+
