@@ -504,12 +504,13 @@ void BackupManagerWindow::setup_ui() {
     history_table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     history_table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
     history_table->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
-    history_table->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Interactive);
-    history_table->setColumnWidth(0, 190); // Date/Time
+    history_table->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
+    history_table->setColumnWidth(0, 210); // Date/Time
     history_table->setColumnWidth(1, 350); // Job (will stretch if window bigger)
-    history_table->setColumnWidth(2, 100);  // Size
-    history_table->setColumnWidth(3, 90);  // Ratio
+    history_table->setColumnWidth(2, 120);  // Size
+    history_table->setColumnWidth(3, 100);  // Ratio
     history_table->setColumnWidth(4, 120); // Status
+    history_table->setMinimumWidth(800);
     if (history_table->horizontalHeaderItem(4)) {
         QFont hdrFont2 = history_table->horizontalHeaderItem(4)->font();
         int hp2 = hdrFont2.pointSize();
