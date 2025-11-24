@@ -5,6 +5,7 @@
 #include "backup-manager-gui.hpp"
 #include <QApplication>
 #include <QGridLayout>
+#include <QSplitter>
 #include <QStyleFactory>
 #include <QHeaderView>
 #include <QDateTime>
