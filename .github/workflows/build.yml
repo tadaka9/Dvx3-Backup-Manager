@@ -18,6 +18,8 @@ jobs:
       - name: Run yamllint for workflows
         run: |
           yamllint -c /dev/null .github/workflows || true
+      - name: Validate GitHub Actions (actionlint)
+        uses: rhysd/actionlint@v1
       - name: Check for tracked generated files
         run: |
           echo "Checking for tracked generated files via scripts/check-generated-files.sh"

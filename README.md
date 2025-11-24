@@ -126,6 +126,16 @@ sudo pacman -S vala glib2 json-glib libsodium zstd gcc qt6-base
 
 See [BUILD_MULTIPLATFORM.md](BUILD_MULTIPLATFORM.md) for platform-specific instructions.
 
+## Developer setup
+
+We provide a `pre-commit` hook and helper to enable hooks from the repository. Run this once to enable the local pre-commit hooks from `.githooks`:
+
+```bash
+./scripts/setup-hooks.sh
+```
+
+This sets `core.hooksPath` to `.githooks` and enables checks like blocking checked-in generated files.
+
 **Linux:**
 ```bash
 ./build_gui.sh
