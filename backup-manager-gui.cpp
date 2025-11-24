@@ -715,6 +715,8 @@ void BackupManagerWindow::refresh_history() {
         dtFont.setBold(false);
         dt_item->setFont(dtFont);
         history_table->setItem(row, 0, dt_item);
+        // Ensure full text accessible on hover when columns are narrow
+        history_table->item(row, 0)->setToolTip(history_table->item(row, 0)->text());
         history_table->item(row, 0)->setTextAlignment(Qt::AlignVCenter | Qt::AlignLeft);
         // If date/time font is larger, ensure row height is adjusted
         int dtHeight = QFontMetrics(dtFont).height() + 18;
@@ -722,12 +724,15 @@ void BackupManagerWindow::refresh_history() {
             rowHeight = dtHeight;
         }
         history_table->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(rec.job_name)));
+        history_table->item(row, 1)->setToolTip(history_table->item(row, 1)->text());
         history_table->item(row, 1)->setTextAlignment(Qt::AlignVCenter | Qt::AlignLeft);
         history_table->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(dvx3::format_size(rec.compressed_size))));
+        history_table->item(row, 2)->setToolTip(history_table->item(row, 2)->text());
         history_table->item(row, 2)->setTextAlignment(Qt::AlignVCenter | Qt::AlignRight);
         
         QString ratio = rec.success ? QString::number(rec.compression_ratio(), 'f', 1) + "%" : "-";
         history_table->setItem(row, 3, new QTableWidgetItem(ratio));
+        history_table->item(row, 3)->setToolTip(history_table->item(row, 3)->text());
         history_table->item(row, 3)->setTextAlignment(Qt::AlignVCenter | Qt::AlignCenter);
         
         QString status = rec.success ? "Success" : "Failed";
@@ -745,6 +750,7 @@ void BackupManagerWindow::refresh_history() {
         statusFont.setBold(true);
         status_item->setFont(statusFont);
         history_table->setItem(row, 4, status_item);
+        history_table->item(row, 4)->setToolTip(history_table->item(row, 4)->text());
         history_table->item(row, 4)->setTextAlignment(Qt::AlignVCenter | Qt::AlignCenter);
         // Ensure the row uses the fixed height so vertical compression doesn't happen
         history_table->setRowHeight(row, rowHeight);
