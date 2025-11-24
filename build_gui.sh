@@ -95,7 +95,8 @@ esac
 
 # 3. Compile backup-manager implementation
 echo "[3/5] Compiling backup manager library..."
-"$CXX_COMPILER" -c -fPIC backup-manager.hpp -o backup-manager-lib.o \
+# Compile the C++ source file (compile .cpp, not the .hpp header)
+"$CXX_COMPILER" -c -fPIC backup-manager.cpp -o backup-manager-lib.o \
     -std=c++17 \
     $(pkg-config --cflags glib-2.0 $GIO_LIBS json-glib-1.0 libsodium) \
     -I.

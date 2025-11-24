@@ -651,13 +651,13 @@ namespace Dvx3 {
         for (uint64 i = 0; i < chunks; i++) {
             uint8[] nonce = fin.read_bytes((uint)Sodium.Symmetric.NONCE_BYTES).get_data();
             if (nonce.length != Sodium.Symmetric.NONCE_BYTES)
-                throw new IOError.FAILED ("Truncated nonce at chunk %llu".printf(i));
+                throw new IOError.FAILED ("Truncated nonce at chunk %s".printf(i.to_string()));
 
             uint64 expected_plain = (i == chunks - 1) ? last : CHUNK_SIZE;
             uint64 ct_len = expected_plain + SECRETBOX_MAC;
             uint8[] ct = fin.read_bytes((size_t)ct_len).get_data();
             if (ct.length != (size_t)ct_len)
-                throw new IOError.FAILED ("Truncated ciphertext at chunk %llu".printf(i));
+                throw new IOError.FAILED ("Truncated ciphertext at chunk %s".printf(i.to_string()));
 
             uint8[] plain = new uint8[(int)expected_plain];
             int ret = Sodium.Symmetric.secretbox_open (
@@ -668,7 +668,7 @@ namespace Dvx3 {
                 master
             );
             if (ret != 0)
-                throw new IOError.FAILED ("Decryption failed at chunk %llu (wrong password?)".printf(i));
+                throw new IOError.FAILED ("Decryption failed at chunk %s (wrong password?)".printf(i.to_string()));
 
             ssize_t written = posix_write (pipe_stdin, plain, plain.length);
             if (written != plain.length)

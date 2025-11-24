@@ -639,14 +639,14 @@ private void decrypt_and_extract_stream(File enc_file, File dst_dir, string pass
     for (uint64 i = 0; i < chunks; i++) {
         uint8[] nonce = fin.read_bytes((uint)Sodium.Symmetric.NONCE_BYTES).get_data();
         if (nonce.length != (int)Sodium.Symmetric.NONCE_BYTES)
-            throw new IOError.FAILED("Bad nonce at chunk %llu".printf(i));
+            throw new IOError.FAILED("Bad nonce at chunk %s".printf(i.to_string()));
 
         size_t plain_len = (i < chunks - 1) ? CHUNK_SIZE : (size_t)last;
         size_t ct_len = plain_len + SECRETBOX_MAC;
 
         uint8[] ct = fin.read_bytes(ct_len).get_data();
         if (ct.length != ct_len)
-            throw new IOError.FAILED("Bad ciphertext at chunk %llu".printf(i));
+            throw new IOError.FAILED("Bad ciphertext at chunk %s".printf(i.to_string()));
 
         var sub = subkey(master, i);
 
@@ -711,14 +711,14 @@ private File decrypt_stream(File enc_file, File out_file, string password) throw
     for (uint64 i = 0; i < chunks; i++) {
         uint8[] nonce = fin.read_bytes((uint)Sodium.Symmetric.NONCE_BYTES).get_data();
         if (nonce.length != (int)Sodium.Symmetric.NONCE_BYTES)
-            throw new IOError.FAILED("Bad nonce at chunk %llu".printf(i));
+            throw new IOError.FAILED("Bad nonce at chunk %s".printf(i.to_string()));
 
         size_t plain_len = (i < chunks - 1) ? CHUNK_SIZE : (size_t)last;
         size_t ct_len = plain_len + SECRETBOX_MAC;
 
         uint8[] ct = fin.read_bytes(ct_len).get_data();
         if (ct.length != ct_len)
-            throw new IOError.FAILED("Bad ciphertext at chunk %llu".printf(i));
+            throw new IOError.FAILED("Bad ciphertext at chunk %s".printf(i.to_string()));
 
         var sub = subkey(master, i);
 
