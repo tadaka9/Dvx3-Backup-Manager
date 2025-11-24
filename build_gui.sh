@@ -33,9 +33,12 @@ if ! pkg-config --exists libsodium; then
     exit 1
 fi
 
-# 1. Generate C sources from Vala library
+# 1. Generate C sources from Vala library (generate into a build-local directory)
 echo "[1/5] Generating C sources from Vala..."
-rm -rf gen-c
+# Use an isolated build directory for valac-generated sources to avoid checking them into git
+BUILD_GEN_C_DIR="build/gen-c"
+rm -rf "$BUILD_GEN_C_DIR"
+mkdir -p "$BUILD_GEN_C_DIR"
 
 # Detect platform for package selection
 UNAME_OUT="$(uname -s 2>/dev/null || echo unknown)"
@@ -55,7 +58,7 @@ esac
 valac --pkg glib-2.0 --pkg $GIO_PKG --pkg json-glib-1.0 \
     --vapidir=vala-extra-vapis --pkg libsodium \
     $VALA_DEFINES \
-    libdvx3.vala -C -d gen-c
+    libdvx3.vala -C -d "$BUILD_GEN_C_DIR"
 
 # 2. Compile generated C code
 echo "[2/5] Compiling C library..."
@@ -70,9 +73,9 @@ case "$UNAME_OUT" in
         ;;
 esac
 
-"$CC_COMPILER" -c -fPIC gen-c/libdvx3.c -o libdvx3.o \
+"$CC_COMPILER" -c -fPIC "$BUILD_GEN_C_DIR/libdvx3.c" -o libdvx3.o \
     $(pkg-config --cflags glib-2.0 $GIO_LIBS json-glib-1.0 libsodium) \
-    -I.
+    -I. -I"$BUILD_GEN_C_DIR"
 
 # Shared library extension (UNAME_OUT already set above)
 case "$UNAME_OUT" in

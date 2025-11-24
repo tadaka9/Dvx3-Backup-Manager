@@ -9,6 +9,7 @@
 *.moc.cpp
 *.rcc.cpp
 gen-c/
+build/
 backup-manager
 backup-manager-gui
 backup-manager-gui.exe

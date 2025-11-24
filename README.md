@@ -140,8 +140,10 @@ Note: This repository does not track generated C sources in `gen-c/` by policy.
 If you need to generate these files locally (for building or debugging), use one of:
 
 ```bash
-# generate generated C sources into gen-c/
-valac -C -d gen-c libdvx3.vala
+# generate generated C sources into a build-specific location to avoid checking them into git
+# preferred: build/gen-c
+valac -C -d build/gen-c libdvx3.vala
+# or (legacy): valac -C -d gen-c libdvx3.vala
 # or run the GUI build script which will generate them:
 ./build_gui.sh
 ```

@@ -136,7 +136,7 @@ jobs:
           echo "Building C++ tests (CMake + GTest)..."
           if command -v valac >/dev/null 2>&1; then
             echo "Generating gen-c via valac"
-            valac -C -d gen-c libdvx3.vala || true
+            valac -C -d build/gen-c libdvx3.vala || true
           else
             echo "valac not found; assuming gen-c is already present"
           fi

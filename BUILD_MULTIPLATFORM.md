@@ -232,7 +232,7 @@ echo "Cross-compiling for Windows..."
 
 # Build Vala to C
 valac --pkg glib-2.0 --pkg json-glib-1.0 --pkg sodium \
-    main.vala -C -d gen-c-win
+    main.vala -C -d build/gen-c-win
 
 # Cross-compile C code
 ${MINGW_PREFIX}-gcc -c gen-c-win/*.c \
