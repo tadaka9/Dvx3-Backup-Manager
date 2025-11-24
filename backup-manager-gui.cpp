@@ -10,6 +10,8 @@
 #include <QHeaderView>
 #include <QDateTime>
 #include <QStandardPaths>
+#include <QSettings>
+#include <QComboBox>
 #include <QDir>
 #include <QGraphicsDropShadowEffect>
 #include <QPropertyAnimation>
@@ -699,6 +701,10 @@ void BackupManagerWindow::load_settings() {
     
     restoreGeometry(settings.value("window/geometry").toByteArray());
     restoreState(settings.value("window/state").toByteArray());
+
+    // Apply stored UI header density preference
+    QString header_density = settings.value("ui/header_density", "Comfortable").toString();
+    apply_header_density(header_density);
 }
 
 void BackupManagerWindow::save_settings() {
@@ -707,6 +713,40 @@ void BackupManagerWindow::save_settings() {
     
     settings.setValue("window/geometry", saveGeometry());
     settings.setValue("window/state", saveState());
+
+    // Persist header density preference (already saved by SettingsDialog on change, but ensure it's saved here as well)
+    // Default to Comfortable if not present
+    QString header_density = settings.value("ui/header_density", "Comfortable").toString();
+    settings.setValue("ui/header_density", header_density);
+}
+
+void BackupManagerWindow::apply_header_density(const QString& density) {
+    // Map density to sizes
+    int headerHeight = 56;
+    int minRow = 52;
+    int headerFontInc = 3;
+    if (density == "Dense") {
+        headerHeight = 36;
+        minRow = 36;
+        headerFontInc = 0;
+    }
+
+    // Apply header height
+    if (history_table && history_table->horizontalHeader()) {
+        history_table->horizontalHeader()->setFixedHeight(headerHeight);
+        QFont hdrFont = history_table->horizontalHeader()->font();
+        int hp = hdrFont.pointSize();
+        if (hp > 0) hdrFont.setPointSize(hp + headerFontInc);
+        else hdrFont.setPixelSize(hdrFont.pixelSize() + headerFontInc * 2);
+        hdrFont.setBold(true);
+        history_table->horizontalHeader()->setFont(hdrFont);
+    }
+
+    // Apply default row height min
+    if (history_table && history_table->verticalHeader()) {
+        history_table->verticalHeader()->setDefaultSectionSize(minRow);
+        history_table->verticalHeader()->setMinimumSectionSize(minRow);
+    }
 }
 
 void BackupManagerWindow::refresh_job_list() {
@@ -1294,6 +1334,8 @@ void BackupManagerWindow::show_settings() {
     SettingsDialog dialog(&compression_config, this);
     if (dialog.exec() == QDialog::Accepted) {
         save_settings();
+        // Re-load settings to apply UI changes (like header density)
+        load_settings();
     }
 }
 
@@ -1364,6 +1406,16 @@ SettingsDialog::SettingsDialog(CompressionConfig* config, QWidget* parent)
     form_layout->addRow("", tar_exclude_hidden_check);
     form_layout->addRow("Exclude Patterns:", tar_exclude_patterns_edit);
     
+    // UI density option (header density)
+    header_density_combo = new QComboBox();
+    header_density_combo->addItems({"Comfortable", "Dense"});
+    // Load default from QSettings (UI section)
+    QSettings settings("BackupManager", "BackupManagerGUI");
+    QString header_density = settings.value("ui/header_density", "Comfortable").toString();
+    int idx = header_density_combo->findText(header_density);
+    if (idx >= 0) header_density_combo->setCurrentIndex(idx);
+    form_layout->addRow("Header Density:", header_density_combo);
+    
     layout->addLayout(form_layout);
     
     auto* btn_layout = new QHBoxLayout();
@@ -1399,6 +1451,9 @@ void SettingsDialog::accept() {
     }
     
     QDialog::accept();
+    // Persist UI header density preference
+    QSettings settings("BackupManager", "BackupManagerGUI");
+    settings.setValue("ui/header_density", header_density_combo->currentText());
 }
 
 // AboutDialog implementation

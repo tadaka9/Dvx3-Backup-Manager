@@ -126,6 +126,7 @@ private:
     void save_settings();
     void refresh_job_list();
     void refresh_history();
+    void apply_header_density(const QString& density);
     void update_status();
 
     backup::BackupManager manager;
@@ -179,6 +180,7 @@ public:
 
 private:
     CompressionConfig* config;
+    QComboBox* header_density_combo;
     
     QSpinBox* zstd_level_spin;
     QSpinBox* zstd_threads_spin;
