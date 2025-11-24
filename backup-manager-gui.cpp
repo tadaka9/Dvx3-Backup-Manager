@@ -660,6 +660,8 @@ void BackupManagerWindow::refresh_history() {
     
     const auto& history = manager.get_history();
     int row = 0;
+    // Use the table's default section size for per-row height
+    int rowHeight = history_table->verticalHeader()->defaultSectionSize();
     
     // Show last 50 entries
     size_t start = history.size() > 50 ? history.size() - 50 : 0;
