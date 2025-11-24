@@ -462,8 +462,8 @@ void BackupManagerWindow::setup_ui() {
         "  background: #f6f8fb;"
         "  color: #333333;"
         "  border: 1px solid #e0e0e0;"
-        "  padding: 6px;"
-        "  font-weight: 600;"
+        "  padding: 10px;"
+        "  font-weight: 700;"
         "}"
         "QTableWidget::item {"
         "  padding: 8px 6px;"
@@ -471,9 +471,43 @@ void BackupManagerWindow::setup_ui() {
         "QTableWidget::item:hover {"
         "  background: #fbfdff;"
         "}"
+        "QScrollBar:horizontal {"
+        "  height: 14px;"
+        "  background: transparent;"
+        "  margin: 0px 6px 0px 6px;"
+        "  border-radius: 7px;"
+        "}"
+        "QScrollBar::handle:horizontal {"
+        "  background: #c9d2e6;"
+        "  min-width: 24px;"
+        "  border-radius: 7px;"
+        "}"
+        "QScrollBar::handle:horizontal:hover {"
+        "  background: #9fb0e0;"
+        "}"
+        "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {"
+        "  width: 0px;"
+        "}"
+        "QScrollBar:vertical {"
+        "  width: 14px;"
+        "  background: transparent;"
+        "  margin: 6px 0px 6px 0px;"
+        "  border-radius: 7px;"
+        "}"
+        "QScrollBar::handle:vertical {"
+        "  background: #c9d2e6;"
+        "  min-height: 24px;"
+        "  border-radius: 7px;"
+        "}"
+        "QScrollBar::handle:vertical:hover {"
+        "  background: #9fb0e0;"
+        "}"
     );
     // Disable stretch on last section: let the Job column fill remaining space
     history_table->horizontalHeader()->setStretchLastSection(false);
+    // Increase the header height so Date/Time label isn't cramped
+    history_table->horizontalHeader()->setFixedHeight(44);
+    history_table->horizontalHeader()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     // Make the Date/Time header more prominent
     if (history_table->horizontalHeaderItem(0)) {
         QFont hdrFont = history_table->horizontalHeaderItem(0)->font();
@@ -499,7 +533,8 @@ void BackupManagerWindow::setup_ui() {
     history_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     history_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     history_table->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
-    history_table->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    history_table->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+    history_table->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
     history_table->horizontalHeader()->setSectionsMovable(true);
     history_table->horizontalHeader()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     history_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Interactive);
@@ -524,6 +559,8 @@ void BackupManagerWindow::setup_ui() {
     
     history_layout->addWidget(history_label);
     history_layout->addWidget(history_table);
+    // Add a short tooltip to the table viewport to make it obvious that it can be scrolled
+    history_table->viewport()->setProperty("toolTip", "Scroll to browse history entries (horizontal / vertical)");
     
     top_splitter->addWidget(history_widget);
     top_splitter->setSizes({300, 700});
@@ -610,7 +647,8 @@ void BackupManagerWindow::setup_ui() {
         "  color: #333333;"
         "  font-family: 'Segoe UI', 'Helvetica', 'Arial', sans-serif;"
         "  font-size: 12px;"
-        "  min-height: 18px;"
+        "  min-height: 26px;"
+        "  max-height: 32px;"
         "}"
         "QProgressBar::chunk {"
         "  background: #2d6cdf;"
