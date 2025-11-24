@@ -476,7 +476,7 @@ void BackupManagerWindow::setup_ui() {
     // Use a comfortable row height based on font metrics to prevent clipping.
     // Start with the font height and add padding; clamp to a sensible minimum.
     int computedHeight = history_table->fontMetrics().height() + 18; // extra padding
-    const int minRowHeight = 28;
+    const int minRowHeight = 36;
     int rowHeight = std::max(minRowHeight, computedHeight);
     history_table->verticalHeader()->setDefaultSectionSize(rowHeight);
     history_table->verticalHeader()->setSectionResizeMode(QHeaderView::Fixed);
