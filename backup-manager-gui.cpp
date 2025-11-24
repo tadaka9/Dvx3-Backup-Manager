@@ -473,10 +473,16 @@ void BackupManagerWindow::setup_ui() {
         "}"
     );
     history_table->horizontalHeader()->setStretchLastSection(true);
-    // Use a comfortable row height based on font metrics to prevent clipping
-    int rowHeight = history_table->fontMetrics().height() + 12; // add padding
+    // Use a comfortable row height based on font metrics to prevent clipping.
+    // Start with the font height and add padding; clamp to a sensible minimum.
+    int computedHeight = history_table->fontMetrics().height() + 18; // extra padding
+    const int minRowHeight = 28;
+    int rowHeight = std::max(minRowHeight, computedHeight);
     history_table->verticalHeader()->setDefaultSectionSize(rowHeight);
+    history_table->verticalHeader()->setSectionResizeMode(QHeaderView::Fixed);
     history_table->verticalHeader()->setVisible(false);
+    // Prevent the table items from word-wrapping, which could change row height unexpectedly
+    history_table->setWordWrap(false);
     history_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     history_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     history_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Interactive);
@@ -683,6 +689,8 @@ void BackupManagerWindow::refresh_history() {
         }
         history_table->setItem(row, 4, status_item);
         history_table->item(row, 4)->setTextAlignment(Qt::AlignVCenter | Qt::AlignCenter);
+        // Ensure the row uses the fixed height so vertical compression doesn't happen
+        history_table->setRowHeight(row, rowHeight);
         
         row++;
     }
