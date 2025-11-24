@@ -6,7 +6,6 @@
 #include <QApplication>
 #include <QGridLayout>
 #include <QStyleFactory>
-    const int minRowHeight = 52;
 #include <QHeaderView>
 #include <QDateTime>
 #include <QStandardPaths>
