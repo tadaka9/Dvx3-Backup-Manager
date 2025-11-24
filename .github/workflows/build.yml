@@ -53,6 +53,7 @@ jobs:
             mingw-w64-x86_64-qt6-tools
             mingw-w64-x86_64-pkg-config
             mingw-w64-x86_64-vala
+            mingw-w64-x86_64-ninja
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-json-glib
             mingw-w64-x86_64-libsodium
@@ -156,7 +157,7 @@ jobs:
           fi
           mkdir -p tests/build
           pushd tests/build
-          cmake .. -DCMAKE_BUILD_TYPE=Release
+          cmake -G Ninja -S .. -B . -DCMAKE_BUILD_TYPE=Release
           cmake --build . --parallel
           ctest --output-on-failure || true
           popd
@@ -226,7 +227,7 @@ jobs:
         run: |
           sudo apt-get update
           # Try to install Qt6 and development tools in one go; some packages differ across Ubuntu versions
-          sudo apt-get install -y build-essential pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick || true
+          sudo apt-get install -y build-essential pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build || true
           QT_PKGS=(qt6-base-dev qt6-tools-dev qt6-gtk-platformtheme qt6base-dev-tools qt6-base-plugins qt6-tools)
           echo "Attempting to install Qt packages: ${QT_PKGS[*]}"
           if ! sudo apt-get install -y "${QT_PKGS[@]}"; then
@@ -328,7 +329,7 @@ jobs:
           sudo apt-get install -y cmake || true
           mkdir -p tests/build
           pushd tests/build
-          cmake .. -DCMAKE_BUILD_TYPE=Release
+          cmake -G Ninja -S .. -B . -DCMAKE_BUILD_TYPE=Release
           cmake --build . --parallel
           ctest --output-on-failure
           popd

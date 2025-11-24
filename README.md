@@ -48,13 +48,6 @@ Dvx3 Backup Manager is a secure, high-performance backup solution for Linux, mac
 - **zstd compression**: Level 1-22, multi-threaded
 - **No intermediate files**: Streams tar | zstd | encrypt
 - **Progress tracking**: Dynamic (GNU tar) or static estimation
-- **Multiple backup jobs**: Each with retention, password, and history
-- **Backup history**: Track all operations, sizes, and status
-- **Retention policies**: Automatic cleanup of old backups
-- **Cross-platform**: Linux, macOS, Windows, Raspberry Pi
-- **Qt6 GUI**: Visual job management, progress, and history
-- **C++/Vala/C API**: Use as a library in your own apps
-
 ---
 
 ## Quick Start
@@ -62,11 +55,11 @@ Dvx3 Backup Manager is a secure, high-performance backup solution for Linux, mac
 ```bash
 # Build everything (CLI, GUI, library)
 ./build-all.sh
-
-# Run the interactive backup manager
-./backup-manager
-
-# Or launch the GUI
+ mkdir -p tests/build
+ cd tests/build
+ cmake -G Ninja -S .. -B . -DCMAKE_BUILD_TYPE=Release
+ cmake --build . --parallel
+ ctest --output-on-failure
 ./backup-manager-gui
 
 # Or use the CLI directly
