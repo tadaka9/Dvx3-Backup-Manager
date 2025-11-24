@@ -33,6 +33,19 @@ brew install vala glib json-glib libsodium qt@6 cmake pkg-config
 ```bash
 # Install MinGW cross-compiler
 sudo apt install -y mingw-w64 wine64
+
+For packaging the GUI with Qt runtime DLLs on Windows, the following tools are useful (on a native MSYS2/MinGW environment):
+
+```bash
+# MSYS2 (MINGW64) packages
+pacman -S mingw-w64-x86_64-qt6-tools nsis upx
+
+# Use windeployqt (from Qt tools) to gather DLLs and plugin dependencies
+windeployqt --dir build/Releases backup-manager-gui.exe
+
+# Then create a ZIP or NSIS installer using the files in build/Releases
+makensis -V2 -DOUTDIR=$(pwd)/Releases -DINPUTZIP=build/Releases.zip installer/windows-installer.nsi
+```
 ```
 
 ### Raspberry Pi

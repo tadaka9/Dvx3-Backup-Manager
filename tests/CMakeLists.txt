@@ -34,12 +34,31 @@ if(NOT EXISTS ${REPO_ROOT}/gen-c/libdvx3.c)
     # the target language even when the source doesn't exist yet.
     # Generate the C output into the build directory so CMake can determine linking language
     set(GEN_C_OUT "${CMAKE_CURRENT_BINARY_DIR}/libdvx3.c")
-    add_custom_command(
-      OUTPUT ${GEN_C_OUT}
-      COMMAND ${VALAC_EXECUTABLE} -C -d ${CMAKE_CURRENT_BINARY_DIR} ${REPO_ROOT}/libdvx3.vala
-      DEPENDS ${REPO_ROOT}/libdvx3.vala
-      COMMENT "Generating gen-c/libdvx3.c via valac into build dir"
-    )
+    # Build the generated sources with the same packages used by the project
+    if(WIN32)
+      set(GIO_PKGS "--pkg gio-2.0")
+      set(VALA_DEFINES "")
+    else()
+      set(GIO_PKGS "--pkg gio-2.0 --pkg gio-unix-2.0")
+      set(VALA_DEFINES "-D POSIX")
+    endif()
+    if(WIN32)
+      add_custom_command(
+        OUTPUT ${GEN_C_OUT}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}
+        COMMAND ${VALAC_EXECUTABLE} --pkg glib-2.0 --pkg gio-2.0 --pkg json-glib-1.0 --vapidir=${REPO_ROOT}/vala-extra-vapis --pkg libsodium -C -d ${CMAKE_CURRENT_BINARY_DIR} ${REPO_ROOT}/libdvx3.vala
+        DEPENDS ${REPO_ROOT}/libdvx3.vala
+        COMMENT "Generating gen-c/libdvx3.c via valac into build dir"
+      )
+    else()
+      add_custom_command(
+        OUTPUT ${GEN_C_OUT}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}
+        COMMAND ${VALAC_EXECUTABLE} --pkg glib-2.0 --pkg gio-2.0 --pkg gio-unix-2.0 --pkg json-glib-1.0 --vapidir=${REPO_ROOT}/vala-extra-vapis --pkg libsodium -D POSIX -C -d ${CMAKE_CURRENT_BINARY_DIR} ${REPO_ROOT}/libdvx3.vala
+        DEPENDS ${REPO_ROOT}/libdvx3.vala
+        COMMENT "Generating gen-c/libdvx3.c via valac into build dir"
+      )
+    endif()
     add_custom_target(generate_gen_c DEPENDS ${GEN_C_OUT})
   else()
     message(STATUS "valac not found from CMake. Valac: ${VALAC_EXECUTABLE}")
@@ -66,7 +85,10 @@ target_include_directories(dvx3c PRIVATE ${REPO_ROOT})
 target_compile_options(dvx3c PRIVATE ${GLIB_CFLAGS_OTHER})
 target_compile_options(dvx3c PRIVATE ${GLIB_CFLAGS})
 target_link_libraries(dvx3c PRIVATE ${GLIB_LIBRARIES})
-target_compile_options(dvx3c PRIVATE -Wno-discarded-qualifiers -Wno-incompatible-pointer-types)
+# The C warnings suppression for `discarded-qualifiers` is no longer required
+#+ we generate `gen-c` into the build dir and prefer `fin.read()` instead of
+#+ `GBytes.get_data()` to avoid const-discard issues in generated C. Keep this
+#+ note here for future inspection.
 
 # GLib compile options for test targets: added after target creation
 

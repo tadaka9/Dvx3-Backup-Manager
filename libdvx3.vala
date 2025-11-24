@@ -587,18 +587,18 @@ namespace Dvx3 {
         uint64 enc_bytes = enc_info.get_attribute_uint64 (FileAttribute.STANDARD_SIZE);
 
         var fin = enc_file.read();
-        var _len_gb = fin.read_bytes(4);
         uint8[] len_buf = new uint8[4];
-        for (int _i = 0; _i < 4; _i++)
-            len_buf[_i] = _len_gb.get_data()[_i];
+        ssize_t _len_read = fin.read (len_buf);
+        if (_len_read != 4)
+            throw new IOError.FAILED("Missing header length (read bytes)");
         if (len_buf.length != 4)
             throw new IOError.FAILED("Missing header length");
         
         uint32 hlen = be_to_uint32(len_buf);
-        var _hdr_gb = fin.read_bytes((size_t)hlen);
         uint8[] hdr_json_raw = new uint8[hlen];
-        for (size_t _i = 0; _i < (size_t)hlen; _i++)
-            hdr_json_raw[(int)_i] = _hdr_gb.get_data()[(int)_i];
+        ssize_t _hdr_read = fin.read(hdr_json_raw);
+        if ((size_t)_hdr_read != hlen)
+            throw new IOError.FAILED("Missing header JSON bytes");
         
         // Header is zero-padded; find actual JSON end (first null byte)
         size_t actual_json_len = 0;
@@ -650,19 +650,19 @@ namespace Dvx3 {
             null);
 
         for (uint64 i = 0; i < chunks; i++) {
-            var _nonce_gb = fin.read_bytes((uint)Sodium.Symmetric.NONCE_BYTES);
             uint8[] nonce = new uint8[(int)Sodium.Symmetric.NONCE_BYTES];
-            for (int _j = 0; _j < (int)Sodium.Symmetric.NONCE_BYTES; _j++)
-                nonce[_j] = _nonce_gb.get_data()[_j];
+            ssize_t _nonce_read = fin.read(nonce);
+            if ((size_t)_nonce_read != (size_t)Sodium.Symmetric.NONCE_BYTES)
+                throw new IOError.FAILED ("Truncated nonce at chunk " + i.to_string());
             if (nonce.length != Sodium.Symmetric.NONCE_BYTES)
                 throw new IOError.FAILED ("Truncated nonce at chunk %s".printf(i.to_string()));
 
             uint64 expected_plain = (i == chunks - 1) ? last : CHUNK_SIZE;
             uint64 ct_len = expected_plain + SECRETBOX_MAC;
-            var _ct_gb = fin.read_bytes((size_t)ct_len);
             uint8[] ct = new uint8[(int)ct_len];
-            for (int _k = 0; _k < (int)ct_len; _k++)
-                ct[_k] = _ct_gb.get_data()[_k];
+            ssize_t _ct_read = fin.read(ct);
+            if ((size_t)_ct_read != (size_t)ct_len)
+                throw new IOError.FAILED ("Truncated ciphertext at chunk " + i.to_string());
             if (ct.length != (size_t)ct_len)
                 throw new IOError.FAILED ("Truncated ciphertext at chunk %s".printf(i.to_string()));
 

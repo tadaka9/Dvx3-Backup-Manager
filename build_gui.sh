@@ -44,7 +44,6 @@ mkdir -p "$BUILD_GEN_C_DIR"
 # glib/gatomic and const-qualification mismatch in generated C). We prefer to
 # keep the Vala-generated sources unchanged and silence these warnings during
 # C compilation.
-GEN_C_WARN_SUPPRESS_FLAGS="-Wno-discarded-qualifiers -Wno-incompatible-pointer-types"
 
 # Detect platform for package selection
 UNAME_OUT="$(uname -s 2>/dev/null || echo unknown)"
@@ -81,7 +80,7 @@ esac
 
 "$CC_COMPILER" -c -fPIC "$BUILD_GEN_C_DIR/libdvx3.c" -o libdvx3.o \
     $(pkg-config --cflags glib-2.0 $GIO_LIBS json-glib-1.0 libsodium) \
-    -I. -I"$BUILD_GEN_C_DIR" $GEN_C_WARN_SUPPRESS_FLAGS
+    -I. -I"$BUILD_GEN_C_DIR"
 
 # Shared library extension (UNAME_OUT already set above)
 case "$UNAME_OUT" in
@@ -362,3 +361,21 @@ else
 fi
 echo ""
 echo "Note: qt.conf created to help Qt find platform plugins"
+
+# If on Windows/MSYS2, use windeployqt to collect Qt dependencies into Releases folder
+if command -v windeployqt >/dev/null 2>&1; then
+    echo "windeployqt: deploying Qt dependencies to build/Releases"
+    mkdir -p build/Releases
+    if [ -f backup-manager-gui.exe ]; then
+        windeployqt --dir build/Releases backup-manager-gui.exe || true
+    elif [ -f backup-manager-gui ]; then
+        windeployqt --dir build/Releases backup-manager-gui || true
+    fi
+    echo "windeployqt completed; contents of build/Releases:"; ls -la build/Releases || true
+fi
+
+# If windeployqt put files under build/Releases, copy them to top-level Releases for CI packaging
+if [ -d build/Releases ]; then
+    mkdir -p Releases
+    cp -r build/Releases/* Releases/ 2>/dev/null || true
+fi
