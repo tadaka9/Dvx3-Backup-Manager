@@ -6,7 +6,7 @@ set -euo pipefail
 
 # Patterns to error on (always)
 BLOCK_PATTERNS=("\\.moc\\.cpp$" "\\.rcc\\.cpp$")
-# gen-c check: can be allowed by presence of a file .gen-c-allowed
+# gen-c check: Not allowed to be tracked. Untracked gen-c/ is permitted for local builds.
 GEN_C_PATH="gen-c"
 
 # Get tracked files
@@ -23,13 +23,19 @@ for pat in "${BLOCK_PATTERNS[@]}"; do
 done
 
 if [ -d "$GEN_C_PATH" ]; then
-  if [ ! -f ".gen-c-allowed" ]; then
+  # Check if gen-c/ is tracked in the git index. We allow the directory to exist
+  # locally when untracked (e.g. after valac generation), but we do not allow
+  # the generated files to be tracked by git in the repository.
+  gen_c_tracked=$(git ls-files -- "$GEN_C_PATH" | wc -l || true)
+  if [ "$gen_c_tracked" -gt 0 ]; then
     echo "ERROR: Found tracked 'gen-c/' directory. This contains generated C code."
-    echo "To allow it temporarily, add a '.gen-c-allowed' file to the repo root with reason/justification, then remove it when gen-c is removed."
+    echo "Action: Remove 'gen-c/' from the repository index (not the working copy) and add it to .gitignore."
+    echo "  git rm -r --cached gen-c && echo 'gen-c/' >> .gitignore && git add .gitignore && git commit -m \"chore: untrack generated 'gen-c/' files\""
+    echo "Note: If the generated C files are required during a local build, valac will regenerate them when needed."
     ls -la "$GEN_C_PATH" || true
     errors=1
   else
-    echo "Info: gen-c directory present and whitelisted via .gen-c-allowed"
+    echo "Info: gen-c directory present but not tracked in git index (allowed)."
   fi
 fi
 

@@ -51,6 +51,7 @@ jobs:
             mingw-w64-x86_64-qt6-tools
             mingw-w64-x86_64-pkg-config
             mingw-w64-x86_64-vala
+            mingw-w64-x86_64-cmake
             mingw-w64-x86_64-json-glib
             mingw-w64-x86_64-libsodium
 
@@ -130,22 +131,19 @@ jobs:
       - name: Build and run C++ tests (Windows/MSYS2)
         shell: msys2 {0}
         run: |
-          echo "Building C++ tests..."
-          # Compile generated C library as C
-          gcc -c gen-c/libdvx3.c -o libdvx3.o -fPIC -I. $(pkg-config --cflags glib-2.0 gio-2.0 json-glib-1.0 libsodium)
-          # Compile and link test-simple-backup
-          g++ -c test-simple-backup.cpp -o test-simple-backup.o -std=c++17 -I. $(pkg-config --cflags glib-2.0 gio-2.0)
-          g++ test-simple-backup.o libdvx3.o -o test-simple-backup.exe $(pkg-config --libs glib-2.0 gio-2.0 json-glib-1.0 libsodium)
-          # Compile and link test-exclusion
-          g++ -c test-exclusion.cpp -o test-exclusion.o -std=c++17 -I. $(pkg-config --cflags glib-2.0 gio-2.0)
-          g++ test-exclusion.o libdvx3.o -o test-exclusion.exe $(pkg-config --libs glib-2.0 gio-2.0 json-glib-1.0 libsodium)
-          echo "Running tests (Windows/MSYS2)"
-          if [ -x ./test-simple-backup.exe ]; then
-            ./test-simple-backup.exe || true
+          echo "Building C++ tests (CMake + GTest)..."
+          if command -v valac >/dev/null 2>&1; then
+            echo "Generating gen-c via valac"
+            valac -C -d gen-c libdvx3.vala || true
+          else
+            echo "valac not found; assuming gen-c is already present"
           fi
-          if [ -x ./test-exclusion.exe ]; then
-            ./test-exclusion.exe || true
-          fi
+          mkdir -p tests/build
+          pushd tests/build
+          cmake .. -DCMAKE_BUILD_TYPE=Release
+          cmake --build . --parallel
+          ctest --output-on-failure || true
+          popd
 
       - name: Prepare Releases folder (Windows)
         shell: msys2 {0}
@@ -311,21 +309,13 @@ jobs:
       - name: Build and run C++ tests (Linux)
         run: |
           echo "Building C++ tests..."
-          # Compile generated C library as C
-          gcc -c gen-c/libdvx3.c -o libdvx3.o -fPIC -I. $(pkg-config --cflags glib-2.0 gio-2.0 json-glib-1.0 libsodium)
-          # Compile and link test-simple-backup
-          g++ -c test-simple-backup.cpp -o test-simple-backup.o -std=c++17 -I. $(pkg-config --cflags glib-2.0 gio-2.0)
-          g++ test-simple-backup.o libdvx3.o -o test-simple-backup $(pkg-config --libs glib-2.0 gio-2.0 json-glib-1.0 libsodium)
-          # Compile and link test-exclusion
-          g++ -c test-exclusion.cpp -o test-exclusion.o -std=c++17 -I. $(pkg-config --cflags glib-2.0 gio-2.0)
-          g++ test-exclusion.o libdvx3.o -o test-exclusion $(pkg-config --libs glib-2.0 gio-2.0 json-glib-1.0 libsodium)
-          echo "Running tests (these may require tar/zstd installed)"
-          if [ -x ./test-simple-backup ]; then
-            ./test-simple-backup
-          fi
-          if [ -x ./test-exclusion ]; then
-            ./test-exclusion
-          fi
+          sudo apt-get install -y cmake || true
+          mkdir -p tests/build
+          pushd tests/build
+          cmake .. -DCMAKE_BUILD_TYPE=Release
+          cmake --build . --parallel
+          ctest --output-on-failure
+          popd
           # Function to copy DLL only if it exists
           copy_if_exists() {
             if [ -f "$1" ]; then
