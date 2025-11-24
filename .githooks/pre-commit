@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Prevent accidental inclusion of generated artifacts:
+blocked_patterns=("*.moc.cpp" "*.rcc.cpp" "*.rcc.h" "*.moc.hpp")
+
+# Get list of staged files
+staged_files=$(git diff --cached --name-only --diff-filter=ACM)
+
+errors=0
+for pat in "${blocked_patterns[@]}"; do
+  matches=$(echo "$staged_files" | grep -E "$(echo $pat | sed 's/\./\\./g; s/\*/.*/g;')" || true)
+  if [ -n "$matches" ]; then
+    echo "ERROR: Found staged files matching blocked pattern: $pat"
+    echo "$matches"
+    errors=1
+  fi
+done
+
+# Run the centralized check script for gen-c and other rules
+if [ -x "scripts/check-generated-files.sh" ]; then
+  scripts/check-generated-files.sh || errors=1
+fi
+
+if [ "$errors" -ne 0 ]; then
+  echo "Commit blocked: please remove generated files from the commit (git restore --staged <file>), or adjust .gitignore."
+  exit 2
+fi
+
+exit 0
+
