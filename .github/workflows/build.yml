@@ -236,6 +236,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          set -ex
           sudo apt-get update
           # Try to install Qt6 and development tools in one go; some packages differ across Ubuntu versions
           sudo apt-get install -y build-essential pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build || true
@@ -248,10 +249,13 @@ jobs:
 
       - name: Build all components
         run: |
+          set -ex
           chmod +x build-all.sh
           ./build-all.sh
 
       - name: Upload Linux build artifacts
+        id: upload-linux-artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Dvx3-Backup-Manager-Linux-Build
@@ -262,6 +266,7 @@ jobs:
             libdvx3.so
 
       - name: Upload Linux build artifact (tar.gz)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Dvx3-Backup-Manager-Linux-Tar
@@ -278,33 +283,45 @@ jobs:
           echo "Which tar/zstd?:"; which tar || true; which zstd || true
 
       - name: Install ImageMagick for icon conversion
-        run: sudo apt-get update && sudo apt-get install -y imagemagick
+        run: |
+          set -ex
+          sudo apt-get update && sudo apt-get install -y imagemagick
         if: runner.os == 'Linux'
     
       - name: Convert PNG to ICO for Windows icon embedding
-        run: convert dvx3-backup.png -define icon:auto-resize=64,48,32,16 dvx3-backup.ico
+        run: |
+          set -ex
+          if [ -f dvx3-backup.png ]; then
+            convert dvx3-backup.png -define icon:auto-resize=64,48,32,16 dvx3-backup.ico
+          else
+            echo "Warning: dvx3-backup.png not found; skipping ICO conversion"
+          fi
         working-directory: ${{ github.workspace }}
         if: runner.os == 'Linux'
 
       - name: Build Backup Manager GUI (Linux native)
         run: |
+          set -ex
           chmod +x build_gui.sh || true
           sed -i 's/\r$//' build_gui.sh
           ./build_gui.sh
       
       - name: Build dvx3 CLI tool (Linux native)
         run: |
+          set -ex
           chmod +x build.sh || true
           sed -i 's/\r$//' build.sh
           ./build.sh || echo "CLI build failed, continuing..."
 
       - name: Run tests harness
         run: |
+          set -ex
           chmod +x scripts/run-tests.sh
           ./scripts/run-tests.sh
 
       - name: Package Linux artifacts
         run: |
+          set -ex
           mkdir -p Releases/linux
           if [ -f backup-manager-gui ]; then
             cp backup-manager-gui Releases/linux/ || true
@@ -323,6 +340,7 @@ jobs:
 
       - name: Verify Linux CLI artifacts
         run: |
+          set -ex
           echo "=== Linux CLI verification ==="
           if [ -f dvx3 ]; then
             echo "Found dvx3"; ./dvx3 --help || true
