@@ -258,11 +258,33 @@ jobs:
               wget -qO /tmp/libsodium.tar.gz https://download.libsodium.org/libsodium/releases/libsodium-1.0.20.tar.gz
               tar -xzf /tmp/libsodium.tar.gz -C /tmp
               pushd /tmp/libsodium-1.0.20
-              ./configure --prefix=/usr/local
+              # Build a static libsodium archive compiled with -fPIC so it can be linked into shared libraries.
+              CFLAGS="-fPIC" CXXFLAGS="-fPIC" ./configure --prefix=/usr/local --enable-static --disable-shared
               make -j$(nproc)
               sudo make install
               sudo ldconfig
               popd
+            fi
+            # Ensure pkg-config can find the /usr/local/libsodium build for subsequent workflow steps
+            echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+            # Verify that the installed libsodium static archive is PIC. If not, abort the CI build.
+            if [ -f /usr/local/lib/libsodium.a ]; then
+              echo "Checking whether /usr/local/lib/libsodium.a contains PIC objects"
+              tmpd=$(mktemp -d)
+              (cd "$tmpd" && ar x /usr/local/lib/libsodium.a) || true
+              pic_ok=1
+              for o in "$tmpd"/*.o; do
+                if readelf -r "$o" 2>/dev/null | grep -q -E 'R_386_PC32|R_X86_64_PC32|R_ARM_PC24|R_ARM_V4BX|R_ARM_PREL31|R_AARCH64_PREL32|R_PPC_REL24'; then
+                  pic_ok=0
+                  break
+                fi
+              done
+              rm -rf "$tmpd"
+              if [ "$pic_ok" -eq 0 ]; then
+                echo "Error: /usr/local/lib/libsodium.a appears to contain non-PIC objects; cannot link into shared libdvx3" >&2
+                echo "Try rebuilding libsodium with CFLAGS=-fPIC, or unset FORCE_STATIC_LIBSODIUM in CI to allow dynamic libsodium linking." >&2
+                exit 1
+              fi
             fi
           else
             echo "FORCE_STATIC_LIBSODIUM not set; skipping libsodium static build"
@@ -271,7 +293,6 @@ jobs:
       - name: Build all components
         run: |
           set -ex
-          export FORCE_STATIC_LIBSODIUM=1
           chmod +x build-all.sh
           ./build-all.sh
 
@@ -324,7 +345,6 @@ jobs:
       - name: Build Backup Manager GUI (Linux native)
         run: |
           set -ex
-          export FORCE_STATIC_LIBSODIUM=1
           chmod +x build_gui.sh || true
           sed -i 's/\r$//' build_gui.sh
           ./build_gui.sh
@@ -332,7 +352,6 @@ jobs:
       - name: Build dvx3 CLI tool (Linux native)
         run: |
           set -ex
-          export FORCE_STATIC_LIBSODIUM=1
           chmod +x build.sh || true
           sed -i 's/\r$//' build.sh
           ./build.sh || echo "CLI build failed, continuing..."

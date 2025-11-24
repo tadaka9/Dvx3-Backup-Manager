@@ -109,18 +109,71 @@ esac
 
 # Prefer static libsodium (when available) to avoid runtime library mismatches on target systems
 SODIUM_STATIC_LINK=""
+
+# Determine if a static libsodium archive contains PIC object files
+is_static_lib_pic() {
+    local libfile="$1"
+    if [ -z "$libfile" ] || [ ! -f "$libfile" ]; then
+        return 1
+    fi
+    if ! command -v readelf >/dev/null 2>&1 || ! command -v ar >/dev/null 2>&1; then
+        # Cannot determine; conservatively assume non-PIC
+        return 1
+    fi
+    tmpd=$(mktemp -d)
+    (cd "$tmpd" && ar x "$libfile") || { rm -rf "$tmpd"; return 1; }
+    # If there are no object files, treat as non-PIC
+    shopt -s nullglob
+    local found_nonpic=0
+    for o in "$tmpd"/*.o; do
+        # Look for relocations that indicate non-PIC (PC32 relocations)
+        if readelf -r "$o" 2>/dev/null | grep -q -E 'R_386_PC32|R_X86_64_PC32|R_ARM_PC24|R_ARM_V4BX|R_ARM_PREL31|R_AARCH64_PREL32|R_PPC_REL24'; then
+            found_nonpic=1
+            break
+        fi
+        # Also reject objects with TEXTREL flags
+        if readelf -D "$o" 2>/dev/null | grep -q "TEXTREL"; then
+            found_nonpic=1
+            break
+        fi
+    done
+    rm -rf "$tmpd"
+    [ "$found_nonpic" -eq 0 ] && return 0 || return 1
+}
+
+# Check for static libsodium, prefer dynamic if static is present but not PIC (shared libdvx3 requires PIC)
+LIBSODIUM_PATHS=(/usr/local/lib/libsodium.a /usr/lib/x86_64-linux-gnu/libsodium.a /usr/lib/libsodium.a)
+found_lib=""
+for p in "${LIBSODIUM_PATHS[@]}"; do
+    if [ -f "$p" ]; then
+        found_lib="$p"
+        break
+    fi
+done
+
 if [ "${FORCE_STATIC_LIBSODIUM:-0}" -eq 1 ]; then
-    if [ -f /usr/lib/libsodium.a ] || [ -f /usr/lib/x86_64-linux-gnu/libsodium.a ] || [ -f /usr/local/lib/libsodium.a ]; then
-        echo "FORCE_STATIC_LIBSODIUM=1: Linking libsodium statically into libdvx3"
-        SODIUM_STATIC_LINK='-Wl,-Bstatic -lsodium -Wl,-Bdynamic'
+    if [ -n "$found_lib" ]; then
+        if is_static_lib_pic "$found_lib"; then
+            echo "FORCE_STATIC_LIBSODIUM=1: Linking libsodium statically into libdvx3"
+            SODIUM_STATIC_LINK='-Wl,-Bstatic -lsodium -Wl,-Bdynamic'
+        else
+            echo "FORCE_STATIC_LIBSODIUM=1 requested, but static libsodium ($found_lib) is not compiled with -fPIC. Aborting." >&2
+            echo "To fix: install/build a PIC-enabled static libsodium (e.g. build libsodium with -fPIC), or unset FORCE_STATIC_LIBSODIUM." >&2
+            exit 1
+        fi
     else
         echo "FORCE_STATIC_LIBSODIUM=1 requested, but static libsodium (.a) not found. Aborting." >&2
         exit 1
     fi
 else
-    if [ -f /usr/lib/libsodium.a ] || [ -f /usr/lib/x86_64-linux-gnu/libsodium.a ] || [ -f /usr/local/lib/libsodium.a ]; then
-        echo "Static libsodium found: linking statically into libdvx3"
-        SODIUM_STATIC_LINK='-Wl,-Bstatic -lsodium -Wl,-Bdynamic'
+    if [ -n "$found_lib" ]; then
+        if is_static_lib_pic "$found_lib"; then
+            echo "Static libsodium (PIC) found at $found_lib: linking statically into libdvx3"
+            SODIUM_STATIC_LINK='-Wl,-Bstatic -lsodium -Wl,-Bdynamic'
+        else
+            echo "Static libsodium found at $found_lib but it's not PIC; falling back to shared libsodium to avoid linker errors"
+            SODIUM_STATIC_LINK=$(pkg-config --libs libsodium || echo "-lsodium")
+        fi
     else
         SODIUM_STATIC_LINK=$(pkg-config --libs libsodium || echo "-lsodium")
     fi

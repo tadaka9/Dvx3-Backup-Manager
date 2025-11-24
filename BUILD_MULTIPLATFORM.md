@@ -501,7 +501,19 @@ Notes:
 - The packaging script will copy runtime libraries into `Releases/linux/lib`, but excludes some non-portable system libraries (e.g., `libsystemd`, `libcap`, `libgomp`) to avoid copying kernel/platform-specific components. If you need to include systemd-related functionality, use AppImage or install the appropriate libs on target systems.
 
 CI details:
-- The `build-linux` job sets `FORCE_STATIC_LIBSODIUM=1` and builds a static `libsodium` into `/usr/local` if a static archive is not available. This ensures `libdvx3` is built with static `libsodium` for portability on CI-built artifacts. For local builds, set `FORCE_STATIC_LIBSODIUM=1` to reproduce the CI behavior (requires a static `libsodium` installed locally or building it from source).
+- The `build-linux` job now prefers the system `libsodium` shared library by default. The CI does not force static linking of `libsodium` anymore, to avoid linking non-PIC static archives into `libdvx3.so`.
+- Local builds will automatically fall back to using the shared `libsodium` if a static `libsodium` archive is present but not compiled with -fPIC (linking non-PIC static libs into a shared `libdvx3` will fail). If you explicitly set `FORCE_STATIC_LIBSODIUM=1`, the build will abort if the static archive is not PIC; follow the error message to install or compile a PIC-enabled static `libsodium` (or see `scripts/build-libsodium-pic.sh` below for a helper).
+
+Local development - build a PIC-enabled static libsodium (optional):
+
+If you need to link `libsodium` statically (for packing portable artifacts), you can build a PIC-enabled static libsodium and install it to `/usr/local` using the helper script:
+
+```bash
+chmod +x scripts/build-libsodium-pic.sh
+./scripts/build-libsodium-pic.sh --version 1.0.20 --prefix /usr/local
+export FORCE_STATIC_LIBSODIUM=1
+./build_gui.sh
+```
 
 
 ```bash
