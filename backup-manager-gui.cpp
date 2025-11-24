@@ -753,6 +753,14 @@ void BackupManagerWindow::refresh_history() {
     }
     
     history_table->scrollToBottom();
+    // Ensure Date/Time, Size and Ratio columns aren't compressed below minimums
+    history_table->resizeColumnToContents(0);
+    if (history_table->columnWidth(0) < 210) history_table->setColumnWidth(0, 210);
+    history_table->resizeColumnToContents(2);
+    if (history_table->columnWidth(2) < 120) history_table->setColumnWidth(2, 120);
+    history_table->resizeColumnToContents(3);
+    if (history_table->columnWidth(3) < 100) history_table->setColumnWidth(3, 100);
+    // Status and Job are ensured by their column widths/resize modes
 }
 
 void BackupManagerWindow::update_status() {
