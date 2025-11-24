@@ -518,7 +518,9 @@ private void encrypt_stream (File src_dir,
 
     /* ----- read compressed data, encrypt chunk‑wise ----- */
     while (true) {
-        uint8[] blk = zstd_in.read_bytes (CHUNK_SIZE).get_data ();
+        var _blk_gb = zstd_in.read_bytes (CHUNK_SIZE);
+        uint8[] blk = new uint8[(int)_blk_gb.length];
+        for (int _i = 0; _i < (int)_blk_gb.length; _i++) blk[_i] = _blk_gb[_i];
         if (blk.length == 0)
             break;   // EOF
         processed_compressed += (uint64) blk.length;
@@ -587,11 +589,15 @@ private void decrypt_and_extract_stream(File enc_file, File dst_dir, string pass
     uint64 enc_bytes = enc_info.get_attribute_uint64 (FileAttribute.STANDARD_SIZE);
 
     var fin = enc_file.read();
-    uint8[] len_buf = fin.read_bytes(4).get_data();
+    var _len_gb = fin.read_bytes(4);
+    uint8[] len_buf = new uint8[(int)_len_gb.length];
+    for (int _i = 0; _i < (int)_len_gb.length; _i++) len_buf[_i] = _len_gb[_i];
     if (len_buf.length != 4)
         throw new IOError.FAILED("Missing header length");
     uint32 hlen = be_to_uint32(len_buf);
-    uint8[] hdr_json = fin.read_bytes((size_t)hlen).get_data();
+    var _hdr_gb = fin.read_bytes((size_t)hlen);
+    uint8[] hdr_json = new uint8[(int)_hdr_gb.length];
+    for (int _i = 0; _i < (int)_hdr_gb.length; _i++) hdr_json[_i] = _hdr_gb[_i];
 
     var parser = new Json.Parser();
     parser.load_from_data ((string) hdr_json, (ssize_t) hdr_json.length);
@@ -637,14 +643,18 @@ private void decrypt_and_extract_stream(File enc_file, File dst_dir, string pass
     var pipe_out = new GLib.UnixOutputStream (pipe_stdin, true);
 
     for (uint64 i = 0; i < chunks; i++) {
-        uint8[] nonce = fin.read_bytes((uint)Sodium.Symmetric.NONCE_BYTES).get_data();
+        var _nonce_gb = fin.read_bytes((uint)Sodium.Symmetric.NONCE_BYTES);
+        uint8[] nonce = new uint8[(int)_nonce_gb.length];
+        for (int _j = 0; _j < (int)_nonce_gb.length; _j++) nonce[_j] = _nonce_gb[_j];
         if (nonce.length != (int)Sodium.Symmetric.NONCE_BYTES)
             throw new IOError.FAILED("Bad nonce at chunk %s".printf(i.to_string()));
 
         size_t plain_len = (i < chunks - 1) ? CHUNK_SIZE : (size_t)last;
         size_t ct_len = plain_len + SECRETBOX_MAC;
 
-        uint8[] ct = fin.read_bytes(ct_len).get_data();
+        var _ct_gb = fin.read_bytes(ct_len);
+        uint8[] ct = new uint8[(int)_ct_gb.length];
+        for (int _k = 0; _k < (int)_ct_gb.length; _k++) ct[_k] = _ct_gb[_k];
         if (ct.length != ct_len)
             throw new IOError.FAILED("Bad ciphertext at chunk %s".printf(i.to_string()));
 
@@ -683,11 +693,15 @@ private File decrypt_stream(File enc_file, File out_file, string password) throw
     uint64 enc_bytes = enc_info.get_attribute_uint64 (FileAttribute.STANDARD_SIZE);
 
     var fin = enc_file.read();
-    uint8[] len_buf = fin.read_bytes(4).get_data();
+    var _len_gb = fin.read_bytes(4);
+    uint8[] len_buf = new uint8[(int)_len_gb.length];
+    for (int _i = 0; _i < (int)_len_gb.length; _i++) len_buf[_i] = _len_gb[_i];
     if (len_buf.length != 4)
         throw new IOError.FAILED("Missing header length");
     uint32 hlen = be_to_uint32(len_buf);
-    uint8[] hdr_json = fin.read_bytes((size_t)hlen).get_data();
+    var _hdr_gb = fin.read_bytes((size_t)hlen);
+    uint8[] hdr_json = new uint8[(int)_hdr_gb.length];
+    for (int _i = 0; _i < (int)_hdr_gb.length; _i++) hdr_json[_i] = _hdr_gb[_i];
 
     var parser = new Json.Parser();
     parser.load_from_data ((string) hdr_json, (ssize_t) hdr_json.length);
@@ -709,14 +723,18 @@ private File decrypt_stream(File enc_file, File out_file, string password) throw
     uint64 plain_emitted = 0;
 
     for (uint64 i = 0; i < chunks; i++) {
-        uint8[] nonce = fin.read_bytes((uint)Sodium.Symmetric.NONCE_BYTES).get_data();
+        var _nonce_gb = fin.read_bytes((uint)Sodium.Symmetric.NONCE_BYTES);
+        uint8[] nonce = new uint8[(int)_nonce_gb.length];
+        for (int _j = 0; _j < (int)_nonce_gb.length; _j++) nonce[_j] = _nonce_gb[_j];
         if (nonce.length != (int)Sodium.Symmetric.NONCE_BYTES)
             throw new IOError.FAILED("Bad nonce at chunk %s".printf(i.to_string()));
 
         size_t plain_len = (i < chunks - 1) ? CHUNK_SIZE : (size_t)last;
         size_t ct_len = plain_len + SECRETBOX_MAC;
 
-        uint8[] ct = fin.read_bytes(ct_len).get_data();
+        var _ct_gb = fin.read_bytes(ct_len);
+        uint8[] ct = new uint8[(int)_ct_gb.length];
+        for (int _k = 0; _k < (int)_ct_gb.length; _k++) ct[_k] = _ct_gb[_k];
         if (ct.length != ct_len)
             throw new IOError.FAILED("Bad ciphertext at chunk %s".printf(i.to_string()));
 
