@@ -47,30 +47,40 @@ jobs:
   
           echo "List installed Qt6 packages"
           pacman -Qs qt6
-          build-linux:
-            runs-on: ubuntu-latest
-            steps:
-              - uses: actions/checkout@v3
+          
+          echo 'Completed Windows MSYS2 verify step'
+      - name: Print PATH
+        shell: msys2 {0}
+        run: |
+          echo $PATH
+          which moc || true
+          echo "Looking for moc in /mingw64 share dir"
+          ls -l /mingw64/share/qt6/bin/moc.exe || true
 
-              - name: Install dependencies
-                run: |
-                  sudo apt-get update
-                  sudo apt-get install -y build-essential qt6-base-dev qt6-base-plugins qt6-gtk-platformtheme qt6-tools pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
 
-              - name: Build all components
-                run: |
-                  chmod +x build-all.sh
-                  ./build-all.sh
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential qt6-base-dev qt6-base-plugins qt6-gtk-platformtheme qt6-tools pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick
 
-              - name: Upload Linux build artifacts
-                uses: actions/upload-artifact@v4
-                with:
-                  name: Dvx3-Backup-Manager-Linux-Build
-                  path: |
-                    backup-manager
-                    backup-manager-gui
-                    dvx3
-                    libdvx3.so
+      - name: Build all components
+        run: |
+          chmod +x build-all.sh
+          ./build-all.sh
+
+      - name: Upload Linux build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dvx3-Backup-Manager-Linux-Build
+          path: |
+            backup-manager
+            backup-manager-gui
+            dvx3
+            libdvx3.so
 
       - name: Install ImageMagick for icon conversion
         run: sudo apt-get update && sudo apt-get install -y imagemagick
