@@ -1,8 +1,0 @@
-This repository retains generated sources in the gen-c/ directory for the moment.
-Add this file to indicate that gen-c presence is intentional and to temporarily
-whitelist it from CI failures until it can be removed from the repository.
-
-When gen-c is removed, delete this file as part of the same commit or an
-immediate follow-up commit to enable stricter CI enforcement.
-
-Reason: historical inclusion; remove when switching to Vala builds or proper packaging.
