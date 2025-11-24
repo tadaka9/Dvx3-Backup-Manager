@@ -20,23 +20,9 @@ jobs:
           yamllint -c /dev/null .github/workflows || true
       - name: Check for tracked generated files
         run: |
-          echo "Checking for tracked generated files (.moc.cpp, gen-c/*, .rcc.cpp)"
-          set -e
-          if git ls-files '*.moc.cpp' | grep -q '.'; then
-            echo "ERROR: Found tracked *.moc.cpp files! Please remove generated moc files from version control." >&2
-            git ls-files '*.moc.cpp' || true
-            exit 2
-          fi
-          # Skip gen-c folder if intentionally tracked (legacy use); only warn
-          if git ls-files 'gen-c/*' | grep -q '.'; then
-            echo "Warning: Found tracked 'gen-c/' files; it's recommended to not commit generated code (gen-c/) to the repository." >&2
-            git ls-files 'gen-c/*' || true
-          fi
-          if git ls-files '*.rcc.cpp' | grep -q '.'; then
-            echo "ERROR: Found tracked *.rcc.cpp files! Please avoid generated resource files from rcc." >&2
-            git ls-files '*.rcc.cpp' || true
-            exit 2
-          fi
+          echo "Checking for tracked generated files via scripts/check-generated-files.sh"
+          chmod +x scripts/check-generated-files.sh || true
+          scripts/check-generated-files.sh
       - name: Shellcheck .sh files
         run: |
           set -e
@@ -252,6 +238,16 @@ jobs:
         with:
           name: Dvx3-Backup-Manager-Linux-Tar
           path: Releases/Dvx3-Backup-Manager-Linux.tar.gz
+
+      - name: CI diagnostics on failure (Linux)
+        if: failure()
+        run: |
+          echo "=== CI failure diagnostic (Linux) ==="
+          echo "Workspace contents:"; ls -la || true
+          echo "Releases contents:"; ls -la Releases || true
+          echo "Built files:"; ls -la backup-manager* dvx3* || true
+          echo "gen-c contents:"; ls -la gen-c || true
+          echo "Which tar/zstd?:"; which tar || true; which zstd || true
 
       - name: Install ImageMagick for icon conversion
         run: sudo apt-get update && sudo apt-get install -y imagemagick
@@ -534,6 +530,40 @@ jobs:
         with:
           name: Dvx3-Backup-Manager-Windows-Build
           path: Releases/
+
+      - name: Create NSIS installer (Windows, optional)
+        shell: msys2 {0}
+        run: |
+          if command -v makensis >/dev/null 2>&1; then
+            echo "Found makensis, building installer..."
+            # Ensure the installer script is present
+            if [ -f installer/windows-installer.nsi ]; then
+              makensis -V2 -DOUTDIR=$(pwd)/Releases -DINPUTZIP=Releases/Dvx3-Backup-Manager-Windows.zip installer/windows-installer.nsi || true
+            else
+              echo "installer/windows-installer.nsi not found; please add an NSIS script to build an installer"
+            fi
+          else
+            echo "makensis not found. Skipping NSIS installer creation. To enable, install the nsis package in MSYS2 packages list."
+          fi
+
+      - name: Upload NSIS installer (if present)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dvx3-Backup-Manager-Installer-Windows
+          path: |
+            Releases/Dvx3-Backup-Manager-Installer.exe
+
+      - name: CI diagnostics on failure (Windows)
+        if: failure()
+        shell: msys2 {0}
+        run: |
+          echo "=== CI failure diagnostic (Windows) ==="
+          echo "Workspace:"; ls -la || true
+          echo "Releases contents:"; ls -la Releases || true
+          echo "Built files:"; ls -la backup-manager* dvx3* || true
+          echo "Which moc/rcc?"; which moc || true; which rcc || true
+          echo "msys2 bin summary:"; ls -la /mingw64/bin | head -n 80 || true
+          echo "Plugin platforms dir:"; ls -la /mingw64/share/qt6/plugins/platforms || true
   
   build-linux-appimage:
     runs-on: ubuntu-latest
