@@ -675,7 +675,15 @@ void BackupManagerWindow::refresh_history() {
         auto* dt_item = new QTableWidgetItem(dt.toString("yyyy-MM-dd hh:mm:ss"));
         // Make the Date/Time column slightly larger for readability
         QFont dtFont = history_table->font();
-        dtFont.setPointSize(dtFont.pointSize() + 1);
+        int curPoint = dtFont.pointSize();
+        if (curPoint > 0) {
+            dtFont.setPointSize(curPoint + 1);
+        } else {
+            // If point size not set, use pixel size as fallback; add a couple pixels
+            int curPixel = dtFont.pixelSize();
+            if (curPixel <= 0) curPixel = 12; // default fallback
+            dtFont.setPixelSize(curPixel + 2);
+        }
         dtFont.setBold(false);
         dt_item->setFont(dtFont);
         history_table->setItem(row, 0, dt_item);
