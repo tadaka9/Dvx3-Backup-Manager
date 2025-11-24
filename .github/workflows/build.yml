@@ -290,11 +290,9 @@ jobs:
             echo "FORCE_STATIC_LIBSODIUM not set; skipping libsodium static build"
           fi
 
-      - name: Build all components
-        run: |
-          set -ex
-          chmod +x build-all.sh
-          ./build-all.sh
+      # NOTE: We skip calling build-all here to avoid running duplicate builds (GUI + packaging twice)
+      # The workflow executes optimized per-component builds below (GUI, CLI, tests, packaging).
+      # Keeping build-all causes longer CI runs and increases the chance of timeouts on runners.
 
       - name: Upload Linux build artifacts
         id: upload-linux-artifacts
