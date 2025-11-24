@@ -500,6 +500,8 @@ void BackupManagerWindow::setup_ui() {
     history_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     history_table->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
     history_table->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    history_table->horizontalHeader()->setSectionsMovable(true);
+    history_table->horizontalHeader()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     history_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Interactive);
     history_table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     history_table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
