@@ -122,6 +122,23 @@ case "$UNAME_OUT" in
                 fi
             fi
         fi
+        # Additional MSYS2 locations: some MSYS2 packages install mocs to share/qt6/bin
+        if [ -z "$MOC" ]; then
+            if [ -x /mingw64/share/qt6/bin/moc ]; then
+                MOC=/mingw64/share/qt6/bin/moc
+                RCC=/mingw64/share/qt6/bin/rcc
+                echo "✓ Found moc at /mingw64/share/qt6/bin/moc"
+            elif [ -x /mingw64/share/qt6/bin/moc.exe ]; then
+                MOC=/mingw64/share/qt6/bin/moc.exe
+                RCC=/mingw64/share/qt6/bin/rcc.exe
+                echo "✓ Found moc at /mingw64/share/qt6/bin/moc.exe"
+            fi
+        fi
+        # Prepend /mingw64/share/qt6/bin to PATH if it exists (so `which moc` finds it)
+        if [ -d /mingw64/share/qt6/bin ] && ! echo "$PATH" | grep -q "/mingw64/share/qt6/bin"; then
+            export PATH="/mingw64/share/qt6/bin:$PATH"
+            echo "Path updated to include MSYS2 Qt6 share bin: /mingw64/share/qt6/bin"
+        fi
         ;;
 esac
 
@@ -206,6 +223,14 @@ if [ -z "$MOC" ]; then
     elif [ -x /usr/lib/qt6/libexec/moc ]; then
         MOC=/usr/lib/qt6/libexec/moc
         RCC=/usr/lib/qt6/libexec/rcc
+    elif [ -x /mingw64/share/qt6/bin/moc ]; then
+        MOC=/mingw64/share/qt6/bin/moc
+        RCC=/mingw64/share/qt6/bin/rcc
+        echo "✓ Found moc at /mingw64/share/qt6/bin/"
+    elif [ -x /mingw64/share/qt6/bin/moc.exe ]; then
+        MOC=/mingw64/share/qt6/bin/moc.exe
+        RCC=/mingw64/share/qt6/bin/rcc.exe
+        echo "✓ Found moc.exe at /mingw64/share/qt6/bin/"
     elif command -v moc-qt6 >/dev/null 2>&1; then
         MOC=moc-qt6
         RCC=rcc-qt6
