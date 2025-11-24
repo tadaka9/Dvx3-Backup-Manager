@@ -474,10 +474,11 @@ void BackupManagerWindow::setup_ui() {
     );
     history_table->horizontalHeader()->setStretchLastSection(true);
     // Use a comfortable row height based on font metrics to prevent clipping.
-    // Start with the font height and add padding; clamp to a sensible minimum.
-    int computedHeight = history_table->fontMetrics().height() + 18; // extra padding
-    const int minRowHeight = 36;
-    int rowHeight = std::max(minRowHeight, computedHeight);
+    // We'll compute a base height from the table's font and increase it if the
+    // Date/Time column uses a larger font.
+    int baseComputedHeight = history_table->fontMetrics().height() + 18; // extra padding
+    const int minRowHeight = 40;
+    int rowHeight = std::max(minRowHeight, baseComputedHeight);
     history_table->verticalHeader()->setDefaultSectionSize(rowHeight);
     history_table->verticalHeader()->setSectionResizeMode(QHeaderView::Fixed);
     history_table->verticalHeader()->setVisible(false);
@@ -671,8 +672,19 @@ void BackupManagerWindow::refresh_history() {
         history_table->insertRow(row);
         
         QDateTime dt = QDateTime::fromSecsSinceEpoch(rec.timestamp);
-        history_table->setItem(row, 0, new QTableWidgetItem(dt.toString("yyyy-MM-dd hh:mm:ss")));
+        auto* dt_item = new QTableWidgetItem(dt.toString("yyyy-MM-dd hh:mm:ss"));
+        // Make the Date/Time column slightly larger for readability
+        QFont dtFont = history_table->font();
+        dtFont.setPointSize(dtFont.pointSize() + 1);
+        dtFont.setBold(false);
+        dt_item->setFont(dtFont);
+        history_table->setItem(row, 0, dt_item);
         history_table->item(row, 0)->setTextAlignment(Qt::AlignVCenter | Qt::AlignLeft);
+        // If date/time font is larger, ensure row height is adjusted
+        int dtHeight = QFontMetrics(dtFont).height() + 18;
+        if (dtHeight > rowHeight) {
+            rowHeight = dtHeight;
+        }
         history_table->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(rec.job_name)));
         history_table->item(row, 1)->setTextAlignment(Qt::AlignVCenter | Qt::AlignLeft);
         history_table->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(dvx3::format_size(rec.compressed_size))));
