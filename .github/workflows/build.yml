@@ -38,8 +38,9 @@ jobs:
             mingw-w64-x86_64-vala
             mingw-w64-x86_64-ninja
             mingw-w64-x86_64-cmake
-              mingw-w64-x86_64-json-glib
-              mingw-w64-x86_64-libsodium
+            mingw-w64-x86_64-json-glib
+            mingw-w64-x86_64-libsodium
+            mingw-w64-x86_64-gtest
             upx
 
       - name: Verify Qt6 installation

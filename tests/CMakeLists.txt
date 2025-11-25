@@ -8,18 +8,7 @@ get_filename_component(REPO_ROOT ${CMAKE_CURRENT_LIST_DIR} DIRECTORY)
 include(GNUInstallDirs)
 
 # Prefer system-installed GoogleTest when available; otherwise fall back to FetchContent
-find_package(GTest QUIET)
-if (NOT GTest_FOUND)
-  include(FetchContent)
-  FetchContent_Declare(
-    googletest
-    # Use a modern, maintained googletest release. If you need a different
-    # version, update this tag accordingly.
-    URL https://github.com/google/googletest/archive/refs/tags/release-1.17.0.zip
-  )
-  FetchContent_MakeAvailable(googletest)
-  find_package(GTest REQUIRED)
-endif()
+find_package(GTest REQUIRED)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GLIB REQUIRED glib-2.0 gio-2.0 json-glib-1.0 libsodium)
