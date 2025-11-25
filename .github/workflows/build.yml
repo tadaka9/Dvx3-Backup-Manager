@@ -1014,9 +1014,13 @@ jobs:
         - name: Run C++ tests (MSVC)
           shell: pwsh
           run: |
-            Push-Location build-msvc
-            ctest -C Release --output-on-failure || $false
-            Pop-Location
+            try {
+              Push-Location build-msvc
+              ctest -C Release --output-on-failure
+              Pop-Location
+            } catch {
+              Write-Output "ctest failed: $_"
+            }
         - name: Windows/MSVC diagnostics
           if: failure()
           shell: pwsh
