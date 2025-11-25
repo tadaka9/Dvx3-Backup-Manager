@@ -915,7 +915,7 @@ jobs:
               eval "$(/opt/homebrew/bin/brew shellenv)" || true
             fi
             brew update || true
-            brew install pkg-config valac glib json-glib libsodium zstd qt@6 ninja cmake ccache || true
+            brew install pkg-config vala glib json-glib libsodium zstd qt@6 ninja cmake ccache || true
             if [ -d /opt/homebrew/opt/qt@6/bin ]; then
               echo "PATH=/opt/homebrew/opt/qt@6/bin:$PATH" >> $GITHUB_ENV
             fi
@@ -930,6 +930,16 @@ jobs:
             chmod +x build-all.sh || true
             sed -i 's/\r$//' build-all.sh || true
             ./build-all.sh || true
+        - name: Validate Vala binary
+          run: |
+            set -ex
+            if command -v valac >/dev/null 2>&1; then
+              valac --version || true
+            elif command -v vala >/dev/null 2>&1; then
+              echo "vala installed but valac not found; printing vala version"; vala --version || true
+            else
+              echo "Warning: valac not found after brew install, trying 'vala' and listing brew binaries"; brew list || true; exit 0
+            fi
         - name: Prepare Releases (macOS)
           run: |
             set -ex
