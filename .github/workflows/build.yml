@@ -239,7 +239,7 @@ jobs:
           set -ex
           sudo apt-get update
           # Try to install Qt6 and development tools in one go; some packages differ across Ubuntu versions
-          sudo apt-get install -y build-essential pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache || true
+          sudo apt-get install -y build-essential pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache libgtest-dev || true
           QT_PKGS=(qt6-base-dev qt6-tools-dev qt6-gtk-platformtheme qt6base-dev-tools qt6-base-plugins qt6-tools)
           echo "Attempting to install Qt packages: ${QT_PKGS[*]}"
           if ! sudo apt-get install -y "${QT_PKGS[@]}"; then
@@ -343,6 +343,15 @@ jobs:
               echo "---- readelf -r $o ----"; readelf -r "$o" | sed -n '1,120p' || true
             done
             rm -rf "$tmpd"
+          fi
+          # Build and install system googletest if provided by packages (libgtest-dev) so CMake find_package(GTest) succeeds
+          if [ -d /usr/src/gtest ]; then
+            echo "Building system libgtest from /usr/src/gtest"
+            pushd /usr/src/gtest
+            sudo cmake -S . -B build || true
+            sudo cmake --build build --parallel || true
+            sudo cmake --install build --prefix /usr/local || true
+            popd
           fi
           if [ -f /usr/lib/libsodium.a ]; then
             echo "Found /usr/lib/libsodium.a - content listing (first 20):"; ar t /usr/lib/libsodium.a | head -n 20 || true

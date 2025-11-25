@@ -13,7 +13,9 @@ if (NOT GTest_FOUND)
   include(FetchContent)
   FetchContent_Declare(
     googletest
-    URL https://github.com/google/googletest/archive/refs/tags/release-1.13.0.zip
+    # Use a modern, maintained googletest release. If you need a different
+    # version, update this tag accordingly.
+    URL https://github.com/google/googletest/archive/refs/tags/release-1.17.0.zip
   )
   FetchContent_MakeAvailable(googletest)
   find_package(GTest REQUIRED)
