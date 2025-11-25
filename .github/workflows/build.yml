@@ -224,6 +224,9 @@ jobs:
 
   build-linux:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [x86_64, arm64]
     steps:
       - uses: actions/checkout@v3
       - name: Cache ccache
@@ -239,6 +242,24 @@ jobs:
       - name: Install dependencies
         run: |
           set -ex
+          echo "Target arch: ${ARCH:-x86_64} matrix value: ${{ matrix.arch }}"
+          if [ "${{ matrix.arch }}" != "x86_64" ]; then
+            echo "Running build inside container for arch=${{ matrix.arch }}"
+            docker run --rm --platform linux/${{ matrix.arch }} -v "$PWD":/build -w /build debian:bullseye /bin/bash -lc '
+              set -ex
+              apt-get update
+              apt-get install -y build-essential cmake pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache libgtest-dev || true
+              # Build system libgtest if present
+              if [ -d /usr/src/gtest ]; then
+                pushd /usr/src/gtest; cmake -S . -B build || true; cmake --build build --parallel || true; cmake --install build --prefix /usr/local || true; popd
+              fi
+              export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
+              chmod +x build-all.sh || true
+              sed -i "s/\r$//" build-all.sh
+              ./build-all.sh
+            '
+            exit 0
+          fi
           sudo apt-get update
           # Try to install Qt6 and development tools in one go; some packages differ across Ubuntu versions
           sudo apt-get install -y build-essential cmake pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache libgtest-dev || true
@@ -802,6 +823,24 @@ jobs:
           if [ -f smoke_test/bin/backup-manager-gui ]; then
             echo "Found GUI binary for smoke test: backup-manager-gui"
           fi
+
+  build-raspberry:
+    runs-on: ubuntu-latest
+    needs: [build-linux]
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build Raspberry Pi artifacts (armv6)
+        run: |
+          set -ex
+          # Use Debian bullseye under docker and QEMU to build armv6 artifacts
+          docker run --rm --platform linux/arm/v6 -v "$PWD":/build -w /build debian:bullseye /bin/bash -lc '
+            set -ex
+            apt-get update
+            apt-get install -y build-essential pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache cmake libgtest-dev || true
+            chmod +x build-raspberry.sh
+            sed -i "s/\r$//" build-raspberry.sh
+            ./build-raspberry.sh
+          '
       - name: CI diagnostics on failure (package-linux)
         if: failure()
         run: |
