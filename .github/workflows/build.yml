@@ -276,6 +276,23 @@ jobs:
           ccache -M 5G
           echo "PATH=$(brew --prefix ccache)/libexec:$PATH" >> $GITHUB_ENV
 
+      - name: Symlink or export Qt6 moc to PATH (macOS)
+        run: |
+          set -ex
+          echo "Listing Qt6 bin directories:"
+          ls -l /opt/homebrew/opt/qt@6/bin || true
+          ls -l /usr/local/opt/qt@6/bin || true
+          ls -l /opt/homebrew/bin || true
+          ls -l /usr/local/bin || true
+          if [ -f /opt/homebrew/opt/qt@6/bin/moc ]; then
+            ln -sf /opt/homebrew/opt/qt@6/bin/moc /usr/local/bin/moc
+            echo "Symlinked /opt/homebrew/opt/qt@6/bin/moc to /usr/local/bin/moc"
+          elif [ -f /usr/local/opt/qt@6/bin/moc ]; then
+            ln -sf /usr/local/opt/qt@6/bin/moc /usr/local/bin/moc
+            echo "Symlinked /usr/local/opt/qt@6/bin/moc to /usr/local/bin/moc"
+          fi
+          echo "PATH=/opt/homebrew/opt/qt@6/bin:/usr/local/opt/qt@6/bin:/usr/local/bin:$PATH" >> $GITHUB_ENV
+
       - name: Build all components (macOS)
         run: |
           chmod +x build-all.sh
