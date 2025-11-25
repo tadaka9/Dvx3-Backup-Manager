@@ -628,6 +628,7 @@ jobs:
           echo "Note: MSYS2 executables (tar.exe, zstd.exe, sh.exe) are not compressed (not compatible with UPX)"
 
       - name: Verify Releases contents (Windows)
+        if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
           echo "=== Releases directory contents ==="
@@ -642,6 +643,7 @@ jobs:
           fi
 
       - name: Create zip for Windows Releases
+        if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
           set -e
@@ -651,6 +653,7 @@ jobs:
           ls -lah Dvx3-Backup-Manager-Windows.zip || true
 
       - name: Compute checksum for Windows ZIP
+        if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
           cd Releases
@@ -671,6 +674,7 @@ jobs:
           path: Releases/
 
       - name: Create NSIS installer (Windows, optional)
+        if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
           if command -v makensis >/dev/null 2>&1; then
@@ -693,7 +697,7 @@ jobs:
             Releases/Dvx3-Backup-Manager-Installer.exe
 
       - name: CI diagnostics on failure (Windows)
-        if: failure()
+        if: failure() && runner.os == 'Windows'
         shell: msys2 {0}
         run: |
           echo "=== CI failure diagnostic (Windows) ==="
