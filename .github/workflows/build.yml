@@ -275,7 +275,7 @@ jobs:
       - name: Install Homebrew packages
         run: |
           brew update
-          brew install pkg-config vala glib json-glib libsodium zstd qt6-base qt6-tools ninja cmake ccache || exit 1
+          brew install pkg-config vala glib json-glib libsodium zstd qt@6 ninja cmake ccache || exit 1
 
       - name: Configure ccache
         run: |
@@ -284,23 +284,23 @@ jobs:
 
       - name: Set Qt6 PATH (macOS)
         run: |
-          echo "PATH=/opt/homebrew/opt/qt6/bin:/usr/local/opt/qt6/bin:$PATH" >> $GITHUB_ENV
+          echo "PATH=/opt/homebrew/opt/qt@6/bin:/usr/local/opt/qt@6/bin:$PATH" >> $GITHUB_ENV
 
       - name: Verify Qt6 tools
         run: |
           echo "Current PATH: $PATH"
           which moc || echo "moc not found in PATH"
-          ls -la /opt/homebrew/opt/qt6/bin/moc /usr/local/opt/qt6/bin/moc 2>/dev/null || echo "moc not in expected locations"
+          ls -la /opt/homebrew/opt/qt@6/bin/moc /usr/local/opt/qt@6/bin/moc 2>/dev/null || echo "moc not in expected locations"
 
       - name: Build all components (macOS)
         run: |
-          export PATH=/opt/homebrew/opt/qt6/bin:/usr/local/opt/qt6/bin:$PATH
+          export PATH=/opt/homebrew/opt/qt@6/bin:/usr/local/opt/qt@6/bin:$PATH
           chmod +x build-all.sh
           ./build-all.sh || exit 1
 
       - name: Build GUI (macOS)
         run: |
-          export PATH=/opt/homebrew/opt/qt6/bin:/usr/local/opt/qt6/bin:$PATH
+          export PATH=/opt/homebrew/opt/qt@6/bin:/usr/local/opt/qt@6/bin:$PATH
           chmod +x build_gui.sh
           ./build_gui.sh || exit 1
 
