@@ -187,13 +187,6 @@ build-linux:
       run: |
         sudo apt-get update
         sudo apt-get install -y qemu-user-static binfmt-support
-        docker run --rm --platform linux/${{ matrix.arch }} -v "$PWD":/src -w /src debian:trixie bash -c '
-          set -ex
-          apt-get update
-          apt-get install -y build-essential cmake pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev
-          chmod +x build-all.sh
-          ./build-all.sh
-        '
 
     - name: Configure ccache
       run: |
@@ -219,15 +212,26 @@ build-linux:
           echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
         fi
 
-    - name: Build all components (Linux)
+    - name: Build all components and GUI (native)
+      if: matrix.arch == 'x86_64'
       run: |
         chmod +x build-all.sh
         ./build-all.sh
-
-    - name: Build GUI (Linux)
-      run: |
         chmod +x build_gui.sh
         ./build_gui.sh
+
+    - name: Build all components and GUI (cross‑compile)
+      if: matrix.arch != 'x86_64'
+      run: |
+        docker run --rm --platform linux/${{ matrix.arch }} -v "$PWD":/src -w /src debian:trixie bash -c '
+          set -ex
+          apt-get update
+          apt-get install -y build-essential cmake pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev
+          chmod +x build-all.sh
+          ./build-all.sh
+          chmod +x build_gui.sh
+          ./build_gui.sh
+        '
 
     - name: Prepare Linux releases
       run: |
@@ -258,7 +262,7 @@ build-linux:
 # MACOS BUILD
 # ------------------------------------------------------------------
 build-macos:
-  runs-on: macos-latest
+  runs-on: macos-${{ matrix.arch == 'arm64' && '13' || '12' }}
   strategy:
     matrix:
       arch: [x86_64, arm64]
@@ -275,36 +279,19 @@ build-macos:
         ccache -M 5G
         echo "PATH=$(brew --prefix ccache)/libexec:$PATH" >> $GITHUB_ENV
 
-    - name: Symlink or export Qt6 moc to PATH (macOS)
+    - name: Set Qt6 PATH (macOS)
       run: |
-        set -ex
-        echo "Listing Qt6 bin and libexec directories:"
-        ls -l /opt/homebrew/opt/qt@6/bin || true
-        ls -l /usr/local/opt/qt@6/bin || true
-        ls -l /opt/homebrew/opt/qt@6/libexec || true
-        ls -l /usr/local/opt/qt@6/libexec || true
-        # Try to symlink moc from bin or libexec
-        if [ -f /opt/homebrew/opt/qt@6/bin/moc ]; then
-          ln -sf /opt/homebrew/opt/qt@6/bin/moc /usr/local/bin/moc
-          echo "Symlinked /opt/homebrew/opt/qt@6/bin/moc to /usr/local/bin/moc"
-        elif [ -f /usr/local/opt/qt@6/bin/moc ]; then
-          ln -sf /usr/local/opt/qt@6/bin/moc /usr/local/bin/moc
-          echo "Symlinked /usr/local/opt/qt@6/bin/moc to /usr/local/bin/moc"
-        elif [ -f /opt/homebrew/opt/qt@6/libexec/moc ]; then
-          ln -sf /opt/homebrew/opt/qt@6/libexec/moc /usr/local/bin/moc
-          echo "Symlinked /opt/homebrew/opt/qt@6/libexec/moc to /usr/local/bin/moc"
-        elif [ -f /usr/local/opt/qt@6/libexec/moc ]; then
-          ln -sf /usr/local/opt/qt@6/libexec/moc /usr/local/bin/moc
-          echo "Symlinked /usr/local/opt/qt@6/libexec/moc to /usr/local/bin/moc"
-        else
-          echo "moc not found in bin or libexec!"
-        fi
-        echo "PATH=/opt/homebrew/opt/qt@6/bin:/usr/local/opt/qt@6/bin:/usr/local/bin:$PATH" >> $GITHUB_ENV
+        echo "PATH=/opt/homebrew/opt/qt@6/bin:/usr/local/opt/qt@6/bin:$PATH" >> $GITHUB_ENV
 
     - name: Build all components (macOS)
       run: |
         chmod +x build-all.sh
         ./build-all.sh
+
+    - name: Build GUI (macOS)
+      run: |
+        chmod +x build_gui.sh
+        ./build_gui.sh
 
     - name: Gather releases
       run: |
