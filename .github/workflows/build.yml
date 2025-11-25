@@ -999,6 +999,18 @@ jobs:
             }
             # List installed packages for diagnostics
             & .\vcpkg\vcpkg list || Write-Output "vcpkg list failed"
+        - name: Windows/MSVC pre-checks
+          shell: pwsh
+          run: |
+            Write-Output "=== Windows host info ==="
+            Write-Output ('PSVersion: ' + ($PSVersionTable.PSVersion).ToString())
+            Write-Output ('GITHUB_WORKSPACE: ' + $env:GITHUB_WORKSPACE)
+            Get-ChildItem -Path $env:GITHUB_WORKSPACE -Force | Select-Object -First 50
+            Write-Output "Visual Studio (vswhere):"
+            & "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -format text -property displayName,installationPath || Write-Output "vswhere not found"
+            Write-Output "Which cmake:"; Get-Command cmake -ErrorAction SilentlyContinue || Write-Output "cmake not found"
+            Write-Output "Which msbuild:"; Get-Command msbuild -ErrorAction SilentlyContinue || Write-Output "msbuild not found"
+            Get-ChildItem -Path "C:\\Program Files (x86)\\Microsoft Visual Studio" -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 40 || Write-Output "VS folder listing failed"
         - name: Configure CMake (MSVC)
           shell: pwsh
           run: |
