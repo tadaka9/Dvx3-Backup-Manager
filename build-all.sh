@@ -10,8 +10,9 @@ BUILD_COUNT=0
 # 1. Build for current platform (always)
 echo "▶ Building for current platform..."
 ./build_gui.sh
+chmod +x backup-manager-gui || true
 if [[ ! -x backup-manager-gui ]]; then
-    echo "❌ ERROR: backup-manager-gui was not produced by build_gui.sh!"
+    echo "❌ ERROR: backup-manager-gui was not produced by build_gui.sh or is not executable!"
     echo "Current directory: $(pwd)"
     echo "Directory contents after build_gui.sh:"
     ls -l
@@ -93,3 +94,4 @@ echo "Cross-platform builds:"
 echo "  Windows: See BUILD_MULTIPLATFORM.md for cross-compile instructions"
 echo "  macOS:   Build natively on macOS or use GitHub Actions"
 echo ""
+exit 0
