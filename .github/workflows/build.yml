@@ -265,7 +265,7 @@ jobs:
   # MACOS BUILD
   # ------------------------------------------------------------------
   build-macos:
-    runs-on: macos-${{ matrix.arch == 'arm64' && '13' || '12' }}
+    runs-on: macos-latest
     strategy:
       matrix:
         arch: [x86_64, arm64]
