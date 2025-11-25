@@ -214,15 +214,13 @@ jobs:
             echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
           fi
 
-      - name: Build all components and GUI (native)
+      - name: Build GUI (Linux native)
         if: matrix.arch == 'x86_64'
         run: |
-          chmod +x build-all.sh
-          ./build-all.sh
           chmod +x build_gui.sh
           ./build_gui.sh
 
-      - name: Build all components and GUI (cross‑compile)
+      - name: Build GUI (cross‑compile)
         if: matrix.arch != 'x86_64'
         run: |
           docker run --rm --platform linux/${{ matrix.arch }} -v "$PWD":/src -w /src debian:trixie bash -c '
@@ -234,8 +232,6 @@ jobs:
             export PATH=/usr/lib/ccache:$PATH
             export CC=gcc
             export CXX=g++
-            chmod +x build-all.sh
-            ./build-all.sh
             chmod +x build_gui.sh
             ./build_gui.sh
           '
