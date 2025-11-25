@@ -14,6 +14,15 @@ jobs:
       matrix:
         arch: [x64]
     steps:
+      - name: Verify MSVC environment
+        shell: pwsh
+        run: |
+          Write-Output "=== MSVC Diagnostics ==="
+          Write-Output "Visual Studio Locator version:"
+          & "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -format text -property displayName,installationPath || Write-Output "vswhere not found"
+          Write-Output "Which cl.exe:"
+          Get-Command cl.exe -ErrorAction SilentlyContinue || Write-Output "cl.exe not found"
+          Write-Output "PATH: $env:PATH"
       - uses: actions/checkout@v3
       - name: List GTest and lib contents (MSVC)
         shell: pwsh
@@ -1020,16 +1029,23 @@ jobs:
         - name: Set up vcpkg and install deps
           shell: pwsh
           run: |
+            Write-Output "=== vcpkg bootstrap ==="
             git clone https://github.com/microsoft/vcpkg.git vcpkg
+            if ($LASTEXITCODE -ne 0) { Write-Error "git clone vcpkg failed"; exit 1 }
             & .\vcpkg\bootstrap-vcpkg.bat
+            if ($LASTEXITCODE -ne 0) { Write-Error "vcpkg bootstrap failed"; exit 1 }
             & .\vcpkg\vcpkg integrate install
+            if ($LASTEXITCODE -ne 0) { Write-Error "vcpkg integrate install failed"; exit 1 }
             $commonDeps = @('libsodium', 'zstd', 'gtest', 'glib', 'gio', 'json-glib')
+            Write-Output "=== vcpkg install ==="
             if ("${{ matrix.arch }}" -eq "arm64") {
               & .\vcpkg\vcpkg install $commonDeps --triplet arm64-windows
+              if ($LASTEXITCODE -ne 0) { Write-Error "vcpkg install failed for arm64-windows"; exit 1 }
             } else {
               & .\vcpkg\vcpkg install $commonDeps --triplet x64-windows
+              if ($LASTEXITCODE -ne 0) { Write-Error "vcpkg install failed for x64-windows"; exit 1 }
             }
-            # List installed packages for diagnostics
+            Write-Output "=== vcpkg list ==="
             & .\vcpkg\vcpkg list || Write-Output "vcpkg list failed"
             # Verify installed packages in vcpkg triplet
             if ('${{ matrix.arch }}' -eq 'arm64') {
@@ -1037,7 +1053,7 @@ jobs:
             } else {
               $trip = 'x64-windows'
             }
-            $gtestShare = Join-Path $env:GITHUB_WORKSPACE "vcpkg\\installed\\$trip\\share\\gtest"
+            $gtestShare = Join-Path $env:GITHUB_WORKSPACE "vcpkg\installed\$trip\share\gtest"
             if (Test-Path $gtestShare) { Write-Output "GTest found in: $gtestShare"; Get-ChildItem -Path $gtestShare -Recurse -ErrorAction SilentlyContinue | Select-Object -First 50 } else { Write-Output "GTest not found under vcpkg installed triplet: $trip" }
 
         - name: List GTest and lib contents (MSVC)
