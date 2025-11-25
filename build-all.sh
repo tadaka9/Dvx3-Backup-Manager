@@ -11,12 +11,22 @@ BUILD_COUNT=0
 echo "▶ Building for current platform..."
 ./build_gui.sh
 chmod +x backup-manager-gui || true
-if [[ ! -x backup-manager-gui ]]; then
-    echo "❌ ERROR: backup-manager-gui was not produced by build_gui.sh or is not executable!"
+echo "Checking backup-manager-gui presence and permissions:"
+ls -l backup-manager-gui || echo "backup-manager-gui not found in current directory!"
+file backup-manager-gui || echo "Cannot stat backup-manager-gui!"
+if [[ ! -f backup-manager-gui ]]; then
+    echo "❌ ERROR: backup-manager-gui was not produced by build_gui.sh!"
     echo "Current directory: $(pwd)"
     echo "Directory contents after build_gui.sh:"
     ls -l
     exit 1
+elif [[ ! -x backup-manager-gui ]]; then
+    echo "❌ ERROR: backup-manager-gui exists but is not executable!"
+    chmod +x backup-manager-gui || true
+    if [[ ! -x backup-manager-gui ]]; then
+        echo "Failed to make backup-manager-gui executable."
+        exit 1
+    fi
 fi
 ((BUILD_COUNT++))
 echo ""
