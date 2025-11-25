@@ -1044,31 +1044,36 @@ jobs:
           run: |
             $cArch = if ('${{ matrix.arch }}' -eq 'arm64') { 'ARM64' } else { 'x64' }
             $triplet = if ('${{ matrix.arch }}' -eq 'arm64') { 'arm64-windows' } else { 'x64-windows' }
-            $vcpkgToolchain = "$env:GITHUB_WORKSPACE\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake"
+            $vcpkgToolchain = "$env:GITHUB_WORKSPACE\vcpkg\scripts\buildsystems\vcpkg.cmake"
+            $pkgconfBin = "$env:GITHUB_WORKSPACE\vcpkg\installed\$triplet\tools\pkgconf"
+            if (Test-Path $pkgconfBin) {
+              $env:PATH = "$pkgconfBin;$env:PATH"
+              Write-Output "Added pkgconf to PATH: $pkgconfBin"
+            }
             if (-not (Test-Path $vcpkgToolchain)) {
               Write-Error "vcpkg toolchain file not found: $vcpkgToolchain"
-              Get-ChildItem -Path "$env:GITHUB_WORKSPACE\\vcpkg" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 50
+              Get-ChildItem -Path "$env:GITHUB_WORKSPACE\vcpkg" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 50
               throw "vcpkg toolchain missing"
             }
             Write-Output "Using vcpkg toolchain: $vcpkgToolchain"
             # Build the C++ tests only (CMakeLists.txt in tests/)
-            if (Test-Path "$env:GITHUB_WORKSPACE\\tests\\CMakeLists.txt") {
+            if (Test-Path "$env:GITHUB_WORKSPACE\tests\CMakeLists.txt") {
               Write-Output "Found CMakeLists.txt in tests/ - configuring CMake for tests"
               # Provide GTest_DIR to prefer vcpkg-provided GoogleTest instead of FetchContent
-              $gtestDir = "$env:GITHUB_WORKSPACE\\vcpkg\\installed\\$triplet\\share\\gtest"
+              $gtestDir = "$env:GITHUB_WORKSPACE\vcpkg\installed\$triplet\share\gtest"
               if (Test-Path $gtestDir) { 
                 Write-Output "Using GTest from: $gtestDir"
-                cmake -S "$env:GITHUB_WORKSPACE\\tests" -B "$env:GITHUB_WORKSPACE\\build-msvc" -G "Visual Studio 17 2022" -A $cArch -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$vcpkgToolchain" -DGTest_DIR="$gtestDir" -DVCPKG_TARGET_TRIPLET=$triplet
+                cmake -S "$env:GITHUB_WORKSPACE\tests" -B "$env:GITHUB_WORKSPACE\build-msvc" -G "Visual Studio 17 2022" -A $cArch -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$vcpkgToolchain" -DGTest_DIR="$gtestDir" -DVCPKG_TARGET_TRIPLET=$triplet
               } else {
                 Write-Output "GTest dir not found. Attempting configure without explicit GTest_DIR"
-                cmake -S "$env:GITHUB_WORKSPACE\\tests" -B "$env:GITHUB_WORKSPACE\\build-msvc" -G "Visual Studio 17 2022" -A $cArch -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$vcpkgToolchain" -DVCPKG_TARGET_TRIPLET=$triplet
+                cmake -S "$env:GITHUB_WORKSPACE\tests" -B "$env:GITHUB_WORKSPACE\build-msvc" -G "Visual Studio 17 2022" -A $cArch -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$vcpkgToolchain" -DVCPKG_TARGET_TRIPLET=$triplet
               }
             } else {
               Write-Output "CMakeLists.txt not found in tests/. Will search for any CMakeLists.txt under workspace"
               Get-ChildItem -Path $env:GITHUB_WORKSPACE -Filter CMakeLists.txt -Recurse -ErrorAction SilentlyContinue | Select-Object -First 20 | ForEach-Object { Write-Output $_.FullName }
               throw "No CMakeLists.txt found under workspace; aborting CMake configure"
             }
-        - name: Build (MSVC)
+        - name: Build C++ tests (MSVC)
           shell: pwsh
           run: |
             cmake --build build-msvc --config Release --parallel
