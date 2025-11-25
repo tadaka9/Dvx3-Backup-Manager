@@ -29,6 +29,14 @@ chmod +x appimagetool-x86_64.AppImage
 brew install vala glib json-glib libsodium qt@6 cmake pkg-config
 ```
 
+### macOS Apple Silicon (ARM64)
+Prefer building on an ARM-based macOS machine (Apple Silicon) or run on a CI runner with arm64. When installing Homebrew packages for ARM64, ensure you use the correct brew prefix (e.g., /opt/homebrew):
+```bash
+# For Apple Silicon use the ARM brew prefix
+eval "$(/opt/homebrew/bin/brew shellenv)"
+brew install vala glib json-glib libsodium qt@6 cmake pkg-config
+```
+
 ### Windows (Cross-compile from Linux)
 ```bash
 # Install MinGW cross-compiler
@@ -45,6 +53,18 @@ windeployqt --dir build/Releases backup-manager-gui.exe
 
 # Then create a ZIP or NSIS installer using the files in build/Releases
 makensis -V2 -DOUTDIR=$(pwd)/Releases -DINPUTZIP=build/Releases.zip installer/windows-installer.nsi
+```
+
+### Windows MSVC (native, x64 / ARM64)
+If you build on Windows with MSVC (Visual Studio), prefer `vcpkg` to install native dependencies and use `cmake -A ARM64` to build targetting ARM64. Example usage on a Windows host (PowerShell):
+```powershell
+git clone https://github.com/microsoft/vcpkg.git vcpkg
+.\vcpkg\bootstrap-vcpkg.bat
+.\vcpkg\vcpkg integrate install
+.\vcpkg\vcpkg install libsodium zstd --triplet arm64-windows
+cmake -S . -B build-msvc -G "Visual Studio 17 2022" -A ARM64 -DCMAKE_TOOLCHAIN_FILE=./vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=arm64-windows
+cmake --build build-msvc --config Release
+ctest -C Release --output-on-failure
 ```
 ```
 
@@ -503,6 +523,17 @@ Notes:
 CI details:
 - The `build-linux` job now prefers the system `libsodium` shared library by default. The CI does not force static linking of `libsodium` anymore, to avoid linking non-PIC static archives into `libdvx3.so`.
 - Local builds will automatically fall back to using the shared `libsodium` if a static `libsodium` archive is present but not compiled with -fPIC (linking non-PIC static libs into a shared `libdvx3` will fail). If you explicitly set `FORCE_STATIC_LIBSODIUM=1`, the build will abort if the static archive is not PIC; follow the error message to install or compile a PIC-enabled static `libsodium` (or see `scripts/build-libsodium-pic.sh` below for a helper).
+
+CI caching and cross-arch
+------------------------
+To reduce CI run times, the workflow now includes several caching steps and cross-arch improvements:
+
+- ccache caching for Linux and macOS builds (avoids recompilation of unchanged files)
+- `vcpkg` package cache for Windows MSVC builds (reduces re-download time)
+- apt package archive caching to speed up package installs on Ubuntu runners
+- QEMU+Docker-based cross-arch builds for ARM64 and Raspberry Pi (armv6/armhf) are supported in CI
+
+If you need to reproduce the CI workflow locally, install and configure `ccache` and `vcpkg` to reuse the caches described above. See the `build.yml` CI workflow for the exact caching keys and paths used.
 
 Local development - build a PIC-enabled static libsodium (optional):
 

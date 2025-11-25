@@ -314,6 +314,8 @@ See [BACKUP_MANAGER_GUIDE.md](BACKUP_MANAGER_GUIDE.md) and [GUI_GUIDE.md](GUI_GU
 
 See [BUILD_MULTIPLATFORM.md](BUILD_MULTIPLATFORM.md) for full cross-platform build instructions (Linux, macOS, Windows, Raspberry Pi, Docker, CI/CD).
 
+CI updates: The project CI now contains macOS ARM64 and Windows ARM64 (MSVC) build/test steps and improves caching across platforms to speed up runs.
+
 ---
 
 ## Security

@@ -10,6 +10,9 @@ jobs:
 
   build-windows:
     runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [x64]
     steps:
       - uses: actions/checkout@v3
 
@@ -239,11 +242,22 @@ jobs:
             ${{ runner.os }}-ccache-
 
 
+      - name: Cache apt archives
+        uses: actions/cache@v4
+        with:
+          path: |
+            /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-archives-${{ hashFiles('**/debian-*/**','.github/workflows/build.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-archives-
+
       - name: Setup QEMU
         uses: docker/setup-qemu-action@v2
 
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v2
+        with:
+          buildkitd-flags: --debug
 
       - name: Install dependencies
         run: |
@@ -863,3 +877,103 @@ jobs:
             echo "readelf backup-manager-gui:"; readelf -h Releases/linux/backup-manager-gui || true
             echo "ldd backup-manager-gui:"; LD_LIBRARY_PATH=Releases/linux/lib ldd Releases/linux/backup-manager-gui || true
           fi
+
+  # macOS build and test (supports x86_64 and arm64)
+  build-macos:
+    name: Build (macOS)
+    runs-on: macos-latest
+    strategy:
+        matrix:
+          arch: [x86_64, arm64]
+    steps:
+        - uses: actions/checkout@v3
+        - name: Cache ccache (macOS)
+          uses: actions/cache@v4
+          with:
+            path: |
+              ~/.ccache
+            key: ${{ runner.os }}-ccache-${{ matrix.arch }}-${{ hashFiles('**/*.c','**/*.cpp','**/*.h') }}-v1
+            restore-keys: |
+              ${{ runner.os }}-ccache-
+        - name: Install Homebrew and packages
+          run: |
+            set -ex
+            if ! command -v brew >/dev/null 2>&1; then
+              /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+              echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> $GITHUB_ENV || true
+              eval "$(/opt/homebrew/bin/brew shellenv)" || true
+            fi
+            brew update || true
+            brew install pkg-config valac glib json-glib libsodium zstd qt@6 ninja cmake ccache || true
+            if [ -d /opt/homebrew/opt/qt@6/bin ]; then
+              echo "PATH=/opt/homebrew/opt/qt@6/bin:$PATH" >> $GITHUB_ENV
+            fi
+        - name: Configure ccache (macOS)
+          run: |
+            set -ex
+            ccache -M 5G || true
+            echo "PATH=/usr/local/opt/ccache/libexec:$PATH" >> $GITHUB_ENV || true
+        - name: Build GUI & CLI (macOS)
+          run: |
+            set -ex
+            chmod +x build-all.sh || true
+            sed -i 's/\r$//' build-all.sh || true
+            ./build-all.sh || true
+        - name: Upload macOS build artifacts
+          uses: actions/upload-artifact@v4
+          with:
+            name: Dvx3-Backup-Manager-macos-${{ matrix.arch }}
+            path: |
+              backup-manager
+              backup-manager-gui
+              dvx3
+
+  # Windows (MSVC) build - MSVC x64 and ARM64 via Visual Studio and vcpkg
+  build-windows-msvc:
+    name: Build (Windows - MSVC)
+    runs-on: windows-latest
+    strategy:
+        matrix:
+          arch: [x64, arm64]
+    steps:
+        - uses: actions/checkout@v3
+        - name: Cache vcpkg
+          uses: actions/cache@v4
+          with:
+            path: |
+              vcpkg/installed
+              vcpkg/packages
+            key: ${{ runner.os }}-vcpkg-${{ matrix.arch }}-${{ hashFiles('vcpkg/manifest.json', 'vcpkg/installed/*') }}
+            restore-keys: |
+              ${{ runner.os }}-vcpkg-
+        - name: Set up vcpkg and install deps
+          shell: pwsh
+          run: |
+            git clone https://github.com/microsoft/vcpkg.git vcpkg
+            .\vcpkg\bootstrap-vcpkg.bat
+            .\vcpkg\vcpkg integrate install || $false
+            if ("${{ matrix.arch }}" -eq "arm64") { .\vcpkg\vcpkg install libsodium zstd --triplet arm64-windows } else { .\vcpkg\vcpkg install libsodium zstd --triplet x64-windows }
+        - name: Configure CMake (MSVC)
+          shell: pwsh
+          run: |
+            $cArch = if ('${{ matrix.arch }}' -eq 'arm64') { 'ARM64' } else { 'x64' }
+            $triplet = if ('${{ matrix.arch }}' -eq 'arm64') { 'arm64-windows' } else { 'x64-windows' }
+            cmake -S . -B build-msvc -G "Visual Studio 17 2022" -A $cArch -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=$(pwd)/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$triplet
+        - name: Build (MSVC)
+          shell: pwsh
+          run: |
+            cmake --build build-msvc --config Release --parallel
+        - name: Run C++ tests (MSVC)
+          shell: pwsh
+          run: |
+            Push-Location build-msvc
+            ctest -C Release --output-on-failure || $false
+            Pop-Location
+        - name: Collect MSVC artifacts
+          uses: actions/upload-artifact@v4
+          with:
+            name: Dvx3-Backup-Manager-Windows-msvc-${{ matrix.arch }}
+            path: |
+              build-msvc/Release/*
+              build-msvc/*.dll
+              build-msvc/*.exe
