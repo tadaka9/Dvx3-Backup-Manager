@@ -1006,9 +1006,9 @@ jobs:
             & .\vcpkg\bootstrap-vcpkg.bat
             & .\vcpkg\vcpkg integrate install
             if ("${{ matrix.arch }}" -eq "arm64") {
-              & .\vcpkg\vcpkg install libsodium zstd --triplet arm64-windows
+              & .\vcpkg\vcpkg install libsodium zstd gtest --triplet arm64-windows
             } else {
-              & .\vcpkg\vcpkg install libsodium zstd --triplet x64-windows
+              & .\vcpkg\vcpkg install libsodium zstd gtest --triplet x64-windows
             }
             # List installed packages for diagnostics
             & .\vcpkg\vcpkg list || Write-Output "vcpkg list failed"
