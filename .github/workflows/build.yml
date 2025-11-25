@@ -14,6 +14,16 @@ jobs:
       matrix:
         arch: [x64]
     steps:
+              - name: List GTest and lib contents (MSVC)
+                shell: pwsh
+                run: |
+                  $triplet = if ("${{ matrix.arch }}" -eq "arm64") { "arm64-windows" } else { "x64-windows" }
+                  $gtestDir = "$env:GITHUB_WORKSPACE\vcpkg\installed\$triplet\share\gtest"
+                  $libDir = "$env:GITHUB_WORKSPACE\vcpkg\installed\$triplet\lib"
+                  Write-Output "Listing GTest directory: $gtestDir"
+                  if (Test-Path $gtestDir) { Get-ChildItem -Path $gtestDir -Recurse -ErrorAction SilentlyContinue | Select-Object -First 50 } else { Write-Output "GTest dir not found: $gtestDir" }
+                  Write-Output "Listing lib directory: $libDir"
+                  if (Test-Path $libDir) { Get-ChildItem -Path $libDir -Recurse -ErrorAction SilentlyContinue | Select-Object -First 50 } else { Write-Output "Lib dir not found: $libDir" }
       - uses: actions/checkout@v3
       - name: Cache ccache (Windows)
         if: runner.os == 'Windows'
@@ -1028,6 +1038,17 @@ jobs:
             }
             $gtestShare = Join-Path $env:GITHUB_WORKSPACE "vcpkg\\installed\\$trip\\share\\gtest"
             if (Test-Path $gtestShare) { Write-Output "GTest found in: $gtestShare"; Get-ChildItem -Path $gtestShare -Recurse -ErrorAction SilentlyContinue | Select-Object -First 50 } else { Write-Output "GTest not found under vcpkg installed triplet: $trip" }
+
+        - name: List GTest and lib contents (MSVC)
+          shell: pwsh
+          run: |
+            $triplet = if ("${{ matrix.arch }}" -eq "arm64") { "arm64-windows" } else { "x64-windows" }
+            $gtestDir = "$env:GITHUB_WORKSPACE\vcpkg\installed\$triplet\share\gtest"
+            $libDir = "$env:GITHUB_WORKSPACE\vcpkg\installed\$triplet\lib"
+            Write-Output "Listing GTest directory: $gtestDir"
+            if (Test-Path $gtestDir) { Get-ChildItem -Path $gtestDir -Recurse -ErrorAction SilentlyContinue | Select-Object -First 50 } else { Write-Output "GTest dir not found: $gtestDir" }
+            Write-Output "Listing lib directory: $libDir"
+            if (Test-Path $libDir) { Get-ChildItem -Path $libDir -Recurse -ErrorAction SilentlyContinue | Select-Object -First 50 } else { Write-Output "Lib dir not found: $libDir" }
         - name: Windows/MSVC pre-checks
           shell: pwsh
           run: |
