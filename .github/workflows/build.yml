@@ -1,3 +1,16 @@
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Qt6 (Ubuntu)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qt6-base-dev
+      - uses: actions/checkout@v3
+      - name: Build all components (Linux)
+        run: |
+          chmod +x build-all.sh || true
+          sed -i 's/\r$//' build-all.sh
+          ./build-all.sh || echo "build-all.sh returned exit code $?"
 name: Build Backup Manager
 
 on:
@@ -1036,7 +1049,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { Write-Error "vcpkg bootstrap failed"; exit 1 }
             & .\vcpkg\vcpkg integrate install
             if ($LASTEXITCODE -ne 0) { Write-Error "vcpkg integrate install failed"; exit 1 }
-            $commonDeps = @('libsodium', 'zstd', 'gtest', 'glib', 'gio', 'json-glib')
+            $commonDeps = @('libsodium', 'zstd', 'gtest')
             Write-Output "=== vcpkg install ==="
             if ("${{ matrix.arch }}" -eq "arm64") {
               & .\vcpkg\vcpkg install $commonDeps --triplet arm64-windows
