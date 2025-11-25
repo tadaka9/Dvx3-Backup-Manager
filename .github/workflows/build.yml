@@ -1020,6 +1020,11 @@ jobs:
             $cArch = if ('${{ matrix.arch }}' -eq 'arm64') { 'ARM64' } else { 'x64' }
             $triplet = if ('${{ matrix.arch }}' -eq 'arm64') { 'arm64-windows' } else { 'x64-windows' }
             $vcpkgToolchain = "$env:GITHUB_WORKSPACE\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake"
+            if (-not (Test-Path $vcpkgToolchain)) {
+              Write-Error "vcpkg toolchain file not found: $vcpkgToolchain"
+              Get-ChildItem -Path "$env:GITHUB_WORKSPACE\\vcpkg" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 50
+              throw "vcpkg toolchain missing"
+            }
             Write-Output "Using vcpkg toolchain: $vcpkgToolchain"
             # Build the C++ tests only (CMakeLists.txt in tests/)
             if (Test-Path "$env:GITHUB_WORKSPACE\\tests\\CMakeLists.txt") {
