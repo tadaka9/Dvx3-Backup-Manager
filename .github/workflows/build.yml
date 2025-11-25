@@ -361,41 +361,43 @@ jobs:
               CFLAGS="-fPIC" CXXFLAGS="-fPIC" ./configure --prefix=/usr/local --enable-static --disable-shared
               make -j$(nproc)
               sudo make install
-              sudo ldconfig
-              popd
-            fi
-            # Ensure pkg-config can find the /usr/local/libsodium build for subsequent workflow steps
-            echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-            # Verify that the installed libsodium static archive is PIC. If not, abort the CI build.
-            if [ -f /usr/local/lib/libsodium.a ]; then
-              echo "Checking whether /usr/local/lib/libsodium.a contains PIC objects"
-              tmpd=$(mktemp -d)
-              (cd "$tmpd" && ar x /usr/local/lib/libsodium.a) || true
-              pic_ok=1
+              run: |
                 set -ex
-                echo "Target arch: ${ARCH:-x86_64} matrix value: ${{ matrix.arch }}"
-                if [ "${{ matrix.arch }}" != "x86_64" ]; then
-                  echo "Running build inside container for arch=${{ matrix.arch }}"
-                  docker run --rm --platform linux/${{ matrix.arch }} -v "$PWD":/build -w /build debian:latest /bin/bash -lc '
-                    set -ex
-                    apt-get update
-                    apt-get install -y pkg-config || true
-                    apt-get install -y qt6-base-dev qt6-tools-dev build-essential cmake valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache libgtest-dev || true
-                    # Build system libgtest if present
-                    if [ -d /usr/src/gtest ]; then
-                      pushd /usr/src/gtest; cmake -S . -B build || true; cmake --build build --parallel || true; cmake --install build --prefix /usr/local || true; popd
-                    fi
-                    export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
-                    chmod +x build-all.sh || true
-                    sed -i "s/\r$//" build-all.sh
-                    ./build-all.sh
-                  '
-                  exit 0
-                fi
-        uses: actions/upload-artifact@v4
-        with:
-          name: Dvx3-Backup-Manager-Linux-Build-${{ matrix.arch }}
-          path: |
+                if [ "${FORCE_STATIC_LIBSODIUM:-0}" -eq 1 ]; then
+                  if [ -f /usr/lib/libsodium.a ] || [ -f /usr/lib/x86_64-linux-gnu/libsodium.a ] || [ -f /usr/local/lib/libsodium.a ]; then
+                    echo "Static libsodium already present"
+                  else
+                    echo "Static libsodium not found; building from source"
+                    wget -qO /tmp/libsodium.tar.gz https://download.libsodium.org/libsodium/releases/libsodium-1.0.20.tar.gz
+                    tar -xzf /tmp/libsodium.tar.gz -C /tmp
+                    pushd /tmp/libsodium-1.0.20
+                    # Build a static libsodium archive compiled with -fPIC so it can be linked into shared libraries.
+                    CFLAGS="-fPIC" CXXFLAGS="-fPIC" ./configure --prefix=/usr/local --enable-static --disable-shared
+                    make -j$(nproc)
+                    sudo make install
+                    sudo ldconfig
+                    popd
+                  fi
+                  # Ensure pkg-config can find the /usr/local/libsodium build for subsequent workflow steps
+                  echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+                  # Verify that the installed libsodium static archive is PIC. If not, abort the CI build.
+                  if [ -f /usr/local/lib/libsodium.a ]; then
+                    echo "Checking whether /usr/local/lib/libsodium.a contains PIC objects"
+                    tmpd=$(mktemp -d)
+                    (cd "$tmpd" && ar x /usr/local/lib/libsodium.a) || true
+                    pic_ok=1
+                      /* Lines 375-394 omitted */
+                      fi
+
+            - name: Upload Linux build artifact
+              uses: actions/upload-artifact@v4
+              with:
+                name: Dvx3-Backup-Manager-Linux-Build-${{ matrix.arch }}
+                path: |
+                  backup-manager
+                  backup-manager-gui
+                  dvx3
+                  libdvx3.so
             backup-manager
             backup-manager-gui
             dvx3
