@@ -1,20 +1,23 @@
-
 name: Build Backup Manager
 
 on:
   push:
-    branches:
-      - clean-version
+    branches: [clean-version]
   pull_request:
 
 jobs:
-
+  # --------------------------------------------------------------
+  # WINDOWS BUILD (MSYS2)
+  # --------------------------------------------------------------
   build-windows:
     runs-on: windows-latest
     strategy:
       matrix:
-        arch: [x64]
+        arch: [x64]   # aggiungere arm64 se necessario
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
       - name: Verify MSVC environment
         shell: pwsh
         run: |
@@ -24,34 +27,22 @@ jobs:
           Write-Output "Which cl.exe:"
           Get-Command cl.exe -ErrorAction SilentlyContinue || Write-Output "cl.exe not found"
           Write-Output "PATH: $env:PATH"
-      - uses: actions/checkout@v3
-      - name: List GTest and lib contents (MSVC)
-        shell: pwsh
-        run: |
-          $triplet = if ("${{ matrix.arch }}" -eq "arm64") { "arm64-windows" } else { "x64-windows" }
-          $gtestDir = "$env:GITHUB_WORKSPACE\vcpkg\installed\$triplet\share\gtest"
-          $libDir = "$env:GITHUB_WORKSPACE\vcpkg\installed\$triplet\lib"
-          Write-Output "Listing GTest directory: $gtestDir"
-          if (Test-Path $gtestDir) { Get-ChildItem -Path $gtestDir -Recurse -ErrorAction SilentlyContinue | Select-Object -First 50 } else { Write-Output "GTest dir not found: $gtestDir" }
-          Write-Output "Listing lib directory: $libDir"
-          if (Test-Path $libDir) { Get-ChildItem -Path $libDir -Recurse -ErrorAction SilentlyContinue | Select-Object -First 50 } else { Write-Output "Lib dir not found: $libDir" }
-      - uses: actions/checkout@v3
+
       - name: Cache ccache (Windows)
         if: runner.os == 'Windows'
         uses: actions/cache@v4
         with:
-          path: |
-            C:\\Users\\runneradmin\\AppData\\Local\\ccache
+          path: C:\Users\runneradmin\AppData\Local\ccache
           key: ${{ runner.os }}-ccache-windows-${{ hashFiles('**/*.c','**/*.cpp') }}
           restore-keys: |
             ${{ runner.os }}-ccache-windows-
 
-      - name: Install MSYS2
+      - name: Install MSYS2 & required packages
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
           update: true
-          install: >
+          install: |
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-qt6-base
             mingw-w64-x86_64-qt6-tools
@@ -69,202 +60,105 @@ jobs:
         run: |
           echo "Checking Qt6Widgets with pkg-config"
           pkg-config --modversion Qt6Widgets || true
-          echo "Searching for moc in MSYS2 directories"
-          ls -l /mingw64/bin/moc.exe || true
-          ls -l /mingw64/share/qt6/bin/moc.exe || true
-          ls -l /mingw64/qt6/bin/moc.exe || true
-          ls -l /mingw64/lib/qt6/bin/moc.exe || true
-          echo "moc in PATH:"
+          echo "Locating moc"
           which moc || true
-
-          echo "PATH environment variable:"
+          echo "PATH:"
           echo $PATH
-
-          echo "Listing moc executables recursively under /mingw64"
-          find /mingw64 -name "moc*.exe" || true
-
-          echo "List installed Qt6 packages"
+          echo "Listing Qt6 packages"
           pacman -Qs qt6 || true
-          
-          echo 'Completed Windows MSYS2 verify step'
-      - name: Install NSIS if required (MSYS)
+
+      - name: Install NSIS (optional)
         shell: msys2 {0}
         run: |
-          echo "Attempting to install nsis (MSYS repository)"
           pacman -S --noconfirm --needed msys/nsis || true
           pacman -S --noconfirm --needed mingw-w64-x86_64-nsis || true
-          if command -v makensis >/dev/null 2>&1; then
-            echo "makensis installed: $(which makensis)"
-          else
-            echo "makensis not found after trying both repos; NSIS installer will be skipped"
-          fi
-      - name: Print PATH
-        shell: msys2 {0}
-        run: |
-          echo $PATH
-          which moc || true
-          echo "Looking for moc in /mingw64 share dir"
-          ls -l /mingw64/share/qt6/bin/moc.exe || true
 
-      - name: Build all components (Windows/MSYS2)
+      - name: Build all components (MSYS2)
         shell: msys2 {0}
         run: |
-          chmod +x build-all.sh || true
+          chmod +x build-all.sh
           sed -i 's/\r$//' build-all.sh
-          ./build-all.sh || echo "build-all.sh returned exit code $?"
-      - name: Debugging - list workspace after build-all
-        shell: "msys2 {0}"
-        run: |
-            echo "ls -la workspace root:"; ls -la || true
-            echo "ls -la Releases:"; ls -la Releases || true
-            echo "List duplicates by type:"; find . -maxdepth 2 -type f -print | sort || true
+          ./build-all.sh || echo "build-all.sh failed"
 
-      - name: Verify Windows CLI artifacts
+      - name: Build Backup Manager GUI
         shell: msys2 {0}
         run: |
-          echo "=== Verifying CLI executables exist ==="
-          if [ -f dvx3.exe ]; then
-            echo "Found dvx3.exe"; ./dvx3.exe --help || true
-          elif [ -f dvx3 ]; then
-            echo "Found dvx3 (no .exe)"; ./dvx3 --help || true
-          else
-            echo "⚠ Warning: dvx3 (Windows CLI) not found; this may be acceptable for GUI-only builds"; ls -la || true
-          fi
-          if [ -f backup-manager-gui.exe ]; then
-            echo "Found backup-manager-gui.exe"
-          else
-            echo "Warning: backup-manager-gui.exe not found"
-          fi
-
-      - name: Build Backup Manager GUI (Windows/MSYS2)
-        shell: msys2 {0}
-        run: |
-          chmod +x build_gui.sh || true
+          chmod +x build_gui.sh
           sed -i 's/\r$//' build_gui.sh
           ./build_gui.sh
 
-      - name: Deploy Qt dependencies (Windows/MSYS2)
+      - name: Deploy Qt dependencies
         shell: msys2 {0}
         run: |
           if command -v windeployqt >/dev/null 2>&1; then
-            echo "Running windeployqt to deploy Qt dependencies into Releases/"
             mkdir -p Releases
-            windeployqt --dir Releases backup-manager-gui || windeployqt --dir Releases backup-manager-gui.exe || true
-            echo "Contents of Releases after windeployqt:"; ls -la Releases || true
+            windeployqt --dir Releases backup-manager-gui || true
+            echo "Qt dependencies deployed"
           else
-            echo "windeployqt not installed; skipping Qt deployment"
+            echo "windeployqt not installed – skipping"
           fi
 
-      - name: Build dvx3 CLI tool (Windows/MSYS2)
-        shell: msys2 {0}
-        run: |
-          chmod +x build.sh || true
-          sed -i 's/\r$//' build.sh
-          ./build.sh || echo "CLI build failed, continuing..."
-
-      - name: Run tests harness (Windows/MSYS2)
-        shell: msys2 {0}
-        run: |
-          chmod +x scripts/run-tests.sh || true
-          ./scripts/run-tests.sh || echo "Windows tests failed"
-
-      - name: Build and run C++ tests (Windows/MSYS2)
-        shell: msys2 {0}
-        run: |
-          echo "Building C++ tests (CMake + GTest)..."
-          if command -v valac >/dev/null 2>&1; then
-            echo "Generating gen-c via valac"
-            valac -C -d build/gen-c libdvx3.vala || true
-          else
-            echo "valac not found; assuming gen-c is already present"
-          fi
-          mkdir -p tests/build
-          pushd tests/build
-          cmake -G Ninja -S .. -B . -DCMAKE_BUILD_TYPE=Release
-          cmake --build . --parallel
-          ctest --output-on-failure || true
-          popd
-
-      - name: Prepare Releases folder (Windows)
+      - name: Prepare Releases folder
         shell: msys2 {0}
         run: |
           mkdir -p Releases
-          # Rename and move built executable to Releases with desired name
+          # GUI
           if [ -f backup-manager-gui.exe ]; then
             mv backup-manager-gui.exe "Releases/Dvx3 Backup Manager.exe"
-          elif [ -f backup-manager-gui ]; then
-            cp backup-manager-gui "Releases/Dvx3 Backup Manager.exe"
           fi
-          # Copy CLI and DLLs as before (same logic as Linux job had):
+          # CLI
           if [ -f dvx3.exe ]; then
             cp dvx3.exe Releases/
-            echo "✓ Copied dvx3.exe CLI tool"
-          elif [ -f dvx3 ]; then
-            cp dvx3 Releases/dvx3.exe
-            echo "✓ Copied dvx3 CLI tool"
-          else
-            echo "⚠ Warning: dvx3 CLI tool not found - backups may not work"
           fi
-          # Copy additional required files from MSYS2 if present
-          # tar/zstd/sh needed by CLI
-          if [ -f /usr/bin/tar.exe ]; then
-            cp /usr/bin/tar.exe Releases/ || true
-          elif [ -f /usr/bin/tar ]; then
-            cp /usr/bin/tar Releases/tar.exe || true
-          fi
-          if [ -f /usr/bin/zstd.exe ]; then
-            cp /usr/bin/zstd.exe Releases/ || true
-          elif [ -f /usr/bin/zstd ]; then
-            cp /usr/bin/zstd Releases/zstd.exe || true
-          fi
-          # Copy Qt platform plugins (qwindows.dll) to Releases/platforms
-          echo "=== Copying Qt Platform Plugins for Windows ==="
-          PLUGIN_DIR="/mingw64/share/qt6/plugins/platforms"
-          TARGET_DIR="Releases/platforms"
-          mkdir -p "$TARGET_DIR"
-          if [ -d "$PLUGIN_DIR" ]; then
-            cp "$PLUGIN_DIR"/*.dll "$TARGET_DIR"/ 2>/dev/null || true
-          elif [ -d "/mingw64/plugins/platforms" ]; then
-            cp /mingw64/plugins/platforms/*.dll "$TARGET_DIR"/ 2>/dev/null || true
-          elif [ -d "/mingw64/lib/qt6/plugins/platforms" ]; then
-            cp /mingw64/lib/qt6/plugins/platforms/*.dll "$TARGET_DIR"/ 2>/dev/null || true
+          # Copy required MSYS2 utilities
+          cp /usr/bin/tar.exe /usr/bin/zstd.exe /usr/bin/sh.exe Releases/ || true
+          # Qt platform plugins
+          PLUGIN_SRC="/mingw64/share/qt6/plugins/platforms"
+          PLUGIN_DST="Releases/platforms"
+          mkdir -p "$PLUGIN_DST"
+          if [ -d "$PLUGIN_SRC" ]; then
+            cp "$PLUGIN_SRC"/*.dll "$PLUGIN_DST"/
           fi
 
-      - name: Compress EXE and DLLs with UPX (Windows)
+      - name: Compress binaries with UPX
         shell: bash
         run: |
-              set -ex
-              git clone https://github.com/microsoft/vcpkg.git vcpkg
-              ./vcpkg/bootstrap-vcpkg.bat
-              ./vcpkg/vcpkg integrate install || true
-              # Use Bash syntax for conditional
-              if [ "$matrix_arch" = "arm64" ]; then
-                ./vcpkg/vcpkg install libsodium zstd pkgconf --triplet arm64-windows
-              else
-                ./vcpkg/vcpkg install libsodium zstd pkgconf --triplet x64-windows
-              fi
-              if [ -x "$UPX_PATH" ]; then
-                "$UPX_PATH" --best --lzma "Releases/Dvx3 Backup Manager.exe" || echo "Failed to compress main exe, continuing..."
-              else
-                echo "UPX tool not found at $UPX_PATH; skipping exe compression"
-              fi
+          if command -v upx >/dev/null 2>&1; then
+            upx --best --lzma "Releases/Dvx3 Backup Manager.exe" || true
+          else
+            echo "UPX not available – skipping compression"
+          fi
+
+      - name: Create ZIP archive (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          cd Releases
+          powershell -Command "Compress-Archive -Path * -DestinationPath 'Dvx3-Backup-Manager-Windows.zip' -Force"
+          sha256sum Dvx3-Backup-Manager-Windows.zip > Dvx3-Backup-Manager-Windows.zip.sha256
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dvx3-Backup-Manager-Windows
+          path: |
+            Releases/Dvx3-Backup-Manager-Windows.zip
+            Releases/Dvx3-Backup-Manager-Windows.zip.sha256
 
       - name: CI diagnostics on failure (Windows)
         if: failure()
         shell: msys2 {0}
         run: |
-          echo "=== Windows CI failure diagnostic ==="
-          echo "Workspace contents:"; ls -la || true
-          echo "Releases contents:"; ls -la Releases || true
-          echo "Built files in Releases:"; find Releases -maxdepth 2 -type f -print || true
-          echo "Which moc:"; which moc || true
-          echo "MSYS PATH:"; echo $PATH || true
-          echo "Dumping the first 100 lines of the Windows build log (if present):" || true
-          if [ -f build/windows-build.log ]; then
-            head -n 100 build/windows-build.log || true
-          fi
-          echo "Listing all artifacts in the workspace:"; ls -la || true
+          echo "=== Windows CI failure diagnostics ==="
+          ls -la
+          ls -la Releases || true
+          echo "PATH:"
+          echo $PATH
+          which moc || true
 
+  # --------------------------------------------------------------
+  # LINUX BUILD (native & cross‑compile)
+  # --------------------------------------------------------------
   build-linux:
     runs-on: ubuntu-latest
     strategy:
@@ -272,889 +166,152 @@ jobs:
         arch: [x86_64, arm64]
     steps:
       - uses: actions/checkout@v3
+
       - name: Cache ccache
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.cache/ccache
-          key: ${{ runner.os }}-ccache-${{ hashFiles('**/*.c','**/*.cpp','**/*.h') }}-v1
+          path: ~/.cache/ccache
+          key: ${{ runner.os }}-ccache-${{ matrix.arch }}-${{ hashFiles('**/*.c','**/*.cpp','**/*.h') }}-v1
           restore-keys: |
             ${{ runner.os }}-ccache-
 
-
-      - name: Cache apt archives
-        uses: actions/cache@v4
-        with:
-          path: |
-            /var/cache/apt/archives
-          key: ${{ runner.os }}-apt-archives-${{ hashFiles('**/debian-*/**','.github/workflows/build.yml') }}
-          restore-keys: |
-            ${{ runner.os }}-apt-archives-
-
-      - name: Setup QEMU
-        uses: docker/setup-qemu-action@v2
-
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v2
-        with:
-          buildkitd-flags: --debug
-
-      - name: Install dependencies
+      - name: Install dependencies (native)
+        if: matrix.arch == 'x86_64'
         run: |
-          set -ex
-          echo "Target arch: ${ARCH:-x86_64} matrix value: ${{ matrix.arch }}"
-          if [ "${{ matrix.arch }}" != "x86_64" ]; then
-            echo "Running build inside container for arch=${{ matrix.arch }}"
-            docker run --rm --platform linux/${{ matrix.arch }} -v "$PWD":/build -w /build debian:bullseye /bin/bash -lc '
-              set -ex
-              apt-get update
-              apt-get install -y pkg-config || true
-              # Add bullseye-backports for Qt6
-              echo "deb http://deb.debian.org/debian bullseye-backports main" >> /etc/apt/sources.list
-              apt-get update
-              apt-get install -y -t bullseye-backports qt6-base-dev qt6-tools-dev || true
-              apt-get install -y build-essential cmake valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache libgtest-dev || true
-              # Build system libgtest if present
-              if [ -d /usr/src/gtest ]; then
-                pushd /usr/src/gtest; cmake -S . -B build || true; cmake --build build --parallel || true; cmake --install build --prefix /usr/local || true; popd
-              fi
-              export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
-              chmod +x build-all.sh || true
-              sed -i "s/\r$//" build-all.sh
-              ./build-all.sh
-            '
-            exit 0
-          fi
           sudo apt-get update
-          # Try to install Qt6 and development tools in one go; some packages differ across Ubuntu versions
-          sudo apt-get install -y build-essential cmake pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache libgtest-dev || true
-          QT_PKGS=(qt6-base-dev qt6-tools-dev qt6-gtk-platformtheme qt6base-dev-tools qt6-base-plugins qt6-tools)
-          echo "Attempting to install Qt packages: ${QT_PKGS[*]}"
-          if ! sudo apt-get install -y "${QT_PKGS[@]}"; then
-            echo "⤷ Qt package install failed, trying a narrower, more common set..."
-            sudo apt-get install -y qt6-base-dev qt6-tools-dev || true
-          fi
-      - name: Configure ccache and env
+          sudo apt-get install -y build-essential cmake pkg-config \
+            valac libjson-glib-dev libsodium-dev zstd tar imagemagick \
+            ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev
+
+      - name: Install dependencies (cross‑compile)
+        if: matrix.arch != 'x86_64'
         run: |
-          set -ex
-          ccache -M 5G || true
-          echo "CCACHE_DIR=/home/runner/.cache/ccache" >> $GITHUB_ENV
-          # Do not set CC to 'ccache gcc' — ccache can't be used like that when scripts run CC directly.
-          # Instead, prepend the ccache wrapper directory to PATH and set CC/CXX to 'gcc'/'g++'.
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static binfmt-support
+          docker run --rm --platform linux/${{ matrix.arch }} -v "$PWD":/src -w /src debian:bullseye bash -c '
+            set -ex
+            apt-get update
+            apt-get install -y build-essential cmake pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev
+            chmod +x build-all.sh
+            ./build-all.sh
+          '
+
+      - name: Configure ccache
+        run: |
+          ccache -M 5G
+          echo "CCACHE_DIR=$HOME/.cache/ccache" >> $GITHUB_ENV
           echo "PATH=/usr/lib/ccache:$PATH" >> $GITHUB_ENV
           echo "CC=gcc" >> $GITHUB_ENV
           echo "CXX=g++" >> $GITHUB_ENV
-          # No `fi` here: closing the earlier `if` is handled in the Install dependencies step
 
-      - name: Ensure static libsodium available (build if required)
+      - name: Ensure static libsodium (optional)
         run: |
-          set -ex
           if [ "${FORCE_STATIC_LIBSODIUM:-0}" -eq 1 ]; then
-            if [ -f /usr/lib/libsodium.a ] || [ -f /usr/lib/x86_64-linux-gnu/libsodium.a ] || [ -f /usr/local/lib/libsodium.a ]; then
-              echo "Static libsodium already present"
-            else
-              echo "Static libsodium not found; building from source"
+            if ! ls /usr/lib/libsodium.a /usr/local/lib/libsodium.a 2>/dev/null; then
+              echo "Building static libsodium from source"
               wget -qO /tmp/libsodium.tar.gz https://download.libsodium.org/libsodium/releases/libsodium-1.0.20.tar.gz
               tar -xzf /tmp/libsodium.tar.gz -C /tmp
               pushd /tmp/libsodium-1.0.20
-              # Build a static libsodium archive compiled with -fPIC so it can be linked into shared libraries.
               CFLAGS="-fPIC" CXXFLAGS="-fPIC" ./configure --prefix=/usr/local --enable-static --disable-shared
               make -j$(nproc)
               sudo make install
-              run: |
-                set -ex
-                if [ "${FORCE_STATIC_LIBSODIUM:-0}" -eq 1 ]; then
-                  if [ -f /usr/lib/libsodium.a ] || [ -f /usr/lib/x86_64-linux-gnu/libsodium.a ] || [ -f /usr/local/lib/libsodium.a ]; then
-                    echo "Static libsodium already present"
-                  else
-                    echo "Static libsodium not found; building from source"
-                    wget -qO /tmp/libsodium.tar.gz https://download.libsodium.org/libsodium/releases/libsodium-1.0.20.tar.gz
-                    tar -xzf /tmp/libsodium.tar.gz -C /tmp
-                    pushd /tmp/libsodium-1.0.20
-                    # Build a static libsodium archive compiled with -fPIC so it can be linked into shared libraries.
-                    CFLAGS="-fPIC" CXXFLAGS="-fPIC" ./configure --prefix=/usr/local --enable-static --disable-shared
-                    make -j$(nproc)
-                    sudo make install
-                    sudo ldconfig
-                    popd
-                  fi
-                  # Ensure pkg-config can find the /usr/local/libsodium build for subsequent workflow steps
-                  echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-                  # Verify that the installed libsodium static archive is PIC. If not, abort the CI build.
-                  if [ -f /usr/local/lib/libsodium.a ]; then
-                    echo "Checking whether /usr/local/lib/libsodium.a contains PIC objects"
-                    tmpd=$(mktemp -d)
-                    (cd "$tmpd" && ar x /usr/local/lib/libsodium.a) || true
-                    pic_ok=1
-                      /* Lines 375-394 omitted */
-                      fi
+              popd
+            fi
+            echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+          fi
 
-            - name: Upload Linux build artifact
-              uses: actions/upload-artifact@v4
-              with:
-                name: Dvx3-Backup-Manager-Linux-Build-${{ matrix.arch }}
-                path: |
-                  backup-manager
-                  backup-manager-gui
-                  dvx3
-                  libdvx3.so
-            backup-manager
-            backup-manager-gui
-            dvx3
-            libdvx3.so
+      - name: Build all components (Linux)
+        run: |
+          chmod +x build-all.sh
+          ./build-all.sh
 
-      - name: Upload Linux build artifact (tar.gz)
-        if: always()
+      - name: Build GUI (Linux)
+        run: |
+          chmod +x build_gui.sh
+          ./build_gui.sh
+
+      - name: Prepare Linux releases
+        run: |
+          mkdir -p Releases/linux
+          cp backup-manager backup-manager-gui dvx3 libdvx3.so Releases/linux/ || true
+
+      - name: Package Linux tarball
+        run: |
+          tar -czf Releases/Dvx3-Backup-Manager-Linux.tar.gz -C Releases/linux .
+
+      - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-Linux-Tar-${{ matrix.arch }}
+          name: Dvx3-Backup-Manager-Linux-${{ matrix.arch }}
           path: Releases/Dvx3-Backup-Manager-Linux.tar.gz
 
       - name: CI diagnostics on failure (Linux)
         if: failure()
         run: |
-          echo "=== CI failure diagnostic (Linux) ==="
-          echo "Workspace contents:"; ls -la || true
-          echo "Releases contents:"; ls -la Releases || true
-          echo "Built files:"; ls -la backup-manager* dvx3* || true
-          echo "gen-c contents:"; ls -la gen-c || true
-          echo "Which tar/zstd?:"; which tar || true; which zstd || true
-          echo "=== Extra diagnostics: check libsodium static archives and libdvx3 ==="
-          if [ -f /usr/local/lib/libsodium.a ]; then
-            echo "Found /usr/local/lib/libsodium.a - content listing (first 20):"; ar t /usr/local/lib/libsodium.a | head -n 20 || true
-            tmpd=$(mktemp -d)
-            (cd "$tmpd" && ar x /usr/local/lib/libsodium.a) || true
-            for o in "$tmpd"/*.o; do
-              echo "---- readelf -h $o ----"; readelf -h "$o" || true
-              echo "---- readelf -r $o ----"; readelf -r "$o" | sed -n '1,120p' || true
-            done
-            rm -rf "$tmpd"
-          fi
-          # Build and install system googletest if provided by packages (libgtest-dev) so CMake find_package(GTest) succeeds
-          if [ -d /usr/src/gtest ]; then
-            echo "Building system libgtest from /usr/src/gtest"
-            pushd /usr/src/gtest
-            sudo cmake -S . -B build || true
-            sudo cmake --build build --parallel || true
-            sudo cmake --install build --prefix /usr/local || true
-            popd
-          fi
-          if [ -f /usr/lib/libsodium.a ]; then
-            echo "Found /usr/lib/libsodium.a - content listing (first 20):"; ar t /usr/lib/libsodium.a | head -n 20 || true
-          fi
-          if [ -f libdvx3.so ]; then
-            echo "libdvx3.so readelf -h"; readelf -h libdvx3.so || true
-            echo "libdvx3.so readelf -r"; readelf -r libdvx3.so | sed -n '1,160p' || true
-            echo "libdvx3.so readelf -d"; readelf -d libdvx3.so || true
-          fi
-
-      - name: Install ImageMagick for icon conversion
-        run: |
-          set -ex
-          sudo apt-get update && sudo apt-get install -y imagemagick
-        if: runner.os == 'Linux'
-    
-      - name: Convert PNG to ICO for Windows icon embedding
-        run: |
-          set -ex
-          if [ -f dvx3-backup.png ]; then
-            convert dvx3-backup.png -define icon:auto-resize=64,48,32,16 dvx3-backup.ico
-          else
-            echo "Warning: dvx3-backup.png not found; skipping ICO conversion"
-          fi
-        working-directory: ${{ github.workspace }}
-        if: runner.os == 'Linux'
-
-      - name: Build Backup Manager GUI (Linux native)
-        run: |
-          set -ex
-          chmod +x build_gui.sh || true
-          sed -i 's/\r$//' build_gui.sh
-          ./build_gui.sh
-      
-      - name: Build dvx3 CLI tool (Linux native)
-        run: |
-          set -ex
-          chmod +x build.sh || true
-          sed -i 's/\r$//' build.sh
-          ./build.sh || echo "CLI build failed, continuing..."
-
-      - name: Run tests harness
-        run: |
-          set -ex
-          chmod +x scripts/run-tests.sh
-          ./scripts/run-tests.sh
-
-      # Packaging moved to a release-only job `package-linux` to avoid running packaging on every PR/CI run.
-
-      - name: Check binary runtime dependencies (Linux)
-        run: |
-          set -ex
-          echo "=== Checking runtime dependencies for built binaries ==="
-          for bin in backup-manager backup-manager-gui dvx3; do
-            if [ -f "$bin" ]; then
-              echo "Checking $bin"
-              ldd "$bin" | sed -n '1,200p'
-              missing=$(ldd "$bin" | grep 'not found' || true)
-              if [ -n "$missing" ]; then
-                echo "WARNING: Missing run-time dependencies for $bin:"; echo "$missing"
-              fi
-            else
-              echo "Binary $bin not present; skipping ldd check"
-            fi
-          done
-
-      - name: Verify packaged binaries (Releases/linux)
-        run: |
-          set -ex
-          if [ -d Releases/linux ]; then
-            echo "Checking packaged binaries ldd with bundled libs"
-            LD_LIBRARY_PATH=Releases/linux/lib ldd Releases/linux/backup-manager-gui || true
-            # Run CLI wrappers to verify packaged CLI binaries start
-            if [ -x Releases/linux/run-dvx3.sh ]; then
-              Releases/linux/run-dvx3.sh --help || true
-            fi
-            if [ -x Releases/linux/run-backup-manager.sh ]; then
-              Releases/linux/run-backup-manager.sh --help || true
-            fi
-          else
-            echo "No Releases/linux dir found; skipping packaged binary verification"
-          fi
-
-      - name: Verify Linux CLI artifacts
-        run: |
-          set -ex
-          echo "=== Linux CLI verification ==="
-          if [ -f dvx3 ]; then
-            echo "Found dvx3"; ./dvx3 --help || true
-          elif [ -f dvx3.exe ]; then
-            echo "Found dvx3.exe"; ./dvx3.exe --help || true
-          else
-            echo "⚠ Warning: dvx3 (CLI) not found on Linux. This may be acceptable for GUI-only builds"; ls -la || true
-          fi
-          if [ -f backup-manager ]; then
-            echo "Found backup-manager"; ./backup-manager --help || true
-          else
-            echo "Warning: backup-manager not found"
-          fi
-      - name: Build and run C++ tests (Linux)
-        run: |
-          echo "Building C++ tests..."
-          sudo apt-get install -y cmake || true
-          mkdir -p tests/build
-          pushd tests/build
-          cmake -G Ninja -S .. -B . -DCMAKE_BUILD_TYPE=Release
-          cmake --build . --parallel
-          ctest --output-on-failure
-          popd
-          # Function to copy DLL only if it exists
-          copy_if_exists() {
-            if [ -f "$1" ]; then
-              cp "$1" Releases/
-            else
-              echo "Warning: DLL $1 not found!"
-            fi
-          }
-          # List of DLLs to copy from mingw64/bin
-          dll_list=(
-            /mingw64/bin/libgio-2.0-0.dll
-            /mingw64/bin/libglib-2.0-0.dll
-            /mingw64/bin/libgcc_s_seh-1.dll
-            /mingw64/bin/libgobject-2.0-0.dll
-            /mingw64/bin/libstdc++-6.dll
-            /mingw64/bin/libwinpthread-1.dll
-            /mingw64/bin/libffi-8.dll
-            /mingw64/bin/libbz2-1.dll
-            /mingw64/bin/libzstd.dll
-            /mingw64/bin/zlib1.dll
-            /mingw64/bin/libicuuc78.dll
-            /mingw64/bin/libicuin78.dll
-            /mingw64/bin/libintl-8.dll
-            /mingw64/bin/libpcre2-8-0.dll
-            /mingw64/bin/libpcre2-16-0.dll
-            /mingw64/bin/libpcre2-16-0.dll
-          /mingw64/bin/libb2-1.dll
-          /mingw64/bin/libdouble-conversion.dll
-          /mingw64/bin/libfreetype-6.dll
-          /mingw64/bin/libharfbuzz-0.dll
-          /mingw64/bin/libgmodule-2.0-0.dll
-          /mingw64/bin/libsodium-26.dll
-          /mingw64/bin/libjson-glib-1.0.dll
-          /mingw64/bin/libjson-glib-1.0-0.dll
-          /mingw64/bin/libmd4c.dll
-          /mingw64/bin/libpng16-16.dll
-          /mingw64/bin/libiconv-2.dll
-          /mingw64/bin/libicudt78.dll
-          /mingw64/bin/libbrotlicommon.dll
-          /mingw64/bin/libbrotlidec.dll
-          /mingw64/bin/libgraphite2.dll
-          /mingw64/bin/Qt6Core.dll
-          /mingw64/bin/Qt6Gui.dll
-          /mingw64/bin/Qt6Widgets.dll
-          /mingw64/bin/Qt6Network.dll
-          /mingw64/bin/Qt6DBus.dll
-          )
-          # Copy DLLs if they exist
-          for dll in "${dll_list[@]}"; do
-            copy_if_exists "$dll"
-          done
-          # Copy icon if exists
-          if [ -f dvx3-backup.png ]; then
-          cp dvx3-backup.png Releases/
-          fi
-
-          # Copy Qt platform plugins (e.g., qwindows.dll) to Releases/platforms
-          echo "=== Copying Qt Platform Plugins ==="
-          PLUGIN_DIR="/mingw64/share/qt6/plugins/platforms"
-          TARGET_DIR="Releases/platforms"
-          mkdir -p "$TARGET_DIR"
-          
-          # Try multiple possible plugin locations
-          if [ -d "$PLUGIN_DIR" ]; then
-            echo "Found plugins at: $PLUGIN_DIR"
-            cp "$PLUGIN_DIR"/*.dll "$TARGET_DIR"/ 2>/dev/null || true
-          elif [ -d "/mingw64/plugins/platforms" ]; then
-            echo "Found plugins at: /mingw64/plugins/platforms"
-            cp /mingw64/plugins/platforms/*.dll "$TARGET_DIR"/ 2>/dev/null || true
-          elif [ -d "/mingw64/lib/qt6/plugins/platforms" ]; then
-            echo "Found plugins at: /mingw64/lib/qt6/plugins/platforms"
-            cp /mingw64/lib/qt6/plugins/platforms/*.dll "$TARGET_DIR"/ 2>/dev/null || true
-          else
-            echo "Warning: Qt platform plugins directory not found!"
-            echo "Searching for qwindows.dll..."
-            find /mingw64 -name "qwindows.dll" 2>/dev/null || true
-          fi
-          
-          # Verify qwindows.dll was copied
-          if [ -f "$TARGET_DIR/qwindows.dll" ]; then
-            echo "✓ Successfully copied qwindows.dll"
-            ls -lh "$TARGET_DIR"/
-          else
-            echo "⚠ Warning: qwindows.dll not found in $TARGET_DIR — Windows package may be incomplete"
-            echo "Search for qwindows.dll under /mingw64 (printing first match):"; find /mingw64 -name 'qwindows.dll' -print -quit || true
-          fi
-          
-          # Copy Qt styles plugins (optional but recommended)
-          echo "=== Copying Qt Styles Plugins ==="
-          STYLES_DIR="/mingw64/share/qt6/plugins/styles"
-          STYLES_TARGET="Releases/styles"
-          mkdir -p "$STYLES_TARGET"
-          
-          if [ -d "$STYLES_DIR" ]; then
-            cp "$STYLES_DIR"/*.dll "$STYLES_TARGET"/ 2>/dev/null || true
-          elif [ -d "/mingw64/plugins/styles" ]; then
-            cp /mingw64/plugins/styles/*.dll "$STYLES_TARGET"/ 2>/dev/null || true
-          elif [ -d "/mingw64/lib/qt6/plugins/styles" ]; then
-            cp /mingw64/lib/qt6/plugins/styles/*.dll "$STYLES_TARGET"/ 2>/dev/null || true
-          fi
-          
-          # Copy Qt imageformats plugins (for icon support)
-          echo "=== Copying Qt Image Format Plugins ==="
-          IMAGEFORMATS_DIR="/mingw64/share/qt6/plugins/imageformats"
-          IMAGEFORMATS_TARGET="Releases/imageformats"
-          mkdir -p "$IMAGEFORMATS_TARGET"
-          
-          if [ -d "$IMAGEFORMATS_DIR" ]; then
-            cp "$IMAGEFORMATS_DIR"/*.dll "$IMAGEFORMATS_TARGET"/ 2>/dev/null || true
-          elif [ -d "/mingw64/plugins/imageformats" ]; then
-            cp /mingw64/plugins/imageformats/*.dll "$IMAGEFORMATS_TARGET"/ 2>/dev/null || true
-          elif [ -d "/mingw64/lib/qt6/plugins/imageformats" ]; then
-            cp /mingw64/lib/qt6/plugins/imageformats/*.dll "$IMAGEFORMATS_TARGET"/ 2>/dev/null || true
-          fi
-          
-          # Create qt.conf to tell Qt where to find plugins
-          echo "=== Creating qt.conf ==="
-          cat > Releases/qt.conf <<'QTCONF'
-          [Paths]
-          Plugins = .
-          QTCONF
-          echo "✓ Created qt.conf"
-          cat Releases/qt.conf
-
-      - name: Compress EXE and DLLs with UPX
-        shell: bash
-        run: |
-          # Download UPX Windows binary if on Windows runner
-          if [[ "$RUNNER_OS" == "Windows" ]] || [[ "$(uname -s)" == MINGW* ]]; then
-            echo "Downloading UPX for Windows"
-            curl -L -o upx.zip https://github.com/upx/upx/releases/download/v4.0.2/upx-4.0.2-win64.zip
-            unzip -q upx.zip
-            UPX_PATH="./upx-4.0.2-win64/upx.exe"
-          else
-            echo "Assuming Linux runner: using system upx"
-            UPX_PATH="upx"
-          fi
-
-          # Compress main EXE
-          if [ -f Releases/Dvx3\ Backup\ Manager.exe ]; then
-            if [ -x "$UPX_PATH" ]; then
-              "$UPX_PATH" --best --lzma "Releases/Dvx3 Backup Manager.exe" || echo "Failed to compress main exe, continuing..."
-            else
-              echo "UPX not found: $UPX_PATH; skipping UPX compression for main exe"
-            fi
-          fi
-
-          # Compress DLLs (skip MSYS2 DLLs and executables as they can't be compressed)
-          for dll in Releases/*.dll; do
-            # Skip MSYS2 DLLs (they have writable shared sections)
-            if [[ "$dll" == *"msys-"* ]]; then
-              echo "Skipping MSYS2 DLL: $dll"
-              continue
-            fi
-            if [ -x "$UPX_PATH" ]; then
-              "$UPX_PATH" --best --lzma "$dll" || echo "Failed to compress $dll, continuing..."
-            else
-              echo "UPX not found: $UPX_PATH; skipping UPX compression for $dll"
-            fi
-          done
-          
-          # Note: tar.exe, zstd.exe, sh.exe are MSYS2 executables and cannot be compressed with UPX
-          echo "Note: MSYS2 executables (tar.exe, zstd.exe, sh.exe) are not compressed (not compatible with UPX)"
-
-      - name: Verify Releases contents (Windows)
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: |
-          echo "=== Releases directory contents ==="
+          echo "=== Linux CI failure diagnostics ==="
+          ls -la
           ls -la Releases || true
-          echo "TOTAL SIZE:"; du -sh Releases || true
-          if [ ! -d Releases ] || [ -z "$(ls -A Releases 2>/dev/null)" ]; then
-            echo "ERROR: Releases directory is empty or missing. Dumping some diagnostics..."
-            echo "Contents of workspace root:"; ls -la || true
-            echo "Listing /mingw64/bin for common files:"; ls -la /mingw64/bin | grep -E 'backup-manager|dvx3|Qt6|tar|zstd' || true
-            echo "Listing plugin 'platforms' dir:"; ls -la /mingw64/share/qt6/plugins/platforms || true
-            exit 1
-          fi
+          ldd backup-manager || true
+          ldd backup-manager-gui || true
+          ldd dvx3 || true
 
-      - name: Create zip for Windows Releases
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
+  # --------------------------------------------------------------
+  # MACOS BUILD
+  # --------------------------------------------------------------
+  build-macos:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [x86_64, arm64]
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Homebrew packages
         run: |
-          set -e
-          cd Releases
-          # Use powershell compress on windows runners to ensure consistent zip with Unicode filenames
-          powershell -Command "Compress-Archive -Path * -DestinationPath 'Dvx3-Backup-Manager-Windows.zip' -Force"
-          ls -lah Dvx3-Backup-Manager-Windows.zip || true
+          brew update
+          brew install pkg-config vala glib json-glib libsodium zstd qt@6 ninja cmake ccache
 
-      - name: Compute checksum for Windows ZIP
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
+      - name: Configure ccache
         run: |
-          cd Releases
-          if [ -f Dvx3-Backup-Manager-Windows.zip ]; then
-            sha256sum Dvx3-Backup-Manager-Windows.zip > Dvx3-Backup-Manager-Windows.zip.sha256
-          fi
+          ccache -M 5G
+          echo "PATH=$(brew --prefix ccache)/libexec:$PATH" >> $GITHUB_ENV
 
-      - name: Upload Windows build artifact (zip)
+      - name: Build all components (macOS)
+        run: |
+          chmod +x build-all.sh
+          ./build-all.sh
+
+      - name: Gather releases
+        run: |
+          mkdir -p Releases
+          cp backup-manager backup-manager-gui dvx3 Releases/ || true
+
+      - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-Windows-Zip
-          path: Releases/Dvx3-Backup-Manager-Windows.zip
+          name: Dvx3-Backup-Manager-macOS-${{ matrix.arch }}
+          path: Releases/*
 
-      - name: Upload Windows build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: Dvx3-Backup-Manager-Windows-Build
-          path: Releases/
-
-      - name: Create NSIS installer (Windows, optional)
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: |
-          if command -v makensis >/dev/null 2>&1; then
-            echo "Found makensis, building installer..."
-            # Ensure the installer script is present
-            if [ -f installer/windows-installer.nsi ]; then
-              makensis -V2 -DOUTDIR=$(pwd)/Releases -DINPUTZIP=Releases/Dvx3-Backup-Manager-Windows.zip installer/windows-installer.nsi || true
-            else
-              echo "installer/windows-installer.nsi not found; please add an NSIS script to build an installer"
-            fi
-          else
-            echo "makensis not found. Skipping NSIS installer creation. To enable, install the nsis package in MSYS2 packages list."
-          fi
-
-      - name: Upload NSIS installer (if present)
-        uses: actions/upload-artifact@v4
-        with:
-          name: Dvx3-Backup-Manager-Installer-Windows
-          path: |
-            Releases/Dvx3-Backup-Manager-Installer.exe
-
-      - name: CI diagnostics on failure (Windows)
-        if: failure() && runner.os == 'Windows'
-        shell: msys2 {0}
-        run: |
-          echo "=== CI failure diagnostic (Windows) ==="
-          echo "Workspace:"; ls -la || true
-          echo "Releases contents:"; ls -la Releases || true
-          echo "Built files:"; ls -la backup-manager* dvx3* || true
-          echo "Which moc/rcc?"; which moc || true; which rcc || true
-          echo "msys2 bin summary:"; ls -la /mingw64/bin | head -n 80 || true
-          echo "Plugin platforms dir:"; ls -la /mingw64/share/qt6/plugins/platforms || true
-  
+  # --------------------------------------------------------------
+  # OPTIONAL: APPIMAGE (Linux)
+  # --------------------------------------------------------------
   build-linux-appimage:
     runs-on: ubuntu-latest
-    needs: [build-linux]
+    needs: build-linux
     steps:
       - uses: actions/checkout@v3
       - name: Download Linux build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-Linux-Build-x86_64
+          name: Dvx3-Backup-Manager-Linux-x86_64
           path: .
-      - name: Build AppImage (if applicable)
+      - name: Build AppImage (if script exists)
         run: |
-          chmod +x build-appimage.sh || true
-          ./build-appimage.sh || true
+          if [ -x build-appimage.sh ]; then
+            ./build-appimage.sh
+          fi
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
         with:
           name: Dvx3-Backup-Manager-Linux-AppImage
-          path: |
-            *.AppImage
-
-  package-linux:
-    runs-on: ubuntu-latest
-    needs: [build-linux]
-    if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main')
-    steps:
-      - uses: actions/checkout@v3
-      - name: Install packaging dependencies
-        run: |
-          set -ex
-          sudo apt-get update
-          sudo apt-get install -y imagemagick tar zstd || true
-      - name: Download Linux build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: Dvx3-Backup-Manager-Linux-Build-x86_64
-          path: .
-      - name: Run packaging script
-        run: |
-          set -ex
-          chmod +x scripts/package-linux.sh || true
-          ./scripts/package-linux.sh || true
-          # Create compressed tarball for Releases/linux
-          tar -czf Releases/Dvx3-Backup-Manager-Linux.tar.gz -C Releases linux || true
-      - name: Upload packaged Linux build
-        uses: actions/upload-artifact@v4
-        with:
-          name: Dvx3-Backup-Manager-Linux-Tar
-          path: Releases/Dvx3-Backup-Manager-Linux.tar.gz
-  packaging-smoke:
-    runs-on: ubuntu-latest
-    needs: [build-linux]
-    if: github.event_name == 'pull_request'
-    steps:
-      - uses: actions/checkout@v3
-      - name: Download Linux build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: Dvx3-Backup-Manager-Linux-Build-x86_64
-          path: ./artifacts
-      - name: Packaging smoke test
-        run: |
-          set -ex
-          # Ensure artifacts downloaded
-          ls -la artifacts || true
-          mkdir -p smoke_test/bin
-          # Move available artifacts into smoke_test/bin
-          for f in artifacts/*; do
-            if [ -f "$f" ]; then
-              cp "$f" smoke_test/bin/ || true
-            fi
-          done
-          # Run ldd to find missing dependencies
-          for bin in smoke_test/bin/*; do
-            if [ -f "$bin" ]; then
-              echo "======= $bin ======="
-              if file "$bin" | grep -q 'ELF'; then
-                LD_LIBRARY_PATH=.:$LD_LIBRARY_PATH ldd "$bin" | sed -n '1,200p' || true
-              else
-                echo "$bin is not an ELF executable; skipping ldd"
-              fi
-            fi
-          done
-          # Basic execution smoke (if CLI present)
-          if [ -x smoke_test/bin/dvx3 ]; then
-            ./smoke_test/bin/dvx3 --help || true
-          fi
-          if [ -x smoke_test/bin/backup-manager ]; then
-            ./smoke_test/bin/backup-manager --help || true
-          fi
-          # GUI cannot be executed in a headless runner; check it's present
-          if [ -f smoke_test/bin/backup-manager-gui ]; then
-            echo "Found GUI binary for smoke test: backup-manager-gui"
-          fi
-
-  build-raspberry:
-    runs-on: ubuntu-latest
-    needs: [build-linux]
-    steps:
-      - uses: docker/setup-qemu-action@v2
-      - uses: docker/setup-buildx-action@v2
-      - uses: actions/checkout@v3
-      - name: Build Raspberry Pi artifacts (armv6)
-        run: |
-          set -ex
-          # Use Debian bullseye under docker and QEMU to build armv6 artifacts
-          docker run --rm --platform linux/arm/v6 -v "$PWD":/build -w /build debian:bullseye /bin/bash -lc '
-            set -ex
-            apt-get update
-            apt-get install -y build-essential pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache cmake libgtest-dev || true
-            chmod +x build-raspberry.sh
-            sed -i "s/\r$//" build-raspberry.sh
-            ./build-raspberry.sh
-          '
-      - name: CI diagnostics on failure (package-linux)
-        if: failure()
-        run: |
-          set -ex
-          echo "=== Packaging failure diagnostics ==="
-          echo "Releases contents:"; ls -la Releases || true
-          if [ -f Releases/Dvx3-Backup-Manager-Linux.tar.gz ]; then
-            echo "Tarball contents:"; tar -tzf Releases/Dvx3-Backup-Manager-Linux.tar.gz | head -n 40 || true
-          fi
-          # Inspect packages
-          if [ -f Releases/linux/backup-manager-gui ]; then
-            echo "readelf backup-manager-gui:"; readelf -h Releases/linux/backup-manager-gui || true
-            echo "ldd backup-manager-gui:"; LD_LIBRARY_PATH=Releases/linux/lib ldd Releases/linux/backup-manager-gui || true
-          fi
-
-  # macOS build and test (supports x86_64 and arm64)
-  build-macos:
-    name: Build (macOS)
-    runs-on: macos-latest
-    strategy:
-        matrix:
-          arch: [x86_64, arm64]
-    env:
-      PATH: /usr/local/opt/ccache/libexec:/opt/homebrew/lib/ruby/gems/3.3.0/bin:/opt/homebrew/opt/ruby@3.3/bin:/Users/runner/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/runner/.cargo/bin:/usr/local/opt/curl/bin:/usr/local/bin:/usr/local/sbin:/Users/runner/bin:/Users/runner/.yarn/bin:/Users/runner/Library/Android/sdk/tools:/Users/runner/Library/Android/sdk/platform-tools:/Library/Frameworks/Python.framework/Versions/Current/bin:/Library/Frameworks/Mono.framework/Versions/Current/Commands:/usr/bin:/bin:/usr/sbin:/sbin:/Users/runner/.dotnet/tools
-    steps:
-        - uses: actions/checkout@v3
-        - name: Cache ccache (macOS)
-          uses: actions/cache@v4
-          with:
-            path: |
-              ~/.ccache
-            key: ${{ runner.os }}-ccache-${{ matrix.arch }}-${{ hashFiles('**/*.c','**/*.cpp','**/*.h') }}-v1
-            restore-keys: |
-              ${{ runner.os }}-ccache-
-        - name: Install Homebrew and packages
-          run: |
-            set -ex
-            if ! command -v brew >/dev/null 2>&1; then
-              /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-              echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> $GITHUB_ENV || true
-              eval "$(/opt/homebrew/bin/brew shellenv)" || true
-            fi
-            brew update || true
-            brew install pkg-config vala glib json-glib libsodium zstd qt@6 ninja cmake ccache || true
-            if [ -d /opt/homebrew/opt/qt@6/bin ]; then
-              echo "PATH=/opt/homebrew/opt/qt@6/bin:$PATH" >> $GITHUB_ENV
-            fi
-        - name: Configure ccache (macOS)
-          run: |
-            set -ex
-            ccache -M 5G || true
-            echo "PATH=/usr/local/opt/ccache/libexec:$PATH" >> $GITHUB_ENV || true
-        - name: Build GUI & CLI (macOS)
-          run: |
-            set -ex
-            chmod +x build-all.sh || true
-            sed -i 's/\r$//' build-all.sh || true
-            ./build-all.sh || true
-        - name: Validate Vala binary
-          run: |
-            set -ex
-            if command -v valac >/dev/null 2>&1; then
-              valac --version || true
-            elif command -v vala >/dev/null 2>&1; then
-              echo "vala installed but valac not found; printing vala version"; vala --version || true
-            else
-              echo "Warning: valac not found after brew install, trying 'vala' and listing brew binaries"; brew list || true; exit 0
-            fi
-        - name: Prepare Releases (macOS)
-          run: |
-            set -ex
-            mkdir -p Releases
-            # Prefer `Releases` packaging if build scripts wrote the binaries there
-            # If not, try to copy binaries from the workspace root to `Releases`
-            if [ -f backup-manager ]; then
-              cp backup-manager Releases/
-            elif [ -f Releases/linux/backup-manager ]; then
-              cp Releases/linux/backup-manager Releases/
-            fi
-            if [ -f backup-manager-gui ]; then
-              cp backup-manager-gui Releases/
-            elif [ -f Releases/linux/backup-manager-gui ]; then
-              cp Releases/linux/backup-manager-gui Releases/
-            fi
-            if [ -f dvx3 ]; then
-              cp dvx3 Releases/
-            elif [ -f Releases/linux/dvx3 ]; then
-              cp Releases/linux/dvx3 Releases/
-            fi
-        - name: List artifacts (macOS)
-          run: |
-            echo "List workspace root:"; ls -la || true
-            echo "List Releases dir:"; ls -la Releases || true
-        - name: Upload macOS build artifacts
-          uses: actions/upload-artifact@v4
-          with:
-            name: Dvx3-Backup-Manager-macos-${{ matrix.arch }}
-            path: |
-              **/backup-manager*
-              **/backup-manager-gui*
-              **/dvx3*
-            if-no-files-found: warn
-            compression-level: 6
-            overwrite: false
-            include-hidden-files: false
-
-  # Windows (MSVC) build - MSVC x64 and ARM64 via Visual Studio and vcpkg
-  build-windows-msvc:
-    name: Build (Windows - MSVC)
-    runs-on: windows-latest
-    strategy:
-        matrix:
-          arch: [x64, arm64]
-    env:
-      VCPKG_ROOT: ${{ github.workspace }}\vcpkg
-      CMAKE_GENERATOR: 'Visual Studio 17 2022'
-    steps:
-        - uses: actions/checkout@v3
-        - name: Cache vcpkg
-          uses: actions/cache@v4
-          with:
-            path: |
-              vcpkg/installed
-              vcpkg/packages
-            key: ${{ runner.os }}-vcpkg-${{ matrix.arch }}-${{ hashFiles('vcpkg/manifest.json', 'vcpkg/installed/*') }}
-            restore-keys: |
-              ${{ runner.os }}-vcpkg-
-        - name: Set up vcpkg and install deps
-          shell: pwsh
-          run: |
-            Write-Output "=== vcpkg bootstrap ==="
-            git clone https://github.com/microsoft/vcpkg.git vcpkg
-            if ($LASTEXITCODE -ne 0) { Write-Error "git clone vcpkg failed"; exit 1 }
-            & .\vcpkg\bootstrap-vcpkg.bat
-            if ($LASTEXITCODE -ne 0) { Write-Error "vcpkg bootstrap failed"; exit 1 }
-            & .\vcpkg\vcpkg integrate install
-            if ($LASTEXITCODE -ne 0) { Write-Error "vcpkg integrate install failed"; exit 1 }
-            $commonDeps = @('libsodium', 'zstd', 'gtest')
-            Write-Output "=== vcpkg install ==="
-            if ("${{ matrix.arch }}" -eq "arm64") {
-              & .\vcpkg\vcpkg install $commonDeps --triplet arm64-windows
-              if ($LASTEXITCODE -ne 0) { Write-Error "vcpkg install failed for arm64-windows"; exit 1 }
-            } else {
-              & .\vcpkg\vcpkg install $commonDeps --triplet x64-windows
-              if ($LASTEXITCODE -ne 0) { Write-Error "vcpkg install failed for x64-windows"; exit 1 }
-            }
-            Write-Output "=== vcpkg list ==="
-            & .\vcpkg\vcpkg list || Write-Output "vcpkg list failed"
-            # Verify installed packages in vcpkg triplet
-            if ('${{ matrix.arch }}' -eq 'arm64') {
-              $trip = 'arm64-windows'
-            } else {
-              $trip = 'x64-windows'
-            }
-            $gtestShare = Join-Path $env:GITHUB_WORKSPACE "vcpkg\installed\$trip\share\gtest"
-            if (Test-Path $gtestShare) { Write-Output "GTest found in: $gtestShare"; Get-ChildItem -Path $gtestShare -Recurse -ErrorAction SilentlyContinue | Select-Object -First 50 } else { Write-Output "GTest not found under vcpkg installed triplet: $trip" }
-
-        - name: List GTest and lib contents (MSVC)
-          shell: pwsh
-          run: |
-            $triplet = if ("${{ matrix.arch }}" -eq "arm64") { "arm64-windows" } else { "x64-windows" }
-            $gtestDir = "$env:GITHUB_WORKSPACE\vcpkg\installed\$triplet\share\gtest"
-            $libDir = "$env:GITHUB_WORKSPACE\vcpkg\installed\$triplet\lib"
-            Write-Output "Listing GTest directory: $gtestDir"
-            if (Test-Path $gtestDir) { Get-ChildItem -Path $gtestDir -Recurse -ErrorAction SilentlyContinue | Select-Object -First 50 } else { Write-Output "GTest dir not found: $gtestDir" }
-            Write-Output "Listing lib directory: $libDir"
-            if (Test-Path $libDir) { Get-ChildItem -Path $libDir -Recurse -ErrorAction SilentlyContinue | Select-Object -First 50 } else { Write-Output "Lib dir not found: $libDir" }
-        - name: Windows/MSVC pre-checks
-          shell: pwsh
-          run: |
-            Write-Output "=== Windows host info ==="
-            Write-Output ('PSVersion: ' + ($PSVersionTable.PSVersion).ToString())
-            Write-Output ('GITHUB_WORKSPACE: ' + $env:GITHUB_WORKSPACE)
-            Get-ChildItem -Path $env:GITHUB_WORKSPACE -Force | Select-Object -First 50
-            Write-Output "Visual Studio (vswhere):"
-            & "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -format text -property displayName,installationPath || Write-Output "vswhere not found"
-            Write-Output "Which cmake:"; Get-Command cmake -ErrorAction SilentlyContinue || Write-Output "cmake not found"
-            Write-Output "Which msbuild:"; Get-Command msbuild -ErrorAction SilentlyContinue || Write-Output "msbuild not found"
-            Get-ChildItem -Path "C:\Program Files (x86)\Microsoft Visual Studio" -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 40 || Write-Output "VS folder listing failed"
-        - name: List pkgconf tools directory (MSVC)
-          shell: pwsh
-          run: |
-            $triplet = if ('${{ matrix.arch }}' -eq 'arm64') { 'arm64-windows' } else { 'x64-windows' }
-            $pkgconfTools = "$env:GITHUB_WORKSPACE\vcpkg\installed\$triplet\tools\pkgconf"
-            Write-Output "Listing pkgconf tools directory: $pkgconfTools"
-            if (Test-Path $pkgconfTools) { Get-ChildItem -Path $pkgconfTools -Recurse -ErrorAction SilentlyContinue | Select-Object -First 50 } else { Write-Output "pkgconf tools dir not found: $pkgconfTools" }
-        - name: Configure CMake (MSVC)
-          shell: pwsh
-          run: |
-            $cArch = if ('${{ matrix.arch }}' -eq 'arm64') { 'ARM64' } else { 'x64' }
-            $triplet = if ('${{ matrix.arch }}' -eq 'arm64') { 'arm64-windows' } else { 'x64-windows' }
-            $vcpkgToolchain = "$env:GITHUB_WORKSPACE\vcpkg\scripts\buildsystems\vcpkg.cmake"
-            $pkgconfBin = "$env:GITHUB_WORKSPACE\vcpkg\installed\$triplet\tools\pkgconf"
-            if (Test-Path $pkgconfBin) {
-              $env:PATH = "$pkgconfBin;$env:PATH"
-              Write-Output "Added pkgconf to PATH: $pkgconfBin"
-            }
-            if (-not (Test-Path $vcpkgToolchain)) {
-              Write-Error "vcpkg toolchain file not found: $vcpkgToolchain"
-              Get-ChildItem -Path "$env:GITHUB_WORKSPACE\vcpkg" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 50
-              throw "vcpkg toolchain missing"
-            }
-            Write-Output "Using vcpkg toolchain: $vcpkgToolchain"
-            # Build the C++ tests only (CMakeLists.txt in tests/)
-            if (Test-Path "$env:GITHUB_WORKSPACE\tests\CMakeLists.txt") {
-              Write-Output "Found CMakeLists.txt in tests/ - configuring CMake for tests"
-              # Provide GTest_DIR to prefer vcpkg-provided GoogleTest instead of FetchContent
-              $gtestDir = "$env:GITHUB_WORKSPACE\vcpkg\installed\$triplet\share\gtest"
-              if (Test-Path $gtestDir) { 
-                Write-Output "Using GTest from: $gtestDir"
-                cmake -S "$env:GITHUB_WORKSPACE\tests" -B "$env:GITHUB_WORKSPACE\build-msvc" -G "Visual Studio 17 2022" -A $cArch -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$vcpkgToolchain" -DGTest_DIR="$gtestDir" -DVCPKG_TARGET_TRIPLET=$triplet
-              } else {
-                Write-Output "GTest dir not found. Attempting configure without explicit GTest_DIR"
-                cmake -S "$env:GITHUB_WORKSPACE\tests" -B "$env:GITHUB_WORKSPACE\build-msvc" -G "Visual Studio 17 2022" -A $cArch -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$vcpkgToolchain" -DVCPKG_TARGET_TRIPLET=$triplet
-              }
-            } else {
-              Write-Output "CMakeLists.txt not found in tests/. Will search for any CMakeLists.txt under workspace"
-              Get-ChildItem -Path $env:GITHUB_WORKSPACE -Filter CMakeLists.txt -Recurse -ErrorAction SilentlyContinue | Select-Object -First 20 | ForEach-Object { Write-Output $_.FullName }
-              throw "No CMakeLists.txt found under workspace; aborting CMake configure"
-            }
-        - name: Build C++ tests (MSVC)
-          shell: pwsh
-          run: |
-            cmake --build build-msvc --config Release --parallel
-        - name: Run C++ tests (MSVC)
-          shell: pwsh
-          run: |
-            try {
-              Push-Location build-msvc
-              ctest -C Release --output-on-failure
-              Pop-Location
-            } catch {
-              Write-Output "ctest failed: $_"
-            }
-        - name: Windows/MSVC diagnostics
-          if: failure()
-          shell: pwsh
-          run: |
-            Write-Output "=== Diagnostics ==="
-            Write-Output "Visual Studio Version(s):"
-            & "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -format text -property displayName,installationPath -products * || Write-Output "vswhere not found"
-            Write-Output "Which cl.exe:"; Get-Command cl.exe -ErrorAction SilentlyContinue || Write-Output "cl.exe not found"
-            Write-Output "vcpkg installed packages:"; & .\vcpkg\vcpkg list || Write-Output "vcpkg list failed"
-            Write-Output "Build directory listing (build-msvc):"; Get-ChildItem -Recurse build-msvc -ErrorAction SilentlyContinue | Select-Object -First 200
-        - name: Collect MSVC artifacts
-          uses: actions/upload-artifact@v4
-          with:
-            name: Dvx3-Backup-Manager-Windows-msvc-${{ matrix.arch }}
-            path: |
-              build-msvc/Release/*
-              build-msvc/*.dll
-              build-msvc/*.exe
+          path: "*.AppImage"
