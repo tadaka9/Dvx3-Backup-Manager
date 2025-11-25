@@ -5,341 +5,338 @@ on:
     branches: [clean-version]
   pull_request:
 
-jobs:
-  # --------------------------------------------------------------
-  # WINDOWS BUILD (MSYS2)
-  # --------------------------------------------------------------
-  build-windows:
-    runs-on: windows-latest
-    strategy:
-      matrix:
-        arch: [x64]   # aggiungere arm64 se necessario
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+# ------------------------------------------------------------------
+# WINDOWS BUILD (MSYS2)
+# ------------------------------------------------------------------
+build-windows:
+  runs-on: windows-latest
+  strategy:
+    matrix:
+      arch: [x64]   # aggiungere arm64 se necessario
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
 
-      - name: Verify MSVC environment
-        shell: pwsh
-        run: |
-          Write-Output "=== MSVC Diagnostics ==="
-          Write-Output "Visual Studio Locator version:"
-          & "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -format text -property displayName,installationPath || Write-Output "vswhere not found"
-          Write-Output "Which cl.exe:"
-          Get-Command cl.exe -ErrorAction SilentlyContinue || Write-Output "cl.exe not found"
-          Write-Output "PATH: $env:PATH"
+    - name: Verify MSVC environment
+      shell: pwsh
+      run: |
+        Write-Output "=== MSVC Diagnostics ==="
+        Write-Output "Visual Studio Locator version:"
+        & "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -format text -property displayName,installationPath || Write-Output "vswhere not found"
+        Write-Output "Which cl.exe:"
+        Get-Command cl.exe -ErrorAction SilentlyContinue || Write-Output "cl.exe not found"
+        Write-Output "PATH: $env:PATH"
 
-      - name: Cache ccache (Windows)
-        if: runner.os == 'Windows'
-        uses: actions/cache@v4
-        with:
-          path: C:\Users\runneradmin\AppData\Local\ccache
-          key: ${{ runner.os }}-ccache-windows-${{ hashFiles('**/*.c','**/*.cpp') }}
-          restore-keys: |
-            ${{ runner.os }}-ccache-windows-
+    - name: Cache ccache (Windows)
+      if: runner.os == 'Windows'
+      uses: actions/cache@v4
+      with:
+        path: C:\Users\runneradmin\AppData\Local\ccache
+        key: ${{ runner.os }}-ccache-windows-${{ hashFiles('**/*.c','**/*.cpp') }}
+        restore-keys: |
+          ${{ runner.os }}-ccache-windows-
 
-      - name: Install MSYS2 & required packages
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: |
-            mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-qt6-base
-            mingw-w64-x86_64-qt6-tools
-            mingw-w64-x86_64-pkg-config
-            mingw-w64-x86_64-vala
-            mingw-w64-x86_64-ninja
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-json-glib
-            mingw-w64-x86_64-libsodium
-            mingw-w64-x86_64-gtest
-            upx
+    - name: Install MSYS2 & required packages
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: |
+          mingw-w64-x86_64-toolchain
+          mingw-w64-x86_64-qt6-base
+          mingw-w64-x86_64-qt6-tools
+          mingw-w64-x86_64-pkg-config
+          mingw-w64-x86_64-vala
+          mingw-w64-x86_64-ninja
+          mingw-w64-x86_64-cmake
+          mingw-w64-x86_64-json-glib
+          mingw-w64-x86_64-libsodium
+          mingw-w64-x86_64-gtest
+          upx
 
-      - name: Verify Qt6 installation
-        shell: msys2 {0}
-        run: |
-          echo "Checking Qt6Widgets with pkg-config"
-          pkg-config --modversion Qt6Widgets || true
-          echo "Locating moc"
-          which moc || true
-          echo "PATH:"
-          echo $PATH
-          echo "Listing Qt6 packages"
-          pacman -Qs qt6 || true
+    - name: Verify Qt6 installation
+      shell: msys2 {0}
+      run: |
+        echo "Checking Qt6Widgets with pkg-config"
+        pkg-config --modversion Qt6Widgets || true
+        echo "Locating moc"
+        which moc || true
+        echo "PATH:"
+        echo $PATH
+        echo "Listing Qt6 packages"
+        pacman -Qs qt6 || true
 
-      - name: Install NSIS (optional)
-        shell: msys2 {0}
-        run: |
-          pacman -S --noconfirm --needed msys/nsis || true
-          pacman -S --noconfirm --needed mingw-w64-x86_64-nsis || true
+    - name: Install NSIS (optional)
+      shell: msys2 {0}
+      run: |
+        pacman -S --noconfirm --needed msys/nsis || true
+        pacman -S --noconfirm --needed mingw-w64-x86_64-nsis || true
 
-      - name: Build all components (MSYS2)
-        shell: msys2 {0}
-        run: |
-          chmod +x build-all.sh
-          sed -i 's/\r$//' build-all.sh
-          ./build-all.sh || echo "build-all.sh failed"
+    - name: Build all components (MSYS2)
+      shell: msys2 {0}
+      run: |
+        chmod +x build-all.sh
+        sed -i 's/\r$//' build-all.sh
+        ./build-all.sh || echo "build-all.sh failed"
 
-      - name: Build Backup Manager GUI
-        shell: msys2 {0}
-        run: |
-          chmod +x build_gui.sh
-          sed -i 's/\r$//' build_gui.sh
-          ./build_gui.sh
+    - name: Build Backup Manager GUI
+      shell: msys2 {0}
+      run: |
+        chmod +x build_gui.sh
+        sed -i 's/\r$//' build_gui.sh
+        ./build_gui.sh
 
-      - name: Deploy Qt dependencies
-        shell: msys2 {0}
-        run: |
-          if command -v windeployqt >/dev/null 2>&1; then
-            mkdir -p Releases
-            windeployqt --dir Releases backup-manager-gui || true
-            echo "Qt dependencies deployed"
-          else
-            echo "windeployqt not installed – skipping"
-          fi
-
-      - name: Prepare Releases folder
-        shell: msys2 {0}
-        run: |
+    - name: Deploy Qt dependencies
+      shell: msys2 {0}
+      run: |
+        if command -v windeployqt >/dev/null 2>&1; then
           mkdir -p Releases
-          # GUI
-          if [ -f backup-manager-gui.exe ]; then
-            mv backup-manager-gui.exe "Releases/Dvx3 Backup Manager.exe"
-          fi
-          # CLI
-          if [ -f dvx3.exe ]; then
-            cp dvx3.exe Releases/
-          fi
-          # Copy required MSYS2 utilities
-          cp /usr/bin/tar.exe /usr/bin/zstd.exe /usr/bin/sh.exe Releases/ || true
-          # Qt platform plugins
-          PLUGIN_SRC="/mingw64/share/qt6/plugins/platforms"
-          PLUGIN_DST="Releases/platforms"
-          mkdir -p "$PLUGIN_DST"
-          if [ -d "$PLUGIN_SRC" ]; then
-            cp "$PLUGIN_SRC"/*.dll "$PLUGIN_DST"/
-          fi
+          windeployqt --dir Releases backup-manager-gui || true
+          echo "Qt dependencies deployed"
+        else
+          echo "windeployqt not installed – skipping"
+        fi
 
-      - name: Compress binaries with UPX
-        shell: bash
-        run: |
-          if command -v upx >/dev/null 2>&1; then
-            upx --best --lzma "Releases/Dvx3 Backup Manager.exe" || true
-          else
-            echo "UPX not available – skipping compression"
-          fi
+    - name: Prepare Releases folder
+      shell: msys2 {0}
+      run: |
+        mkdir -p Releases
+        # GUI
+        if [ -f backup-manager-gui.exe ]; then
+          mv backup-manager-gui.exe "Releases/Dvx3 Backup Manager.exe"
+        fi
+        # CLI
+        if [ -f dvx3.exe ]; then
+          cp dvx3.exe Releases/
+        fi
+        # Copy required MSYS2 utilities
+        cp /usr/bin/tar.exe /usr/bin/zstd.exe /usr/bin/sh.exe Releases/ || true
+        # Qt platform plugins
+        PLUGIN_SRC="/mingw64/share/qt6/plugins/platforms"
+        PLUGIN_DST="Releases/platforms"
+        mkdir -p "$PLUGIN_DST"
+        if [ -d "$PLUGIN_SRC" ]; then
+          cp "$PLUGIN_SRC"/*.dll "$PLUGIN_DST"/
+        fi
 
-      - name: Create ZIP archive (Windows)
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: |
-          cd Releases
-          powershell -Command "Compress-Archive -Path * -DestinationPath 'Dvx3-Backup-Manager-Windows.zip' -Force"
-          sha256sum Dvx3-Backup-Manager-Windows.zip > Dvx3-Backup-Manager-Windows.zip.sha256
+    - name: Compress binaries with UPX
+      shell: bash
+      run: |
+        if command -v upx >/dev/null 2>&1; then
+          upx --best --lzma "Releases/Dvx3 Backup Manager.exe" || true
+        else
+          echo "UPX not available – skipping compression"
+        fi
 
-      - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: Dvx3-Backup-Manager-Windows
-          path: |
-            Releases/Dvx3-Backup-Manager-Windows.zip
-            Releases/Dvx3-Backup-Manager-Windows.zip.sha256
+    - name: Create ZIP archive (Windows)
+      if: runner.os == 'Windows'
+      shell: msys2 {0}
+      run: |
+        cd Releases
+        powershell -Command "Compress-Archive -Path * -DestinationPath 'Dvx3-Backup-Manager-Windows.zip' -Force"
+        sha256sum Dvx3-Backup-Manager-Windows.zip > Dvx3-Backup-Manager-Windows.zip.sha256
 
-      - name: CI diagnostics on failure (Windows)
-        if: failure()
-        shell: msys2 {0}
-        run: |
-          echo "=== Windows CI failure diagnostics ==="
-          ls -la
-          ls -la Releases || true
-          echo "PATH:"
-          echo $PATH
-          which moc || true
+    - name: Upload Windows artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: Dvx3-Backup-Manager-Windows
+        path: |
+          Releases/Dvx3-Backup-Manager-Windows.zip
+          Releases/Dvx3-Backup-Manager-Windows.zip.sha256
 
-  # --------------------------------------------------------------
-  # LINUX BUILD (native & cross‑compile)
-  # --------------------------------------------------------------
-  build-linux:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        arch: [x86_64, arm64]
-    steps:
-      - uses: actions/checkout@v3
+    - name: CI diagnostics on failure (Windows)
+      if: failure()
+      shell: msys2 {0}
+      run: |
+        echo "=== Windows CI failure diagnostics ==="
+        ls -la
+        ls -la Releases || true
+        echo "PATH:"
+        echo $PATH
+        which moc || true
 
-      - name: Cache ccache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ccache
-          key: ${{ runner.os }}-ccache-${{ matrix.arch }}-${{ hashFiles('**/*.c','**/*.cpp','**/*.h') }}-v1
-          restore-keys: |
-            ${{ runner.os }}-ccache-
+# ------------------------------------------------------------------
+# LINUX BUILD (native & cross‑compile)
+# ------------------------------------------------------------------
+build-linux:
+  runs-on: ubuntu-latest
+  strategy:
+    matrix:
+      arch: [x86_64, arm64]
+  steps:
+    - uses: actions/checkout@v3
 
-      - name: Install dependencies (native)
-        if: matrix.arch == 'x86_64'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake pkg-config \
-            valac libjson-glib-dev libsodium-dev zstd tar imagemagick \
-            ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev
+    - name: Cache ccache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ccache
+        key: ${{ runner.os }}-ccache-${{ matrix.arch }}-${{ hashFiles('**/*.c','**/*.cpp','**/*.h') }}-v1
+        restore-keys: |
+          ${{ runner.os }}-ccache-
 
-      - name: Install dependencies (cross‑compile)
-        if: matrix.arch != 'x86_64'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y qemu-user-static binfmt-support
-          docker run --rm --platform linux/${{ matrix.arch }} -v "$PWD":/src -w /src debian:trixie bash -c '
-            set -ex
-            apt-get update
-            apt-get install -y build-essential cmake pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev
-            chmod +x build-all.sh
-            ./build-all.sh
-          '
+    - name: Install dependencies (native)
+      if: matrix.arch == 'x86_64'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake pkg-config \
+          valac libjson-glib-dev libsodium-dev zstd tar imagemagick \
+          ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev
 
-      - name: Configure ccache
-        run: |
-          ccache -M 5G
-          echo "CCACHE_DIR=$HOME/.cache/ccache" >> $GITHUB_ENV
-          echo "PATH=/usr/lib/ccache:$PATH" >> $GITHUB_ENV
-          echo "CC=gcc" >> $GITHUB_ENV
-          echo "CXX=g++" >> $GITHUB_ENV
-
-      - name: Ensure static libsodium (optional)
-        run: |
-          if [ "${FORCE_STATIC_LIBSODIUM:-0}" -eq 1 ]; then
-            if ! ls /usr/lib/libsodium.a /usr/local/lib/libsodium.a 2>/dev/null; then
-              echo "Building static libsodium from source"
-              wget -qO /tmp/libsodium.tar.gz https://download.libsodium.org/libsodium/releases/libsodium-1.0.20.tar.gz
-              tar -xzf /tmp/libsodium.tar.gz -C /tmp
-              pushd /tmp/libsodium-1.0.20
-              CFLAGS="-fPIC" CXXFLAGS="-fPIC" ./configure --prefix=/usr/local --enable-static --disable-shared
-              make -j$(nproc)
-              sudo make install
-              popd
-            fi
-            echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-          fi
-
-      - name: Build all components (Linux)
-        run: |
-          chmod +x build-all.sh
-          ./build-all.sh
-
-      - name: Build GUI (Linux)
-        run: |
-          chmod +x build_gui.sh
-          ./build_gui.sh
-
-      - name: Prepare Linux releases
-        run: |
-          mkdir -p Releases/linux
-          cp backup-manager backup-manager-gui dvx3 libdvx3.so Releases/linux/ || true
-
-      - name: Package Linux tarball
-        run: |
-          tar -czf Releases/Dvx3-Backup-Manager-Linux.tar.gz -C Releases/linux .
-
-      - name: Upload Linux artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: Dvx3-Backup-Manager-Linux-${{ matrix.arch }}
-          path: Releases/Dvx3-Backup-Manager-Linux.tar.gz
-
-      - name: CI diagnostics on failure (Linux)
-        if: failure()
-        run: |
-          echo "=== Linux CI failure diagnostics ==="
-          ls -la
-          ls -la Releases || true
-          ldd backup-manager || true
-          ldd backup-manager-gui || true
-          ldd dvx3 || true
-
-  # --------------------------------------------------------------
-  # MACOS BUILD
-  # --------------------------------------------------------------
-  build-macos:
-    runs-on: macos-latest
-    strategy:
-      matrix:
-        arch: [x86_64, arm64]
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Install Homebrew packages
-        run: |
-          brew update
-          brew install pkg-config vala glib json-glib libsodium zstd qt@6 ninja cmake ccache
-
-      - name: Configure ccache
-        run: |
-          ccache -M 5G
-          echo "PATH=$(brew --prefix ccache)/libexec:$PATH" >> $GITHUB_ENV
-
-      - name: Symlink or export Qt6 moc to PATH (macOS)
-        run: |
+    - name: Install dependencies (cross‑compile)
+      if: matrix.arch != 'x86_64'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y qemu-user-static binfmt-support
+        docker run --rm --platform linux/${{ matrix.arch }} -v "$PWD":/src -w /src debian:trixie bash -c '
           set -ex
-          echo "Listing Qt6 bin and libexec directories:"
-          ls -l /opt/homebrew/opt/qt@6/bin || true
-          ls -l /usr/local/opt/qt@6/bin || true
-          ls -l /opt/homebrew/opt/qt@6/libexec || true
-          ls -l /usr/local/opt/qt@6/libexec || true
-          ls -l /opt/homebrew/bin || true
-          ls -l /usr/local/bin || true
-          # Try to symlink moc from bin or libexec
-          if [ -f /opt/homebrew/opt/qt@6/bin/moc ]; then
-            ln -sf /opt/homebrew/opt/qt@6/bin/moc /usr/local/bin/moc
-            echo "Symlinked /opt/homebrew/opt/qt@6/bin/moc to /usr/local/bin/moc"
-          elif [ -f /usr/local/opt/qt@6/bin/moc ]; then
-            ln -sf /usr/local/opt/qt@6/bin/moc /usr/local/bin/moc
-            echo "Symlinked /usr/local/opt/qt@6/bin/moc to /usr/local/bin/moc"
-          elif [ -f /opt/homebrew/opt/qt@6/libexec/moc ]; then
-            ln -sf /opt/homebrew/opt/qt@6/libexec/moc /usr/local/bin/moc
-            echo "Symlinked /opt/homebrew/opt/qt@6/libexec/moc to /usr/local/bin/moc"
-          elif [ -f /usr/local/opt/qt@6/libexec/moc ]; then
-            ln -sf /usr/local/opt/qt@6/libexec/moc /usr/local/bin/moc
-            echo "Symlinked /usr/local/opt/qt@6/libexec/moc to /usr/local/bin/moc"
-          else
-            echo "moc not found in bin or libexec!"
-          fi
-          echo "PATH=/opt/homebrew/opt/qt@6/bin:/usr/local/opt/qt@6/bin:/usr/local/bin:$PATH" >> $GITHUB_ENV
-
-      - name: Build all components (macOS)
-        run: |
+          apt-get update
+          apt-get install -y build-essential cmake pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev
           chmod +x build-all.sh
           ./build-all.sh
+        '
 
-      - name: Gather releases
-        run: |
-          mkdir -p Releases
-          cp backup-manager backup-manager-gui dvx3 Releases/ || true
+    - name: Configure ccache
+      run: |
+        ccache -M 5G
+        echo "CCACHE_DIR=$HOME/.cache/ccache" >> $GITHUB_ENV
+        echo "PATH=/usr/lib/ccache:$PATH" >> $GITHUB_ENV
+        echo "CC=gcc" >> $GITHUB_ENV
+        echo "CXX=g++" >> $GITHUB_ENV
 
-      - name: Upload macOS artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: Dvx3-Backup-Manager-macOS-${{ matrix.arch }}
-          path: Releases/*
-
-  # --------------------------------------------------------------
-  # OPTIONAL: APPIMAGE (Linux)
-  # --------------------------------------------------------------
-  build-linux-appimage:
-    runs-on: ubuntu-latest
-    needs: build-linux
-    steps:
-      - uses: actions/checkout@v3
-      - name: Download Linux build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: Dvx3-Backup-Manager-Linux-x86_64
-          path: .
-      - name: Build AppImage (if script exists)
-        run: |
-          if [ -x build-appimage.sh ]; then
-            ./build-appimage.sh
+    - name: Ensure static libsodium (optional)
+      run: |
+        if [ "${FORCE_STATIC_LIBSODIUM:-0}" -eq 1 ]; then
+          if ! ls /usr/lib/libsodium.a /usr/local/lib/libsodium.a 2>/dev/null; then
+            echo "Building static libsodium from source"
+            wget -qO /tmp/libsodium.tar.gz https://download.libsodium.org/libsodium/releases/libsodium-1.0.20.tar.gz
+            tar -xzf /tmp/libsodium.tar.gz -C /tmp
+            pushd /tmp/libsodium-1.0.20
+            CFLAGS="-fPIC" CXXFLAGS="-fPIC" ./configure --prefix=/usr/local --enable-static --disable-shared
+            make -j$(nproc)
+            sudo make install
+            popd
           fi
-      - name: Upload AppImage
-        uses: actions/upload-artifact@v4
-        with:
-          name: Dvx3-Backup-Manager-Linux-AppImage
-          path: "*.AppImage"
+          echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+        fi
+
+    - name: Build all components (Linux)
+      run: |
+        chmod +x build-all.sh
+        ./build-all.sh
+
+    - name: Build GUI (Linux)
+      run: |
+        chmod +x build_gui.sh
+        ./build_gui.sh
+
+    - name: Prepare Linux releases
+      run: |
+        mkdir -p Releases/linux
+        cp backup-manager backup-manager-gui dvx3 libdvx3.so Releases/linux/ || true
+
+    - name: Package Linux tarball
+      run: |
+        tar -czf Releases/Dvx3-Backup-Manager-Linux.tar.gz -C Releases/linux .
+
+    - name: Upload Linux artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: Dvx3-Backup-Manager-Linux-${{ matrix.arch }}
+        path: Releases/Dvx3-Backup-Manager-Linux.tar.gz
+
+    - name: CI diagnostics on failure (Linux)
+      if: failure()
+      run: |
+        echo "=== Linux CI failure diagnostics ==="
+        ls -la
+        ls -la Releases || true
+        ldd backup-manager || true
+        ldd backup-manager-gui || true
+        ldd dvx3 || true
+
+# ------------------------------------------------------------------
+# MACOS BUILD
+# ------------------------------------------------------------------
+build-macos:
+  runs-on: macos-latest
+  strategy:
+    matrix:
+      arch: [x86_64, arm64]
+  steps:
+    - uses: actions/checkout@v3
+
+    - name: Install Homebrew packages
+      run: |
+        brew update
+        brew install pkg-config vala glib json-glib libsodium zstd qt@6 ninja cmake ccache
+
+    - name: Configure ccache
+      run: |
+        ccache -M 5G
+        echo "PATH=$(brew --prefix ccache)/libexec:$PATH" >> $GITHUB_ENV
+
+    - name: Symlink or export Qt6 moc to PATH (macOS)
+      run: |
+        set -ex
+        echo "Listing Qt6 bin and libexec directories:"
+        ls -l /opt/homebrew/opt/qt@6/bin || true
+        ls -l /usr/local/opt/qt@6/bin || true
+        ls -l /opt/homebrew/opt/qt@6/libexec || true
+        ls -l /usr/local/opt/qt@6/libexec || true
+        # Try to symlink moc from bin or libexec
+        if [ -f /opt/homebrew/opt/qt@6/bin/moc ]; then
+          ln -sf /opt/homebrew/opt/qt@6/bin/moc /usr/local/bin/moc
+          echo "Symlinked /opt/homebrew/opt/qt@6/bin/moc to /usr/local/bin/moc"
+        elif [ -f /usr/local/opt/qt@6/bin/moc ]; then
+          ln -sf /usr/local/opt/qt@6/bin/moc /usr/local/bin/moc
+          echo "Symlinked /usr/local/opt/qt@6/bin/moc to /usr/local/bin/moc"
+        elif [ -f /opt/homebrew/opt/qt@6/libexec/moc ]; then
+          ln -sf /opt/homebrew/opt/qt@6/libexec/moc /usr/local/bin/moc
+          echo "Symlinked /opt/homebrew/opt/qt@6/libexec/moc to /usr/local/bin/moc"
+        elif [ -f /usr/local/opt/qt@6/libexec/moc ]; then
+          ln -sf /usr/local/opt/qt@6/libexec/moc /usr/local/bin/moc
+          echo "Symlinked /usr/local/opt/qt@6/libexec/moc to /usr/local/bin/moc"
+        else
+          echo "moc not found in bin or libexec!"
+        fi
+        echo "PATH=/opt/homebrew/opt/qt@6/bin:/usr/local/opt/qt@6/bin:/usr/local/bin:$PATH" >> $GITHUB_ENV
+
+    - name: Build all components (macOS)
+      run: |
+        chmod +x build-all.sh
+        ./build-all.sh
+
+    - name: Gather releases
+      run: |
+        mkdir -p Releases
+        cp backup-manager backup-manager-gui dvx3 Releases/ || true
+
+    - name: Upload macOS artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: Dvx3-Backup-Manager-macOS-${{ matrix.arch }}
+        path: Releases/*
+
+# ------------------------------------------------------------------
+# OPTIONAL: APPIMAGE (Linux)
+# ------------------------------------------------------------------
+build-linux-appimage:
+  runs-on: ubuntu-latest
+  needs: build-linux
+  steps:
+    - uses: actions/checkout@v3
+    - name: Download Linux build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: Dvx3-Backup-Manager-Linux-x86_64
+        path: .
+    - name: Build AppImage (if script exists)
+      run: |
+        if [ -x build-appimage.sh ]; then
+          ./build-appimage.sh
+        fi
+    - name: Upload AppImage
+      uses: actions/upload-artifact@v4
+      with:
+        name: Dvx3-Backup-Manager-Linux-AppImage
+        path: "*.AppImage"
