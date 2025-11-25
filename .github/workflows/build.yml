@@ -15,6 +15,15 @@ jobs:
         arch: [x64]
     steps:
       - uses: actions/checkout@v3
+      - name: Cache ccache (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:\\Users\\runneradmin\\AppData\\Local\\ccache
+          key: ${{ runner.os }}-ccache-windows-${{ hashFiles('**/*.c','**/*.cpp') }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-windows-
 
       - name: Install MSYS2
         uses: msys2/setup-msys2@v2
@@ -885,6 +894,8 @@ jobs:
     strategy:
         matrix:
           arch: [x86_64, arm64]
+    env:
+      PATH: /usr/local/opt/ccache/libexec:/opt/homebrew/lib/ruby/gems/3.3.0/bin:/opt/homebrew/opt/ruby@3.3/bin:/Users/runner/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/runner/.cargo/bin:/usr/local/opt/curl/bin:/usr/local/bin:/usr/local/sbin:/Users/runner/bin:/Users/runner/.yarn/bin:/Users/runner/Library/Android/sdk/tools:/Users/runner/Library/Android/sdk/platform-tools:/Library/Frameworks/Python.framework/Versions/Current/bin:/Library/Frameworks/Mono.framework/Versions/Current/Commands:/usr/bin:/bin:/usr/sbin:/sbin:/Users/runner/.dotnet/tools
     steps:
         - uses: actions/checkout@v3
         - name: Cache ccache (macOS)
@@ -919,14 +930,43 @@ jobs:
             chmod +x build-all.sh || true
             sed -i 's/\r$//' build-all.sh || true
             ./build-all.sh || true
+        - name: Prepare Releases (macOS)
+          run: |
+            set -ex
+            mkdir -p Releases
+            # Prefer `Releases` packaging if build scripts wrote the binaries there
+            # If not, try to copy binaries from the workspace root to `Releases`
+            if [ -f backup-manager ]; then
+              cp backup-manager Releases/
+            elif [ -f Releases/linux/backup-manager ]; then
+              cp Releases/linux/backup-manager Releases/
+            fi
+            if [ -f backup-manager-gui ]; then
+              cp backup-manager-gui Releases/
+            elif [ -f Releases/linux/backup-manager-gui ]; then
+              cp Releases/linux/backup-manager-gui Releases/
+            fi
+            if [ -f dvx3 ]; then
+              cp dvx3 Releases/
+            elif [ -f Releases/linux/dvx3 ]; then
+              cp Releases/linux/dvx3 Releases/
+            fi
+        - name: List artifacts (macOS)
+          run: |
+            echo "List workspace root:"; ls -la || true
+            echo "List Releases dir:"; ls -la Releases || true
         - name: Upload macOS build artifacts
           uses: actions/upload-artifact@v4
           with:
             name: Dvx3-Backup-Manager-macos-${{ matrix.arch }}
             path: |
-              backup-manager
-              backup-manager-gui
-              dvx3
+              Releases/backup-manager
+              Releases/backup-manager-gui
+              Releases/dvx3
+            if-no-files-found: warn
+            compression-level: 6
+            overwrite: false
+            include-hidden-files: false
 
   # Windows (MSVC) build - MSVC x64 and ARM64 via Visual Studio and vcpkg
   build-windows-msvc:
