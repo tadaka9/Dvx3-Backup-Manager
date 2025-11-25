@@ -77,7 +77,7 @@ valac --vapidir="$VAPIDIR" $PACKAGES \
         -o "dvx3$EXE_EXT" \
         dvx3-cli.vala
 
-echo "✅ Build complete!"
+echo "✅ Build complete!!"
 echo ""
 echo "Files created:"
 echo "  - $LIB_OUT        (shared library)"
