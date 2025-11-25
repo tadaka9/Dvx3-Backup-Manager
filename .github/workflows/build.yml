@@ -960,9 +960,9 @@ jobs:
           with:
             name: Dvx3-Backup-Manager-macos-${{ matrix.arch }}
             path: |
-              Releases/backup-manager
-              Releases/backup-manager-gui
-              Releases/dvx3
+              **/backup-manager*
+              **/backup-manager-gui*
+              **/dvx3*
             if-no-files-found: warn
             compression-level: 6
             overwrite: false
@@ -975,6 +975,9 @@ jobs:
     strategy:
         matrix:
           arch: [x64, arm64]
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}\vcpkg
+      CMAKE_GENERATOR: 'Visual Studio 17 2022'
     steps:
         - uses: actions/checkout@v3
         - name: Cache vcpkg
@@ -1018,7 +1021,15 @@ jobs:
             $triplet = if ('${{ matrix.arch }}' -eq 'arm64') { 'arm64-windows' } else { 'x64-windows' }
             $vcpkgToolchain = "$env:GITHUB_WORKSPACE\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake"
             Write-Output "Using vcpkg toolchain: $vcpkgToolchain"
-            cmake -S . -B build-msvc -G "Visual Studio 17 2022" -A $cArch -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$vcpkgToolchain" -DVCPKG_TARGET_TRIPLET=$triplet
+            # Build the C++ tests only (CMakeLists.txt in tests/)
+            if (Test-Path "$env:GITHUB_WORKSPACE\\tests\\CMakeLists.txt") {
+              Write-Output "Found CMakeLists.txt in tests/ - configuring CMake for tests"
+              cmake -S "$env:GITHUB_WORKSPACE\\tests" -B "$env:GITHUB_WORKSPACE\\build-msvc" -G "Visual Studio 17 2022" -A $cArch -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$vcpkgToolchain" -DVCPKG_TARGET_TRIPLET=$triplet
+            } else {
+              Write-Output "CMakeLists.txt not found in tests/. Will search for any CMakeLists.txt under workspace"
+              Get-ChildItem -Path $env:GITHUB_WORKSPACE -Filter CMakeLists.txt -Recurse -ErrorAction SilentlyContinue | Select-Object -First 20 | ForEach-Object { Write-Output $_.FullName }
+              throw "No CMakeLists.txt found under workspace; aborting CMake configure"
+            }
         - name: Build (MSVC)
           shell: pwsh
           run: |
