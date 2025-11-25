@@ -309,7 +309,11 @@ jobs:
               set -ex
               apt-get update
               apt-get install -y pkg-config || true
-              apt-get install -y build-essential cmake valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev || true
+              # Add bullseye-backports for Qt6
+              echo "deb http://deb.debian.org/debian bullseye-backports main" >> /etc/apt/sources.list
+              apt-get update
+              apt-get install -y -t bullseye-backports qt6-base-dev qt6-tools-dev || true
+              apt-get install -y build-essential cmake valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache libgtest-dev || true
               # Build system libgtest if present
               if [ -d /usr/src/gtest ]; then
                 pushd /usr/src/gtest; cmake -S . -B build || true; cmake --build build --parallel || true; cmake --install build --prefix /usr/local || true; popd
