@@ -189,7 +189,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y qemu-user-static binfmt-support
 
-      - name: Configure ccache
+      - name: Configure ccache (native)
+        if: matrix.arch == 'x86_64'
         run: |
           ccache -M 5G
           echo "CCACHE_DIR=$HOME/.cache/ccache" >> $GITHUB_ENV
@@ -228,6 +229,11 @@ jobs:
             set -ex
             apt-get update
             apt-get install -y build-essential cmake pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev
+            ccache -M 5G
+            export CCACHE_DIR=$HOME/.cache/ccache
+            export PATH=/usr/lib/ccache:$PATH
+            export CC=gcc
+            export CXX=g++
             chmod +x build-all.sh
             ./build-all.sh
             chmod +x build_gui.sh
