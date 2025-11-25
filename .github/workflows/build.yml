@@ -229,6 +229,22 @@ jobs:
             "$UPX_PATH" --best --lzma "Releases/Dvx3 Backup Manager.exe" || echo "Failed to compress main exe, continuing..."
           fi
 
+      - name: CI diagnostics on failure (Windows)
+        if: failure()
+        shell: msys2 {0}
+        run: |
+          echo "=== Windows CI failure diagnostic ==="
+          echo "Workspace contents:"; ls -la || true
+          echo "Releases contents:"; ls -la Releases || true
+          echo "Built files in Releases:"; find Releases -maxdepth 2 -type f -print || true
+          echo "Which moc:"; which moc || true
+          echo "MSYS PATH:"; echo $PATH || true
+          echo "Dumping the first 100 lines of the Windows build log (if present):" || true
+          if [ -f build/windows-build.log ]; then
+            head -n 100 build/windows-build.log || true
+          fi
+          echo "Listing all artifacts in the workspace:"; ls -la || true
+
   build-linux:
     runs-on: ubuntu-latest
     steps:
