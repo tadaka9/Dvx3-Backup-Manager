@@ -129,10 +129,12 @@ jobs:
             echo "Found dvx3 (no .exe)"; ./dvx3 --help || true
           else
             echo "⚠ Warning: dvx3 (Windows CLI) not found; this may be acceptable for GUI-only builds"; ls -la || true
+          fi
           if [ -f backup-manager-gui.exe ]; then
             echo "Found backup-manager-gui.exe"
           else
             echo "Warning: backup-manager-gui.exe not found"
+          fi
 
       - name: Build Backup Manager GUI (Windows/MSYS2)
         shell: msys2 {0}
