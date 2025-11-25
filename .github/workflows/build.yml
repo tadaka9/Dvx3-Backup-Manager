@@ -372,30 +372,26 @@ jobs:
               tmpd=$(mktemp -d)
               (cd "$tmpd" && ar x /usr/local/lib/libsodium.a) || true
               pic_ok=1
-              for o in "$tmpd"/*.o; do
-                if readelf -r "$o" 2>/dev/null | grep -q -E 'R_386_PC32|R_X86_64_PC32|R_ARM_PC24|R_ARM_V4BX|R_ARM_PREL31|R_AARCH64_PREL32|R_PPC_REL24'; then
-                  pic_ok=0
-                  break
+                set -ex
+                echo "Target arch: ${ARCH:-x86_64} matrix value: ${{ matrix.arch }}"
+                if [ "${{ matrix.arch }}" != "x86_64" ]; then
+                  echo "Running build inside container for arch=${{ matrix.arch }}"
+                  docker run --rm --platform linux/${{ matrix.arch }} -v "$PWD":/build -w /build debian:latest /bin/bash -lc '
+                    set -ex
+                    apt-get update
+                    apt-get install -y pkg-config || true
+                    apt-get install -y qt6-base-dev qt6-tools-dev build-essential cmake valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache libgtest-dev || true
+                    # Build system libgtest if present
+                    if [ -d /usr/src/gtest ]; then
+                      pushd /usr/src/gtest; cmake -S . -B build || true; cmake --build build --parallel || true; cmake --install build --prefix /usr/local || true; popd
+                    fi
+                    export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
+                    chmod +x build-all.sh || true
+                    sed -i "s/\r$//" build-all.sh
+                    ./build-all.sh
+                  '
+                  exit 0
                 fi
-              done
-              rm -rf "$tmpd"
-              if [ "$pic_ok" -eq 0 ]; then
-                echo "Error: /usr/local/lib/libsodium.a appears to contain non-PIC objects; cannot link into shared libdvx3" >&2
-                echo "Try rebuilding libsodium with CFLAGS=-fPIC, or unset FORCE_STATIC_LIBSODIUM in CI to allow dynamic libsodium linking." >&2
-                exit 1
-              fi
-            fi
-          else
-            echo "FORCE_STATIC_LIBSODIUM not set; skipping libsodium static build"
-          fi
-
-      # NOTE: We skip calling build-all here to avoid running duplicate builds (GUI + packaging twice)
-      # The workflow executes optimized per-component builds below (GUI, CLI, tests, packaging).
-      # Keeping build-all causes longer CI runs and increases the chance of timeouts on runners.
-
-      - name: Upload Linux build artifacts
-        id: upload-linux-artifacts
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Dvx3-Backup-Manager-Linux-Build-${{ matrix.arch }}
