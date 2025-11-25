@@ -990,15 +990,23 @@ jobs:
           shell: pwsh
           run: |
             git clone https://github.com/microsoft/vcpkg.git vcpkg
-            .\vcpkg\bootstrap-vcpkg.bat
-            .\vcpkg\vcpkg integrate install || $false
-            if ("${{ matrix.arch }}" -eq "arm64") { .\vcpkg\vcpkg install libsodium zstd --triplet arm64-windows } else { .\vcpkg\vcpkg install libsodium zstd --triplet x64-windows }
+            & .\vcpkg\bootstrap-vcpkg.bat
+            & .\vcpkg\vcpkg integrate install
+            if ("${{ matrix.arch }}" -eq "arm64") {
+              & .\vcpkg\vcpkg install libsodium zstd --triplet arm64-windows
+            } else {
+              & .\vcpkg\vcpkg install libsodium zstd --triplet x64-windows
+            }
+            # List installed packages for diagnostics
+            & .\vcpkg\vcpkg list || Write-Output "vcpkg list failed"
         - name: Configure CMake (MSVC)
           shell: pwsh
           run: |
             $cArch = if ('${{ matrix.arch }}' -eq 'arm64') { 'ARM64' } else { 'x64' }
             $triplet = if ('${{ matrix.arch }}' -eq 'arm64') { 'arm64-windows' } else { 'x64-windows' }
-            cmake -S . -B build-msvc -G "Visual Studio 17 2022" -A $cArch -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=$(pwd)/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$triplet
+            $vcpkgToolchain = "$env:GITHUB_WORKSPACE\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake"
+            Write-Output "Using vcpkg toolchain: $vcpkgToolchain"
+            cmake -S . -B build-msvc -G "Visual Studio 17 2022" -A $cArch -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$vcpkgToolchain" -DVCPKG_TARGET_TRIPLET=$triplet
         - name: Build (MSVC)
           shell: pwsh
           run: |
@@ -1009,6 +1017,16 @@ jobs:
             Push-Location build-msvc
             ctest -C Release --output-on-failure || $false
             Pop-Location
+        - name: Windows/MSVC diagnostics
+          if: failure()
+          shell: pwsh
+          run: |
+            Write-Output "=== Diagnostics ==="
+            Write-Output "Visual Studio Version(s):"
+            & "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -format text -property displayName,installationPath -products * || Write-Output "vswhere not found"
+            Write-Output "Which cl.exe:"; Get-Command cl.exe -ErrorAction SilentlyContinue || Write-Output "cl.exe not found"
+            Write-Output "vcpkg installed packages:"; & .\vcpkg\vcpkg list || Write-Output "vcpkg list failed"
+            Write-Output "Build directory listing (build-msvc):"; Get-ChildItem -Recurse build-msvc -ErrorAction SilentlyContinue | Select-Object -First 200
         - name: Collect MSVC artifacts
           uses: actions/upload-artifact@v4
           with:
