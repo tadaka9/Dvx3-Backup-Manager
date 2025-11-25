@@ -239,6 +239,12 @@ jobs:
             ${{ runner.os }}-ccache-
 
 
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
       - name: Install dependencies
         run: |
           set -ex
@@ -333,7 +339,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-Linux-Build
+          name: Dvx3-Backup-Manager-Linux-Build-${{ matrix.arch }}
           path: |
             backup-manager
             backup-manager-gui
@@ -344,7 +350,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-Linux-Tar
+          name: Dvx3-Backup-Manager-Linux-Tar-${{ matrix.arch }}
           path: Releases/Dvx3-Backup-Manager-Linux.tar.gz
 
       - name: CI diagnostics on failure (Linux)
@@ -737,7 +743,7 @@ jobs:
       - name: Download Linux build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-Linux-Build
+          name: Dvx3-Backup-Manager-Linux-Build-x86_64
           path: .
       - name: Build AppImage (if applicable)
         run: |
@@ -764,7 +770,7 @@ jobs:
       - name: Download Linux build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-Linux-Build
+          name: Dvx3-Backup-Manager-Linux-Build-x86_64
           path: .
       - name: Run packaging script
         run: |
@@ -787,7 +793,7 @@ jobs:
       - name: Download Linux build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-Linux-Build
+          name: Dvx3-Backup-Manager-Linux-Build-x86_64
           path: ./artifacts
       - name: Packaging smoke test
         run: |
@@ -828,6 +834,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build-linux]
     steps:
+      - uses: docker/setup-qemu-action@v2
+      - uses: docker/setup-buildx-action@v2
       - uses: actions/checkout@v3
       - name: Build Raspberry Pi artifacts (armv6)
         run: |
