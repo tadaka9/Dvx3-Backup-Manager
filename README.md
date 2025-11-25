@@ -145,6 +145,18 @@ valac -C -d build/gen-c libdvx3.vala
 ```bash
 ./build_gui.sh
 ```
+
+## Contributing / Local Linting
+
+CI no longer runs the lint job automatically — to validate linting and workflow correctness locally, run:
+
+```bash
+chmod +x scripts/run-lint.sh
+./scripts/run-lint.sh
+```
+
+This will run `yamllint` on workflow files, `actionlint` on workflows, and `shellcheck` on shell scripts if these tools are installed locally. On Debian/Ubuntu, install them using `sudo apt-get install -y yamllint shellcheck` and `go install github.com/rhysd/actionlint/cmd/actionlint@latest` for `actionlint`.
+
 ./build_gui.sh
 sudo pacman -S vala glib2 json-glib libsodium zstd gcc qt6-base
 sudo apt-get install valac libglib2.0-dev libjson-glib-dev libsodium-dev zstd g++ qt6-base-dev

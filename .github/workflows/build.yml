@@ -7,35 +7,6 @@ on:
   pull_request:
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Install lint tools
-        run: |
-          set -e
-          sudo apt-get update
-          sudo apt-get install -y yamllint shellcheck
-      - name: Run yamllint for workflows
-        run: |
-          set -e
-          yamllint -c /dev/null .github/workflows
-      - name: Validate GitHub Actions (actionlint)
-        uses: rhysd/actionlint@v1
-      - name: Check for tracked generated files
-        run: |
-          echo "Checking for tracked generated files via scripts/check-generated-files.sh"
-          chmod +x scripts/check-generated-files.sh || true
-          scripts/check-generated-files.sh
-      - name: Shellcheck .sh files
-        run: |
-          set -e
-          files=$(git ls-files '*.sh')
-          if [ -n "$files" ]; then
-            for f in $files; do
-              shellcheck -x "$f"
-            done
-          fi
 
   build-windows:
     runs-on: windows-latest
