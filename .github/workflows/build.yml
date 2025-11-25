@@ -254,6 +254,7 @@ jobs:
           if ! sudo apt-get install -y "${QT_PKGS[@]}"; then
             echo "⤷ Qt package install failed, trying a narrower, more common set..."
             sudo apt-get install -y qt6-base-dev qt6-tools-dev || true
+          fi
       - name: Configure ccache and env
         run: |
           set -ex
@@ -261,7 +262,7 @@ jobs:
           echo "CCACHE_DIR=/home/runner/.cache/ccache" >> $GITHUB_ENV
           echo "CC=ccache gcc" >> $GITHUB_ENV
           echo "CXX=ccache g++" >> $GITHUB_ENV
-          fi
+          # No `fi` here: closing the earlier `if` is handled in the Install dependencies step
 
       - name: Ensure static libsodium available (build if required)
         run: |
