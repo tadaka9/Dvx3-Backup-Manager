@@ -265,7 +265,7 @@ jobs:
   # MACOS BUILD
   # ------------------------------------------------------------------
   build-macos:
-    runs-on: macos-latest
+    runs-on: macos-${{ matrix.arch == 'arm64' && 'latest' || '12' }}
     strategy:
       matrix:
         arch: [x86_64, arm64]
@@ -325,6 +325,10 @@ jobs:
           tar -xzf Dvx3-Backup-Manager-Linux.tar.gz
           mv Releases/linux/* . || true
           rm -rf Releases
+      - name: Install FUSE for AppImage
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2
       - name: Build AppImage (if script exists)
         run: |
           if [ -x build-appimage.sh ]; then
