@@ -260,8 +260,11 @@ jobs:
           set -ex
           ccache -M 5G || true
           echo "CCACHE_DIR=/home/runner/.cache/ccache" >> $GITHUB_ENV
-          echo "CC=ccache gcc" >> $GITHUB_ENV
-          echo "CXX=ccache g++" >> $GITHUB_ENV
+          # Do not set CC to 'ccache gcc' — ccache can't be used like that when scripts run CC directly.
+          # Instead, prepend the ccache wrapper directory to PATH and set CC/CXX to 'gcc'/'g++'.
+          echo "PATH=/usr/lib/ccache:$PATH" >> $GITHUB_ENV
+          echo "CC=gcc" >> $GITHUB_ENV
+          echo "CXX=g++" >> $GITHUB_ENV
           # No `fi` here: closing the earlier `if` is handled in the Install dependencies step
 
       - name: Ensure static libsodium available (build if required)
@@ -746,6 +749,51 @@ jobs:
         with:
           name: Dvx3-Backup-Manager-Linux-Tar
           path: Releases/Dvx3-Backup-Manager-Linux.tar.gz
+  packaging-smoke:
+    runs-on: ubuntu-latest
+    needs: [build-linux]
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v3
+      - name: Download Linux build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: Dvx3-Backup-Manager-Linux-Build
+          path: ./artifacts
+      - name: Packaging smoke test
+        run: |
+          set -ex
+          # Ensure artifacts downloaded
+          ls -la artifacts || true
+          mkdir -p smoke_test/bin
+          # Move available artifacts into smoke_test/bin
+          for f in artifacts/*; do
+            if [ -f "$f" ]; then
+              cp "$f" smoke_test/bin/ || true
+            fi
+          done
+          # Run ldd to find missing dependencies
+          for bin in smoke_test/bin/*; do
+            if [ -f "$bin" ]; then
+              echo "======= $bin ======="
+              if file "$bin" | grep -q 'ELF'; then
+                LD_LIBRARY_PATH=.:$LD_LIBRARY_PATH ldd "$bin" | sed -n '1,200p' || true
+              else
+                echo "$bin is not an ELF executable; skipping ldd"
+              fi
+            fi
+          done
+          # Basic execution smoke (if CLI present)
+          if [ -x smoke_test/bin/dvx3 ]; then
+            ./smoke_test/bin/dvx3 --help || true
+          fi
+          if [ -x smoke_test/bin/backup-manager ]; then
+            ./smoke_test/bin/backup-manager --help || true
+          fi
+          # GUI cannot be executed in a headless runner; check it's present
+          if [ -f smoke_test/bin/backup-manager-gui ]; then
+            echo "Found GUI binary for smoke test: backup-manager-gui"
+          fi
       - name: CI diagnostics on failure (package-linux)
         if: failure()
         run: |
