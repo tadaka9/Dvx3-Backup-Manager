@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -ex
 
 echo "=== Building Dvx3 Backup Manager for all platforms ==="
 echo ""

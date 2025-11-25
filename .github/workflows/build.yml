@@ -90,7 +90,13 @@ jobs:
         run: |
           chmod +x build-all.sh || true
           sed -i 's/\r$//' build-all.sh
-          ./build-all.sh
+          ./build-all.sh || echo "build-all.sh returned exit code $?"
+      - name: Debugging - list workspace after build-all
+        shell: "msys2 {0}"
+        run: |
+            echo "ls -la workspace root:"; ls -la || true
+            echo "ls -la Releases:"; ls -la Releases || true
+            echo "List duplicates by type:"; find . -maxdepth 2 -type f -print | sort || true
 
       - name: Verify Windows CLI artifacts
         shell: msys2 {0}
