@@ -307,7 +307,8 @@ jobs:
             docker run --rm --platform linux/${{ matrix.arch }} -v "$PWD":/build -w /build debian:bullseye /bin/bash -lc '
               set -ex
               apt-get update
-              apt-get install -y build-essential cmake pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev || true
+              apt-get install -y pkg-config || true
+              apt-get install -y build-essential cmake valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev || true
               # Build system libgtest if present
               if [ -d /usr/src/gtest ]; then
                 pushd /usr/src/gtest; cmake -S . -B build || true; cmake --build build --parallel || true; cmake --install build --prefix /usr/local || true; popd
