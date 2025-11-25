@@ -77,7 +77,6 @@ jobs:
             echo "makensis installed: $(which makensis)"
           else
             echo "makensis not found after trying both repos; NSIS installer will be skipped"
-          fi
       - name: Print PATH
         shell: msys2 {0}
         run: |
@@ -109,12 +108,10 @@ jobs:
             echo "Found dvx3 (no .exe)"; ./dvx3 --help || true
           else
             echo "⚠ Warning: dvx3 (Windows CLI) not found; this may be acceptable for GUI-only builds"; ls -la || true
-          fi
           if [ -f backup-manager-gui.exe ]; then
             echo "Found backup-manager-gui.exe"
           else
             echo "Warning: backup-manager-gui.exe not found"
-          fi
 
       - name: Build Backup Manager GUI (Windows/MSYS2)
         shell: msys2 {0}
@@ -213,17 +210,20 @@ jobs:
       - name: Compress EXE and DLLs with UPX (Windows)
         shell: bash
         run: |
-          # Download UPX Windows binary
-          curl -L -o upx.zip https://github.com/upx/upx/releases/download/v4.0.2/upx-4.0.2-win64.zip || true
-          unzip -q upx.zip || true
-          UPX_PATH="./upx-4.0.2-win64/upx.exe"
-          if [ -f "Releases/Dvx3 Backup Manager.exe" ]; then
+            set -ex
+            git clone https://github.com/microsoft/vcpkg.git vcpkg
+            ./vcpkg/bootstrap-vcpkg.bat
+            ./vcpkg/vcpkg integrate install || true
+            if ($env:matrix_arch -eq 'arm64') {
+              ./vcpkg/vcpkg install libsodium zstd pkgconf --triplet arm64-windows
+            } else {
+              ./vcpkg/vcpkg install libsodium zstd pkgconf --triplet x64-windows
+            }
             if [ -x "$UPX_PATH" ]; then
               "$UPX_PATH" --best --lzma "Releases/Dvx3 Backup Manager.exe" || echo "Failed to compress main exe, continuing..."
             else
               echo "UPX tool not found at $UPX_PATH; skipping exe compression"
             fi
-          fi
 
       - name: CI diagnostics on failure (Windows)
         if: failure()
