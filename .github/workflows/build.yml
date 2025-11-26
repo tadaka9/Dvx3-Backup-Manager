@@ -278,6 +278,17 @@ jobs:
         run: |
           brew update
           brew install pkg-config vala glib json-glib libsodium zstd qt@6 ninja cmake ccache || exit 1
+      - name: Symlink Qt6 moc to /usr/local/bin (macOS)
+        run: |
+          MOC_PATH="$(brew --prefix qt@6)/libexec/moc"
+          if [ -f "$MOC_PATH" ]; then
+            ln -sf "$MOC_PATH" /usr/local/bin/moc
+            echo "Symlinked moc from $MOC_PATH to /usr/local/bin/moc"
+          else
+            echo "moc not found at $MOC_PATH"
+            exit 1
+          fi
+          which moc || exit 1
 
       - name: Configure ccache
         run: |
