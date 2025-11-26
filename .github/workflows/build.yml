@@ -415,13 +415,13 @@ jobs:
             if [ ! -f "$DESKTOP_FILE" ]; then
               echo "Generating minimal desktop file: $DESKTOP_FILE"
               cat > "$DESKTOP_FILE" <<EOF
-              [Desktop Entry]
-              Type=Application
-              Name=Dvx3 Backup Manager
-              Exec=backup-manager-gui
-              Icon=backup-manager
-              Categories=Utility;
-              EOF
+            [Desktop Entry]
+            Type=Application
+            Name=Dvx3 Backup Manager
+            Exec=backup-manager-gui
+            Icon=backup-manager
+            Categories=Utility;
+            EOF
             fi
             # Copy libsodium shared library into AppDir if present
             if ls /usr/lib/libsodium.so.* 1>/dev/null 2>&1; then
