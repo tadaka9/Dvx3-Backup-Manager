@@ -357,18 +357,8 @@ jobs:
             fi
           done
           if [ -z "$FOUND_MOC" ]; then
-            echo "moc not found in any known location, building Qt6 from source..."
-            curl -LO https://download.qt.io/official_releases/qt/6.10/6.10.1/single/qt-everywhere-src-6.10.1.tar.xz
-            tar -xf qt-everywhere-src-6.10.1.tar.xz
-            cd qt-everywhere-src-6.10.1
-            brew install cmake ninja python3 pkg-config || true
-            mkdir build && cd build
-            ../configure -prefix $HOME/Qt6 -release -opensource -confirm-license -nomake examples -nomake tests
-            cmake --build . --parallel
-            cmake --install .
-            export PATH="$HOME/Qt6/bin:$PATH"
-            ln -sf "$HOME/Qt6/bin/moc" /usr/local/bin/moc
-            echo "Built and symlinked moc from Qt6 source to /usr/local/bin/moc"
+            echo "moc not found in any known location after Homebrew install. Failing."
+            exit 1
           fi
           which moc || exit 1
 
