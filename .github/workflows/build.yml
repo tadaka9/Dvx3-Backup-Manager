@@ -31,6 +31,13 @@ jobs:
       - name: Cache ccache (Windows)
         if: runner.os == 'Windows'
         uses: actions/cache@v4
+        name: Build Backup Manager
+
+        on:
+          push:
+            branches: [clean-version]
+          pull_request:
+
         with:
           path: C:\Users\runneradmin\AppData\Local\ccache
           key: ${{ runner.os }}-ccache-windows-${{ hashFiles('**/*.c','**/*.cpp') }}
@@ -43,18 +50,71 @@ jobs:
           msystem: MINGW64
           update: true
           install: |
-            mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-qt6-base
-            mingw-w64-x86_64-qt6-tools
-            mingw-w64-x86_64-pkg-config
-            mingw-w64-x86_64-vala
-            mingw-w64-x86_64-ninja
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-json-glib
-            mingw-w64-x86_64-libsodium
-            mingw-w64-x86_64-gtest
-            upx
-
+          # ------------------------------------------------------------------
+  # ------------------------------------------------------------------
+  # MULTI-DISTRO LINUX BUILD
+  # ------------------------------------------------------------------
+  build-linux-matrix:
+    runs-on: ${{ matrix.distro }}
+    strategy:
+      matrix:
+        distro: [ubuntu-latest, archlinux, fedora-latest]
+        arch: [x86_64]
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install dependencies (Ubuntu)
+        if: matrix.distro == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config \
+            valac libjson-glib-dev libsodium-dev zstd tar imagemagick \
+            ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev
+      - name: Install dependencies (Arch)
+        if: matrix.distro == 'archlinux'
+        run: |
+          sudo pacman -Syu --noconfirm
+          sudo pacman -S --noconfirm base-devel cmake pkgconf vala json-glib libsodium zstd tar imagemagick ninja ccache gtest qt6-base qt6-tools
+      - name: Install dependencies (Fedora)
+        if: matrix.distro == 'fedora-latest'
+        run: |
+          sudo dnf -y update
+          sudo dnf -y install @development-tools cmake pkgconf-pkg-config vala json-glib-devel libsodium-devel zstd tar ImageMagick ninja-build ccache gtest qt6-qtbase-devel qt6-qttools-devel
+      - name: Build GUI
+        run: |
+          chmod +x build_gui.sh
+          ./build_gui.sh || exit 1
+      - name: Prepare Linux releases
+        run: |
+          mkdir -p Releases/linux
+          cp backup-manager backup-manager-gui dvx3 libdvx3.so Releases/linux/ || true
+          # Copy libsodium shared library if present
+          cp /usr/lib/libsodium.so.* Releases/linux/ 2>/dev/null || cp /usr/local/lib/libsodium.so.* Releases/linux/ 2>/dev/null || echo "libsodium.so.* not found in /usr/lib or /usr/local/lib"
+      - name: Package Linux tarball
+        run: |
+          tar -czf Releases/Dvx3-Backup-Manager-Linux-${{ matrix.distro }}.tar.gz -C Releases/linux .
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dvx3-Backup-Manager-Linux-${{ matrix.distro }}
+          path:
+            - Releases/Dvx3-Backup-Manager-Linux-${{ matrix.distro }}.tar.gz
+              - name: Install MinGW-w64 toolchain
+                shell: msys2 {0}
+                run: |
+                  pacman -S --noconfirm --needed mingw-w64-x86_64-toolchain
+              - name: Install MinGW-w64 Qt6 packages
+                shell: msys2 {0}
+                run: |
+                  pacman -S --noconfirm --needed mingw-w64-x86_64-qt6-base
+                  pacman -S --noconfirm --needed mingw-w64-x86_64-qt6-tools
+                  pacman -S --noconfirm --needed mingw-w64-x86_64-pkg-config
+                  pacman -S --noconfirm --needed mingw-w64-x86_64-vala
+                  pacman -S --noconfirm --needed mingw-w64-x86_64-ninja
+                  pacman -S --noconfirm --needed mingw-w64-x86_64-cmake
+                  pacman -S --noconfirm --needed mingw-w64-x86_64-json-glib
+                  pacman -S --noconfirm --needed mingw-w64-x86_64-libsodium
+                  pacman -S --noconfirm --needed mingw-w64-x86_64-gtest
+                  pacman -S --noconfirm --needed upx
       - name: Verify Qt6 installation
         shell: msys2 {0}
         run: |
@@ -141,9 +201,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Dvx3-Backup-Manager-Windows
-          path: |
-            Releases/Dvx3-Backup-Manager-Windows.zip
-            Releases/Dvx3-Backup-Manager-Windows.zip.sha256
+          path:
+            - Releases/Dvx3-Backup-Manager-Windows.zip
+            - Releases/Dvx3-Backup-Manager-Windows.zip.sha256
 
       - name: CI diagnostics on failure (Windows)
         if: failure()
