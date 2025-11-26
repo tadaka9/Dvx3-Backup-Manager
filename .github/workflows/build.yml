@@ -412,16 +412,20 @@ jobs:
               echo "AppDir $APPDIR not found, aborting AppImage build."
               exit 1
             fi
-            if [ ! -f "$DESKTOP_FILE" ]; then
-              echo "Generating minimal desktop file: $DESKTOP_FILE"
-              cat > "$DESKTOP_FILE" <<EOF
-            [Desktop Entry]
-            Type=Application
-            Name=Dvx3 Backup Manager
-            Exec=backup-manager-gui
-            Icon=backup-manager
-            Categories=Utility;
-            EOF
+              if [ ! -f "$DESKTOP_FILE" ]; then
+                echo "Generating minimal desktop file: $DESKTOP_FILE"
+                cat <<'EOF' > "$DESKTOP_FILE"
+                [Desktop Entry]
+                Type=Application
+                Name=Dvx3 Backup Manager
+                Exec=backup-manager-gui
+                Icon=backup-manager
+                Categories=Utility;
+                EOF
+            fi
+            # Ensure desktop file is in usr/share/applications for AppImage
+            mkdir -p "$APPDIR/usr/share/applications"
+            cp "$DESKTOP_FILE" "$APPDIR/usr/share/applications/"
             fi
             # Copy libsodium shared library into AppDir if present
             if ls /usr/lib/libsodium.so.* 1>/dev/null 2>&1; then
