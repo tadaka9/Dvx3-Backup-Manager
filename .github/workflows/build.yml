@@ -93,7 +93,7 @@ jobs:
           path: |
             Releases/Dvx3-Backup-Manager-Linux-${{ matrix.distro }}.tar.gz
       - name: Verify Qt6 installation
-        shell: msys2 {0}
+        shell: bash
         run: |
           echo "Checking Qt6Widgets with pkg-config"
           pkg-config --modversion Qt6Widgets || true
