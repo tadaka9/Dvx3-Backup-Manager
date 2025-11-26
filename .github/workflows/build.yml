@@ -368,18 +368,7 @@ jobs:
             ccache \
             create-dmg || exit 1
 
-        - name: "Optional: Install 0ad cask if available (macOS)"
-          run: |
-            set -ex
-            if brew search --cask 0ad >/dev/null 2>&1; then
-              if ! brew list --cask 0ad >/dev/null 2>&1; then
-                brew install --cask 0ad || echo "Failed to install 0ad; continuing without it"
-              else
-                echo "0ad cask already installed"
-              fi
-            else
-              echo "Homebrew cask '0ad' not available; skipping"
-            fi
+        
       - name: "Optional: Install 0ad cask if available (macOS)"
         run: |
           set -ex
