@@ -278,9 +278,6 @@ jobs:
         run: |
           brew update
           brew install --cask qctools
-          find /opt/homebrew/Cellar/qt@6-tools -name moc
-          find /opt/homebrew/Cellar/qt/6.9.3 -name mo
-          find /opt/homebrew/Cellar/qt/6.9.3 -name moc
           brew install pkg-config vala glib json-glib libsodium zstd qt@6 ninja cmake ccache || exit 1
       - name: Ensure Qt6 moc is available (macOS)
         run: |
