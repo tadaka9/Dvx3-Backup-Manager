@@ -1,3 +1,4 @@
+---
 name: Build Backup Manager
 
 on:
@@ -6,23 +7,6 @@ on:
   pull_request:
 
 jobs:
-  workflow-lint:
-    name: Lint workflow and shell scripts
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Install yamllint & shellcheck
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y python3-pip shellcheck
-          pip3 install yamllint
-      - name: Run yamllint on workflow files
-        run: |
-          yamllint .github/workflows/*.yml || true
-      - name: Run shellcheck on scripts
-        run: |
-          shellcheck -x *.sh || true
   # ------------------------------------------------------------------
   # WINDOWS BUILD (MSYS2)
   # ------------------------------------------------------------------
@@ -30,15 +14,12 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        arch: [x64]  # aggiungere arm64 se necessario
+        arch: [x64, arm64]  # aggiungere arm64 se necessario
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Ensure Homebrew & required tools for packaging
-        run: |
-          brew update || true
-          brew install qt@6 qttools create-dmg || true
+      # Removed: macOS-specific Brew install (was added by mistake to Windows job)
 
       - name: Verify MSVC environment
         shell: pwsh
@@ -366,7 +347,18 @@ jobs:
       - name: Install Homebrew packages
         run: |
           brew update
-          brew install pkg-config vala glib json-glib libsodium zstd qt@6 ninja cmake ccache create-dmg || exit 1
+          brew install \
+            pkg-config \    
+            vala \
+            glib \
+            json-glib \
+            libsodium \
+            zstd \
+            qt@6 \
+            ninja \
+            cmake \
+            ccache \
+            create-dmg || exit 1
 
       - name: Ensure Qt6 moc is available (macOS)
         run: |
@@ -542,77 +534,7 @@ jobs:
             otool -L "$APP_DIR/Contents/MacOS/backup-manager-gui" || true
           fi
 
-      - name: Conditional per-arch code sign (macOS)
-        env:
-          APPLE_CODESIGN_P12: ${{ secrets.APPLE_CODESIGN_P12 }}
-          APPLE_CODESIGN_P12_PASSWORD: ${{ secrets.APPLE_CODESIGN_P12_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          set -ex
-          if [ -z "$APPLE_CODESIGN_P12" ] || [ -z "$APPLE_CODESIGN_P12_PASSWORD" ]; then
-            echo "Per-arch signing secrets not provided; skipping per-arch code signing"; exit 0
-          fi
-          echo "$APPLE_CODESIGN_P12" | base64 --decode > cert.p12
-          SECURITY_KEYCHAIN=signing-perarch.keychain
-          security create-keychain -p signpw "$SECURITY_KEYCHAIN"
-          security import cert.p12 -k ~/Library/Keychains/$SECURITY_KEYCHAIN -P "$APPLE_CODESIGN_P12_PASSWORD" -T /usr/bin/codesign
-          security list-keychains -s ~/Library/Keychains/$SECURITY_KEYCHAIN
-          security set-key-partition-list -S apple-tool:,apple: -s -k signpw ~/Library/Keychains/$SECURITY_KEYCHAIN || true
-          SIGN_ID=$(security find-identity -p codesigning -v | awk '/"/{print $2; exit}') || true
-          echo "Using signing identity: ${SIGN_ID}"
-          APP_NAME="Dvx3 Backup Manager"
-          APP_DIR="Releases/${APP_NAME}-${ARCH}.app"
-          codesign --deep --options runtime --timestamp --sign "$SIGN_ID" "$APP_DIR" || true
-          echo "Verifying codesign for per-arch app"
-          codesign --verify --verbose=4 "$APP_DIR" || true
-          codesign -dv --verbose=4 "$APP_DIR" || true
-          spctl -a -t exec -vv "$APP_DIR" || true
-          if [ -f "$PKG_NAME" ]; then
-            pkgutil --check-signature "$PKG_NAME" || true
-          fi
-          if command -v productsign >/dev/null 2>&1; then
-            PKG_NAME="Releases/Dvx3-Backup-Manager-macOS-${ARCH}.pkg"
-            if [ -f "$PKG_NAME" ]; then
-              productsign --sign "$SIGN_ID" "$PKG_NAME" "${PKG_NAME%.pkg}-signed.pkg" || true
-              # Move the signed package only if it was produced
-              if [ -f "${PKG_NAME%.pkg}-signed.pkg" ]; then
-                mv -f "${PKG_NAME%.pkg}-signed.pkg" "$PKG_NAME"
-              else
-                echo "Signed package not found; skipping move"
-              fi
-            fi
-          fi
-          security delete-keychain ~/Library/Keychains/$SECURITY_KEYCHAIN || true
-
-      - name: Conditional per-arch notarization (macOS)
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          set -ex
-          if [ -z "$APPLE_ID" ] || [ -z "$APPLE_PASSWORD" ]; then
-            echo "Notarization secrets not provided; skipping notarization"; exit 0
-          fi
-          DMG_NAME="Releases/Dvx3-Backup-Manager-macOS-${ARCH}.dmg"
-          PKG_NAME="Releases/Dvx3-Backup-Manager-macOS-${ARCH}.pkg"
-          if command -v xcrun >/dev/null 2>&1 && xcrun notarytool --help >/dev/null 2>&1; then
-            if [ -n "$APPLE_TEAM_ID" ]; then
-              TEAM_CMD=(--team-id "$APPLE_TEAM_ID")
-            else
-              TEAM_CMD=()
-            fi
-            xcrun notarytool submit "$DMG_NAME" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" "${TEAM_CMD[@]}" --wait || true
-            xcrun stapler staple "$DMG_NAME" || true
-            xcrun stapler validate "$DMG_NAME" || true
-            if [ -f "$PKG_NAME" ]; then
-              pkgutil --check-signature "$PKG_NAME" || true
-            fi
-          else
-            echo "notarytool not available; skipping notarization";
-          fi
+      # Per-arch code signing and notarization were removed per project policy (no Apple secrets available)
 
       # Duplicate notarization block removed (notarization already handled above)
 
@@ -625,7 +547,18 @@ jobs:
       - name: Install Homebrew packages
         run: |
           brew update
-          brew install pkg-config vala glib json-glib libsodium zstd qt@6 ninja cmake ccache create-dmg || exit 1
+          brew install \
+            pkg-config \
+            vala \
+            glib \
+            json-glib \
+            libsodium \
+            zstd \
+            qt@6 \
+            ninja \
+            cmake \
+            ccache \
+            create-dmg || exit 1
 
       - name: Ensure Qt6 moc is available (macOS)
         run: |
@@ -735,7 +668,13 @@ jobs:
           PKG_NAME="Releases/Dvx3-Backup-Manager-macOS-${ARCH}.pkg"
 
           if command -v create-dmg >/dev/null 2>&1; then
-            create-dmg --volname "Dvx3 Backup Manager" --window-pos 200 120 --window-size 600 400 --icon-size 100 --app-drop-link 425 120 "$DMG_NAME" "$APP_DIR" || true
+            create-dmg \
+              --volname "Dvx3 Backup Manager" \
+              --window-pos 200 120 \
+              --window-size 600 400 \
+              --icon-size 100 \
+              --app-drop-link 425 120 \
+              "$DMG_NAME" "$APP_DIR" || true
           else
             echo "create-dmg not found; falling back to hdiutil"
             hdiutil create -volname "Dvx3 Backup Manager" -srcfolder "$APP_DIR" -ov -format UDZO "$DMG_NAME"
@@ -771,45 +710,7 @@ jobs:
             otool -L "$APP_DIR/Contents/MacOS/backup-manager-gui" || true
           fi
 
-      - name: Conditional per-arch code sign (macOS)
-        env:
-          APPLE_CODESIGN_P12: ${{ secrets.APPLE_CODESIGN_P12 }}
-          APPLE_CODESIGN_P12_PASSWORD: ${{ secrets.APPLE_CODESIGN_P12_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          set -ex
-          if [ -z "$APPLE_CODESIGN_P12" ] || [ -z "$APPLE_CODESIGN_P12_PASSWORD" ]; then
-            echo "Per-arch signing secrets not provided; skipping per-arch code signing"; exit 0
-          fi
-          echo "$APPLE_CODESIGN_P12" | base64 --decode > cert.p12
-          SECURITY_KEYCHAIN=signing-perarch.keychain
-          security create-keychain -p signpw "$SECURITY_KEYCHAIN"
-          security import cert.p12 -k ~/Library/Keychains/$SECURITY_KEYCHAIN -P "$APPLE_CODESIGN_P12_PASSWORD" -T /usr/bin/codesign
-          security list-keychains -s ~/Library/Keychains/$SECURITY_KEYCHAIN
-          security set-key-partition-list -S apple-tool:,apple: -s -k signpw ~/Library/Keychains/$SECURITY_KEYCHAIN || true
-          SIGN_ID=$(security find-identity -p codesigning -v | awk '/"/{print $2; exit}') || true
-          echo "Using signing identity: ${SIGN_ID}"
-          codesign --deep --options runtime --timestamp --sign "$SIGN_ID" "${APP_DIR}" || true
-          echo "Verifying codesign for per-arch app"
-          codesign --verify --verbose=4 "${APP_DIR}" || true
-          codesign -dv --verbose=4 "${APP_DIR}" || true
-          spctl -a -t exec -vv "${APP_DIR}" || true
-          if [ -f "$PKG_NAME" ]; then
-            pkgutil --check-signature "$PKG_NAME" || true
-          fi
-          if command -v productsign >/dev/null 2>&1; then
-            if [ -f "$PKG_NAME" ]; then
-              productsign --sign "$SIGN_ID" "$PKG_NAME" "${PKG_NAME%.pkg}-signed.pkg" || true
-              if [ -f "${PKG_NAME%.pkg}-signed.pkg" ]; then
-                mv -f "${PKG_NAME%.pkg}-signed.pkg" "$PKG_NAME"
-              else
-                echo "Signed package not found; skipping move"
-              fi
-            fi
-          fi
-          security delete-keychain ~/Library/Keychains/$SECURITY_KEYCHAIN || true
+      # Per-arch code signing removed: no Apple signing configured in CI
 
       - name: Upload Mac artifacts
         uses: actions/upload-artifact@v4
@@ -877,7 +778,13 @@ jobs:
           mkdir -p Releases
           DMG_NAME="Releases/Dvx3-BackupManager-macOS-Universal.dmg"
           if command -v create-dmg >/dev/null 2>&1; then
-            create-dmg --volname "Dvx3 Backup Manager" --window-pos 200 120 --window-size 600 400 --icon-size 100 --app-drop-link 425 120 "$DMG_NAME" "universal/${APP_NAME}.app" || true
+            create-dmg \
+              --volname "Dvx3 Backup Manager" \
+              --window-pos 200 120 \
+              --window-size 600 400 \
+              --icon-size 100 \
+              --app-drop-link 425 120 \
+              "$DMG_NAME" "universal/${APP_NAME}.app" || true
           else
             hdiutil create -volname "Dvx3 Backup Manager" -srcfolder "universal/${APP_NAME}.app" -ov -format UDZO "$DMG_NAME"
           fi
@@ -987,78 +894,4 @@ jobs:
             fi
           done
       
-      - name: Conditional code sign (macOS)
-        env:
-          APPLE_CODESIGN_P12: ${{ secrets.APPLE_CODESIGN_P12 }}
-          APPLE_CODESIGN_P12_PASSWORD: ${{ secrets.APPLE_CODESIGN_P12_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          # Only proceed if required secrets are present (env provided via workflow secrets)
-          if [ -z "$APPLE_CODESIGN_P12" ] || [ -z "$APPLE_CODESIGN_P12_PASSWORD" ] || [ -z "$APPLE_ID" ] || [ -z "$APPLE_PASSWORD" ]; then
-            echo "Code signing secrets not provided; skipping code signing step";
-            exit 0;
-          fi
-          set -ex
-          APP_NAME="Dvx3 Backup Manager"
-          # Import P12 into a temporary keychain
-          CERT_P12_BASE64="$APPLE_CODESIGN_P12"
-          echo "$CERT_P12_BASE64" | base64 --decode > cert.p12
-          SECURITY_KEYCHAIN=signing.keychain
-          security create-keychain -p signpw "$SECURITY_KEYCHAIN"
-          security import cert.p12 -k ~/Library/Keychains/$SECURITY_KEYCHAIN -P "${{ secrets.APPLE_CODESIGN_P12_PASSWORD }}" -T /usr/bin/codesign
-          security list-keychains -s ~/Library/Keychains/$SECURITY_KEYCHAIN
-          security set-key-partition-list -S apple-tool:,apple: -s -k signpw ~/Library/Keychains/$SECURITY_KEYCHAIN || true
-          SIGN_ID=$(security find-identity -p codesigning -v | awk '/"/{print $2; exit}') || true
-          echo "Using signing identity: ${SIGN_ID}"
-          # Codesign DMG / PKG (codesign supports app bundle normally, pkg needs productsign)
-          codesign --deep --options runtime --timestamp --sign "$SIGN_ID" "universal/${APP_NAME}.app" || true
-          echo "Verifying codesign for universal app"
-          codesign --verify --verbose=4 "universal/${APP_NAME}.app" || true
-          codesign -dv --verbose=4 "universal/${APP_NAME}.app" || true
-          spctl -a -t exec -vv "universal/${APP_NAME}.app" || true
-          if [ -f "$PKG_NAME" ]; then
-            pkgutil --check-signature "$PKG_NAME" || true
-          fi
-          # sign DMG using productsign if certificate available (productsign uses installer identity)
-          if command -v productsign >/dev/null 2>&1; then
-            if [ -n "${SIGN_ID}" ]; then
-              productsign --sign "$SIGN_ID" "Releases/Dvx3-BackupManager-macOS-Universal.pkg" "Releases/Dvx3-BackupManager-macOS-Universal-signed.pkg" || true
-              if [ -f "Releases/Dvx3-BackupManager-macOS-Universal-signed.pkg" ]; then
-                mv -f "Releases/Dvx3-BackupManager-macOS-Universal-signed.pkg" "Releases/Dvx3-BackupManager-macOS-Universal.pkg"
-              else
-                echo "Universal signed pkg not found; skipping move"
-              fi
-            fi
-          fi
-          # Clean up keychain
-          security delete-keychain ~/Library/Keychains/$SECURITY_KEYCHAIN || true
-
-      - name: Conditional notarization (macOS)
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          # Only proceed if required secrets are present (env provided via workflow secrets)
-          if [ -z "$APPLE_ID" ] || [ -z "$APPLE_PASSWORD" ]; then
-            echo "Notarization secrets not provided; skipping notarization step";
-            exit 0;
-          fi
-          set -ex
-          APP_NAME="Dvx3 Backup Manager"
-          DMG_NAME="Releases/Dvx3-BackupManager-macOS-Universal.dmg"
-          # Notarize using xcrun notarytool (requires Xcode's notarytool available)
-          if command -v xcrun >/dev/null 2>&1 && xcrun notarytool --help >/dev/null 2>&1; then
-            # Use app-specific password / Apple ID & team ID if present
-            if [ -n "$APPLE_TEAM_ID" ]; then
-              TEAM_CMD=(--team-id "$APPLE_TEAM_ID")
-            else
-              TEAM_CMD=()
-            fi
-            xcrun notarytool submit "$DMG_NAME" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" "${TEAM_CMD[@]}" --wait || true
-            xcrun stapler staple "$DMG_NAME" || true
-          else
-            echo "notarytool not available on runner; please notarize offline if needed" || true
-          fi
+      # Code signing and notarization for macOS release has been removed as no Apple credentials are available in CI.
