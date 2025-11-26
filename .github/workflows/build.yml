@@ -182,10 +182,10 @@ jobs:
 
       - name: Prepare Linux releases
         run: |
-          mkdir -p Releases/linux
+          mkdir -p Releases/linux/lib
           cp backup-manager backup-manager-gui dvx3 libdvx3.so Releases/linux/ || true
-          # Copy libsodium shared library if present
-          cp /usr/lib/libsodium.so.* Releases/linux/ 2>/dev/null || cp /usr/local/lib/libsodium.so.* Releases/linux/ 2>/dev/null || echo "libsodium.so.* not found in /usr/lib or /usr/local/lib"
+          # Always copy libsodium.so.23* for portability
+          cp /usr/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || cp /usr/local/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || echo "libsodium.so.23* not found in /usr/lib or /usr/local/lib"
 
       - name: Package Linux tarball
         run: |
@@ -293,10 +293,10 @@ jobs:
 
       - name: Prepare Linux releases
         run: |
-          mkdir -p Releases/linux
+          mkdir -p Releases/linux/lib
           cp backup-manager backup-manager-gui dvx3 libdvx3.so Releases/linux/ || true
-          # Always copy libsodium.so.23 for portability
-          cp /usr/lib/libsodium.so.23 Releases/linux/lib/ 2>/dev/null || echo "libsodium.so.23 not found in /usr/lib"
+          # Always copy libsodium.so.23* for portability
+          cp /usr/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || cp /usr/local/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || echo "libsodium.so.23* not found in /usr/lib or /usr/local/lib"
 
       - name: Package Linux tarball
         run: |
