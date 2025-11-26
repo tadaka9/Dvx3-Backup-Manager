@@ -289,10 +289,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install qemu for cross-compile & dependencies
+      - name: Install qemu for cross-compile & install Docker only if needed
         run: |
+          set -ex
           sudo apt-get update
-          sudo apt-get install -y qemu-user-static binfmt-support docker.io || exit 1
+          # Install qemu and binfmt support for cross-platform builds
+          sudo apt-get install -y qemu-user-static binfmt-support || exit 1
+          # Avoid installing Docker if the runner already has it to prevent apt conflicts
+          if ! command -v docker >/dev/null 2>&1; then
+            sudo apt-get install -y docker.io || exit 1
+          else
+            echo "docker is already installed; skipping apt install to prevent package conflicts"
+          fi
 
       - name: Build GUI (cross-compile)
         run: |
