@@ -282,11 +282,9 @@ jobs:
           find /opt/homebrew/Cellar/qt/6.9.3 -name mo
           find /opt/homebrew/Cellar/qt/6.9.3 -name moc
           brew install pkg-config vala glib json-glib libsodium zstd qt@6 ninja cmake ccache || exit 1
-      - name: Symlink Qt6 moc to /usr/local/bin (macOS)
+      - name: Ensure Qt6 moc is available (macOS)
         run: |
           FOUND_MOC=""
-          brew reinstall qt@6 || true
-          find $(brew --prefix qt@6) -name moc
           for MOC_PATH in \
             /opt/homebrew/opt/qt@6/libexec/moc \
             /opt/homebrew/opt/qt@6/bin/moc \
@@ -306,46 +304,20 @@ jobs:
             fi
           done
           if [ -z "$FOUND_MOC" ]; then
-            echo "moc not found in any known location"
-            exit 1
+            echo "moc not found in any known location, downloading Qt6 tools..."
+            QT_TOOLS_URL="https://download.qt.io/official_releases/qt/6.2/6.2.4/macos/qt-tools-mac-x64.7z"
+            curl -L "$QT_TOOLS_URL" -o qt-tools.7z
+            brew install p7zip || true
+            7z x qt-tools.7z -oqt-tools
+            if [ -f qt-tools/bin/moc ]; then
+              ln -sf "$PWD/qt-tools/bin/moc" /usr/local/bin/moc
+              echo "Symlinked moc from downloaded Qt6 tools to /usr/local/bin/moc"
+            else
+              echo "Downloaded Qt6 tools but moc not found. Build will fail."
+              exit 1
+            fi
           fi
           which moc || exit 1
-        - name: Ensure Qt6 moc is available (macOS)
-          run: |
-            FOUND_MOC=""
-            for MOC_PATH in \
-              /opt/homebrew/opt/qt@6/libexec/moc \
-              /opt/homebrew/opt/qt@6/bin/moc \
-              /usr/local/opt/qt@6/libexec/moc \
-              /usr/local/opt/qt@6/bin/moc \
-              /opt/homebrew/opt/qt/libexec/moc \
-              /opt/homebrew/opt/qt/bin/moc \
-              /usr/local/opt/qt/libexec/moc \
-              /usr/local/opt/qt/bin/moc \
-              /mingw64/lib/qt6/libexec/moc \
-              /mingw64/bin/moc; do
-              if [ -f "$MOC_PATH" ]; then
-                ln -sf "$MOC_PATH" /usr/local/bin/moc
-                echo "Symlinked moc from $MOC_PATH to /usr/local/bin/moc"
-                FOUND_MOC="$MOC_PATH"
-                break
-              fi
-            done
-            if [ -z "$FOUND_MOC" ]; then
-              echo "moc not found in any known location, downloading Qt6 tools..."
-              QT_TOOLS_URL="https://download.qt.io/official_releases/qt/6.2/6.2.4/macos/qt-tools-mac-x64.7z"
-              curl -L "$QT_TOOLS_URL" -o qt-tools.7z
-              brew install p7zip || true
-              7z x qt-tools.7z -oqt-tools
-              if [ -f qt-tools/bin/moc ]; then
-                ln -sf "$PWD/qt-tools/bin/moc" /usr/local/bin/moc
-                echo "Symlinked moc from downloaded Qt6 tools to /usr/local/bin/moc"
-              else
-                echo "Downloaded Qt6 tools but moc not found. Build will fail."
-                exit 1
-              fi
-            fi
-            which moc || exit 1
 
       - name: Configure ccache
         run: |
