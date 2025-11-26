@@ -338,31 +338,15 @@ jobs:
       - name: Ensure Qt6 moc is available (macOS)
         run: |
           brew link --overwrite qt@6 || true
+          brew install qt@6-tools || true
           QT6_PREFIX=$(brew --prefix qt@6)
           export PATH="$QT6_PREFIX/bin:$QT6_PREFIX/libexec:$PATH"
-          FOUND_MOC=""
-          for MOC_PATH in \
-            "$QT6_PREFIX/bin/moc" \
-            "$QT6_PREFIX/libexec/moc" \
-            /opt/homebrew/opt/qt@6/libexec/moc \
-            /opt/homebrew/opt/qt@6/bin/moc \
-            /usr/local/opt/qt@6/libexec/moc \
-            /usr/local/opt/qt@6/bin/moc \
-            /opt/homebrew/opt/qt/libexec/moc \
-            /opt/homebrew/opt/qt/bin/moc \
-            /usr/local/opt/qt/libexec/moc \
-            /usr/local/opt/qt/bin/moc \
-            /mingw64/lib/qt6/libexec/moc \
-            /mingw64/bin/moc; do
-            if [ -f "$MOC_PATH" ]; then
-              ln -sf "$MOC_PATH" /usr/local/bin/moc
-              echo "Symlinked moc from $MOC_PATH to /usr/local/bin/moc"
-              FOUND_MOC="$MOC_PATH"
-              break
-            fi
-          done
-          if [ -z "$FOUND_MOC" ]; then
-            echo "moc not found in any known location after Homebrew install. Failing."
+          MOC_PATH=$(find "$QT6_PREFIX" -name moc | head -n1)
+          if [ -n "$MOC_PATH" ]; then
+            ln -sf "$MOC_PATH" /usr/local/bin/moc
+            echo "Symlinked moc from $MOC_PATH to /usr/local/bin/moc"
+          else
+            echo "moc not found after installing qt@6-tools. Failing."
             exit 1
           fi
           which moc || exit 1
