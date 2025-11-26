@@ -301,18 +301,18 @@ jobs:
             fi
           done
           if [ -z "$FOUND_MOC" ]; then
-            echo "moc not found in any known location, downloading Qt6 tools..."
-            QT_TOOLS_URL="https://download.qt.io/official_releases/qt/6.2/6.2.4/macos/qt-tools-mac-x64.7z"
-            curl -L "$QT_TOOLS_URL" -o qt-tools.7z
-            brew install p7zip || true
-            7z x qt-tools.7z -oqt-tools
-            if [ -f qt-tools/bin/moc ]; then
-              ln -sf "$PWD/qt-tools/bin/moc" /usr/local/bin/moc
-              echo "Symlinked moc from downloaded Qt6 tools to /usr/local/bin/moc"
-            else
-              echo "Downloaded Qt6 tools but moc not found. Build will fail."
-              exit 1
-            fi
+            echo "moc not found in any known location, building Qt6 from source..."
+            curl -LO https://download.qt.io/official_releases/qt/6.10/6.10.1/single/qt-everywhere-src-6.10.1.tar.xz
+            tar -xf qt-everywhere-src-6.10.1.tar.xz
+            cd qt-everywhere-src-6.10.1
+            brew install cmake ninja python3 pkg-config || true
+            mkdir build && cd build
+            ../configure -prefix $HOME/Qt6 -release -opensource -confirm-license -nomake examples -nomake tests
+            cmake --build . --parallel
+            cmake --install .
+            export PATH="$HOME/Qt6/bin:$PATH"
+            ln -sf "$HOME/Qt6/bin/moc" /usr/local/bin/moc
+            echo "Built and symlinked moc from Qt6 source to /usr/local/bin/moc"
           fi
           which moc || exit 1
 
