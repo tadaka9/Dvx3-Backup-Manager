@@ -31,12 +31,6 @@ jobs:
       - name: Cache ccache (Windows)
         if: runner.os == 'Windows'
         uses: actions/cache@v4
-        name: Build Backup Manager
-
-        on:
-          push:
-            branches: [clean-version]
-          pull_request:
 
         with:
           path: C:\Users\runneradmin\AppData\Local\ccache
