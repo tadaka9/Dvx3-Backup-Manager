@@ -338,7 +338,7 @@ jobs:
       - name: Ensure Qt6 moc is available (macOS)
         run: |
           brew link --overwrite qt@6 || true
-          brew install qt@6-tools || true
+          brew install qttools || true
           QT6_PREFIX=$(brew --prefix qt@6)
           export PATH="$QT6_PREFIX/bin:$QT6_PREFIX/libexec:$PATH"
           MOC_PATH=$(find "$QT6_PREFIX" -name moc | head -n1)
