@@ -148,18 +148,13 @@ jobs:
   # ------------------------------------------------------------------
   # MULTI-DISTRO LINUX BUILD
   # ------------------------------------------------------------------
-  build-linux-matrix:
-    runs-on: ${{ matrix.distro }}
-    strategy:
-      matrix:
-        distro: [ubuntu-latest]
-        arch: [x86_64]
+  build-linux:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install dependencies (Ubuntu)
-        if: matrix.distro == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential cmake pkg-config \
@@ -182,14 +177,14 @@ jobs:
 
       - name: Package Linux tarball
         run: |
-          tar -czf Releases/Dvx3-Backup-Manager-Linux-${{ matrix.distro }}.tar.gz -C Releases/linux .
+          tar -czf Releases/Dvx3-Backup-Manager-Linux-ubuntu-latest.tar.gz -C Releases/linux .
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-Linux-${{ matrix.distro }}-${{ github.job }}
+          name: Dvx3-Backup-Manager-Linux-ubuntu-latest-${{ github.job }}
           path: |
-            Releases/Dvx3-Backup-Manager-Linux-${{ matrix.distro }}.tar.gz
+            Releases/Dvx3-Backup-Manager-Linux-ubuntu-latest.tar.gz
 
       - name: Verify Qt6 installation
         shell: bash
@@ -200,8 +195,8 @@ jobs:
           which moc || true
           echo "PATH:"
           echo $PATH
-          echo "Listing Qt6 packages"
-          pacman -Qs qt6 || true
+          echo "Listing Qt6 packages via pkg-config"
+          pkg-config --list-all | grep Qt6 || true
 
   # ------------------------------------------------------------------
   # LINUX BUILD (native & cross‑compile)
@@ -218,6 +213,8 @@ jobs:
           sudo apt-get install -y build-essential cmake pkg-config \
             valac libjson-glib-dev libsodium-dev libsodium23 zstd tar imagemagick \
             ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev nsis wget || exit 1
+          # patchelf will be used to set rpath for bundled libs
+          sudo apt-get install -y patchelf || true
 
       - name: Configure ccache
         run: |
@@ -251,8 +248,20 @@ jobs:
           # Always copy libsodium.so.23* for portability
           cp /usr/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || cp /usr/local/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || echo "libsodium.so.23* not found in /usr/lib or /usr/local/lib"
 
-      - name: Package Linux tarball
+      - name: Set runtime RPATH and Package Linux tarball
         run: |
+          mkdir -p Releases/linux/lib
+          cp /usr/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || cp /usr/local/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || echo "libsodium.so.23* not found in /usr/lib or /usr/local/lib"
+          if command -v patchelf >/dev/null 2>&1; then
+            for bin in Releases/linux/backup-manager Releases/linux/backup-manager-gui Releases/linux/dvx3; do
+              if [ -f "$bin" ]; then
+                patchelf --set-rpath '$ORIGIN/lib:$ORIGIN' "$bin" || true
+              fi
+            done
+            if [ -f Releases/linux/libdvx3.so ]; then
+              patchelf --set-rpath '$ORIGIN/lib:$ORIGIN' Releases/linux/libdvx3.so || true
+            fi
+          fi
           tar -czf Releases/Dvx3-Backup-Manager-Linux-x86_64.tar.gz -C Releases/linux . || true
 
       - name: Upload Linux artifacts (x86_64)
@@ -297,7 +306,7 @@ jobs:
           docker run --rm --platform linux/arm64 -v "$PWD":/src -w /src debian:trixie bash -c '
             set -ex
             apt-get update
-            apt-get install -y build-essential cmake pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev || exit 1
+            apt-get install -y build-essential cmake pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev patchelf || exit 1
             ccache -M 5G
             export CCACHE_DIR=$HOME/.cache/ccache
             export PATH=/usr/lib/ccache:$PATH
@@ -312,6 +321,26 @@ jobs:
           mkdir -p Releases/linux/lib
           cp backup-manager backup-manager-gui dvx3 libdvx3.so Releases/linux/ || true
           cp /usr/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || cp /usr/local/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || echo "libsodium.so.23* not found in /usr/lib or /usr/local/lib"
+
+      - name: Install patchelf (runner)
+        run: |
+          sudo apt-get update || true
+          sudo apt-get install -y patchelf || true
+
+      - name: Set runtime RPATH (arm64)
+        run: |
+          if command -v patchelf >/dev/null 2>&1; then
+            for bin in Releases/linux/backup-manager Releases/linux/backup-manager-gui Releases/linux/dvx3; do
+              if [ -f "$bin" ]; then
+                patchelf --set-rpath '$ORIGIN/lib:$ORIGIN' "$bin" || true
+              fi
+            done
+            if [ -f Releases/linux/libdvx3.so ]; then
+              patchelf --set-rpath '$ORIGIN/lib:$ORIGIN' Releases/linux/libdvx3.so || true
+            fi
+          else
+            echo "patchelf not available; binaries will rely on system libraries or LD_LIBRARY_PATH"
+          fi
 
       - name: Package Linux tarball (arm64)
         run: |
