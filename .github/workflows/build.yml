@@ -152,7 +152,7 @@ jobs:
     runs-on: ${{ matrix.distro }}
     strategy:
       matrix:
-        distro: [ubuntu-latest, archlinux, fedora-latest]
+        distro: [ubuntu-latest]
         arch: [x86_64]
     steps:
       - name: Checkout repository
@@ -166,17 +166,7 @@ jobs:
             valac libjson-glib-dev libsodium-dev libsodium23 zstd tar imagemagick \
             ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev nsis || exit 1
 
-      - name: Install dependencies (Arch)
-        if: matrix.distro == 'archlinux'
-        run: |
-          sudo pacman -Syu --noconfirm
-          sudo pacman -S --noconfirm base-devel cmake pkgconf vala json-glib libsodium zstd tar imagemagick ninja ccache gtest qt6-base qt6-tools
-
-      - name: Install dependencies (Fedora)
-        if: matrix.distro == 'fedora-latest'
-        run: |
-          sudo dnf -y update
-          sudo dnf -y install @development-tools cmake pkgconf-pkg-config vala json-glib-devel libsodium-devel zstd tar ImageMagick ninja-build ccache gtest qt6-qtbase-devel qt6-qttools-devel
+      # archlinux and fedora targets removed from matrix; only ubuntu-latest is built
 
       - name: Build GUI
         run: |
