@@ -98,23 +98,6 @@ jobs:
           name: Dvx3-Backup-Manager-Linux-${{ matrix.distro }}
           path:
             - Releases/Dvx3-Backup-Manager-Linux-${{ matrix.distro }}.tar.gz
-              - name: Install MinGW-w64 toolchain
-                shell: msys2 {0}
-                run: |
-                  pacman -S --noconfirm --needed mingw-w64-x86_64-toolchain
-              - name: Install MinGW-w64 Qt6 packages
-                shell: msys2 {0}
-                run: |
-                  pacman -S --noconfirm --needed mingw-w64-x86_64-qt6-base
-                  pacman -S --noconfirm --needed mingw-w64-x86_64-qt6-tools
-                  pacman -S --noconfirm --needed mingw-w64-x86_64-pkg-config
-                  pacman -S --noconfirm --needed mingw-w64-x86_64-vala
-                  pacman -S --noconfirm --needed mingw-w64-x86_64-ninja
-                  pacman -S --noconfirm --needed mingw-w64-x86_64-cmake
-                  pacman -S --noconfirm --needed mingw-w64-x86_64-json-glib
-                  pacman -S --noconfirm --needed mingw-w64-x86_64-libsodium
-                  pacman -S --noconfirm --needed mingw-w64-x86_64-gtest
-                  pacman -S --noconfirm --needed upx
       - name: Verify Qt6 installation
         shell: msys2 {0}
         run: |
