@@ -129,7 +129,7 @@ jobs:
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-Windows-${{ github.run_id }}
+          name: Dvx3-Backup-Manager-Windows-${{ github.run_id }}-${{ github.job }}
           path: |
             Releases/Dvx3-Backup-Manager-Windows.zip
             Releases/Dvx3-Backup-Manager-Windows.zip.sha256
@@ -182,7 +182,7 @@ jobs:
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-Linux-ubuntu-latest-${{ github.run_id }}
+          name: Dvx3-Backup-Manager-Linux-ubuntu-latest-${{ github.run_id }}-${{ github.job }}
           path: |
             Releases/Dvx3-Backup-Manager-Linux-ubuntu-latest.tar.gz
 
@@ -299,7 +299,7 @@ jobs:
       - name: Upload Linux artifacts (x86_64)
         uses: actions/upload-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-Linux-x86_64-${{ github.run_id }}
+          name: Dvx3-Backup-Manager-Linux-x86_64-${{ github.run_id }}-${{ github.job }}
           path: |
             Releases/Dvx3-Backup-Manager-Linux-x86_64.tar.gz
             Releases/Dvx3-Backup-Manager.AppImage
@@ -388,7 +388,7 @@ jobs:
       - name: Upload Linux artifacts (arm64)
         uses: actions/upload-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-Linux-arm64-${{ github.run_id }}
+          name: Dvx3-Backup-Manager-Linux-arm64-${{ github.run_id }}-${{ github.job }}
           path: |
             Releases/Dvx3-Backup-Manager-Linux-arm64.tar.gz
 
