@@ -96,8 +96,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Dvx3-Backup-Manager-Linux-${{ matrix.distro }}
-          path:
-            - Releases/Dvx3-Backup-Manager-Linux-${{ matrix.distro }}.tar.gz
+          path: |
+            Releases/Dvx3-Backup-Manager-Linux-${{ matrix.distro }}.tar.gz
       - name: Verify Qt6 installation
         shell: msys2 {0}
         run: |
@@ -184,9 +184,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Dvx3-Backup-Manager-Windows
-          path:
-            - Releases/Dvx3-Backup-Manager-Windows.zip
-            - Releases/Dvx3-Backup-Manager-Windows.zip.sha256
+          path: |
+            Releases/Dvx3-Backup-Manager-Windows.zip
+            Releases/Dvx3-Backup-Manager-Windows.zip.sha256
 
       - name: CI diagnostics on failure (Windows)
         if: failure()
