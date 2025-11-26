@@ -14,19 +14,15 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        arch: [x64, arm64]  # aggiungere arm64 se necessario
+        arch: [x64, arm64]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      # Removed: macOS-specific Brew install (was added by mistake to Windows job)
 
       - name: Verify MSVC environment
         shell: pwsh
         run: |
           Write-Output "=== MSVC Diagnostics ==="
-          Write-Output "Visual Studio Locator version:"
-          & "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -format text -property displayName,installationPath || Write-Output "vswhere not found"
           Write-Output "Which cl.exe:"
           Get-Command cl.exe -ErrorAction SilentlyContinue || Write-Output "cl.exe not found"
           Write-Output "PATH: $env:PATH"
@@ -52,209 +48,49 @@ jobs:
             mingw-w64-x86_64-vala
             mingw-w64-x86_64-ninja
             mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-json-glib
-            mingw-w64-x86_64-libsodium
-            mingw-w64-x86_64-gtest
-            upx
 
-      - name: Install NSIS (optional)
+      - name: Build all components (Windows)
         shell: msys2 {0}
         run: |
-          pacman -S --noconfirm --needed msys/nsis || true
-          pacman -S --noconfirm --needed mingw-w64-x86_64-nsis || true
-
-      - name: Build all components (MSYS2)
-        shell: msys2 {0}
-        run: |
-          chmod +x build-all.sh
-          sed -i 's/\r$//' build-all.sh
-          ./build-all.sh || true  # Changed to || true to prevent failure on script logic issues
-
-      - name: Build Backup Manager GUI
-        shell: msys2 {0}
-        run: |
-          chmod +x build_gui.sh
-          sed -i 's/\r$//' build_gui.sh
+          set -ex
+          chmod +x build-all.sh build_gui.sh || true
+          sed -i 's/\r$//' build-all.sh || true
+          sed -i 's/\r$//' build_gui.sh || true
+          ./build-all.sh || true
           ./build_gui.sh || exit 1
-
-      - name: Deploy Qt dependencies
-        shell: msys2 {0}
-        run: |
-          if command -v windeployqt >/dev/null 2>&1; then
-            mkdir -p Releases
-            windeployqt --dir Releases backup-manager-gui || true
-            echo "Qt dependencies deployed"
-          else
-            echo "windeployqt not installed – skipping"
-          fi
-
-      - name: Prepare Releases folder
-        shell: msys2 {0}
-        run: |
           mkdir -p Releases
-          # GUI
-          if [ -f backup-manager-gui.exe ]; then
-            mv backup-manager-gui.exe "Releases/Dvx3 Backup Manager.exe"
+          if [ -f backup-manager.exe ]; then
+            cp backup-manager.exe "Releases/Dvx3 Backup Manager.exe" || true
           fi
-          # CLI
           if [ -f dvx3.exe ]; then
-            cp dvx3.exe Releases/
+            cp dvx3.exe Releases/ || true
           fi
-          # Copy required MSYS2 utilities
+          # Copy required MSYS2 utilities and platform plugins if present
           cp /usr/bin/tar.exe /usr/bin/zstd.exe /usr/bin/sh.exe Releases/ || true
-          # Qt platform plugins
           PLUGIN_SRC="/mingw64/share/qt6/plugins/platforms"
           PLUGIN_DST="Releases/platforms"
           mkdir -p "$PLUGIN_DST"
           if [ -d "$PLUGIN_SRC" ]; then
-            cp "$PLUGIN_SRC"/*.dll "$PLUGIN_DST"/
-          fi
-
-      - name: Compress binaries with UPX
-        shell: bash
-        run: |
-          if command -v upx >/dev/null 2>&1; then
-            upx --best --lzma "Releases/Dvx3 Backup Manager.exe" || true
-          else
-            echo "UPX not available – skipping compression"
+            cp "$PLUGIN_SRC"/*.dll "$PLUGIN_DST"/ || true
           fi
 
       - name: Create ZIP archive (Windows)
         shell: msys2 {0}
         run: |
           cd Releases
-          powershell -Command "Compress-Archive -Path * -DestinationPath 'Dvx3-Backup-Manager-Windows.zip' -Force"
-          sha256sum Dvx3-Backup-Manager-Windows.zip > Dvx3-Backup-Manager-Windows.zip.sha256
+          powershell -Command "Compress-Archive -Path * -DestinationPath 'Dvx3-Backup-Manager-Windows-${{ matrix.arch }}.zip' -Force"
+          sha256sum Dvx3-Backup-Manager-Windows-${{ matrix.arch }}.zip > Dvx3-Backup-Manager-Windows-${{ matrix.arch }}.zip.sha256
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-Windows-${{ github.run_id }}-${{ github.job }}
+          name: Dvx3-Backup-Manager-Windows-${{ github.run_id }}-build-windows-${{ matrix.arch }}
           path: |
-            Releases/Dvx3-Backup-Manager-Windows.zip
-            Releases/Dvx3-Backup-Manager-Windows.zip.sha256
-
-      - name: CI diagnostics on failure (Windows)
-        if: failure()
-        shell: msys2 {0}
-        run: |
-          echo "=== Windows CI failure diagnostics ==="
-          ls -la
-          ls -la Releases || true
-          echo "PATH:"
-          echo $PATH
-          which moc || true
-
-  # ------------------------------------------------------------------
-  # MULTI-DISTRO LINUX BUILD
-  # ------------------------------------------------------------------
-  build-linux:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install dependencies (Ubuntu)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake pkg-config \
-            valac libjson-glib-dev libsodium-dev libsodium23 zstd tar imagemagick \
-            ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev nsis || exit 1
-
-      # archlinux and fedora targets removed from matrix; only ubuntu-latest is built
-
-      - name: Build GUI
-        run: |
-          chmod +x build_gui.sh
-          ./build_gui.sh || exit 1
-
-      - name: Prepare Linux releases
-        run: |
-          mkdir -p Releases/linux/lib
-          cp backup-manager backup-manager-gui dvx3 libdvx3.so Releases/linux/ || true
-          # Always copy libsodium.so.23* for portability
-          cp /usr/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || cp /usr/local/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || echo "libsodium.so.23* not found in /usr/lib or /usr/local/lib"
-
-      - name: Package Linux tarball
-        run: |
-          tar -czf Releases/Dvx3-Backup-Manager-Linux-ubuntu-latest.tar.gz -C Releases/linux .
-
-      - name: Upload Linux artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: Dvx3-Backup-Manager-Linux-ubuntu-latest-${{ github.run_id }}-${{ github.job }}
-          path: |
-            Releases/Dvx3-Backup-Manager-Linux-ubuntu-latest.tar.gz
-
-      - name: Verify Qt6 installation
-        shell: bash
-        run: |
-          echo "Checking Qt6Widgets with pkg-config"
-          pkg-config --modversion Qt6Widgets || true
-          echo "Locating moc"
-          which moc || true
-          echo "PATH:"
-          echo $PATH
-          echo "Listing Qt6 packages via pkg-config"
-          pkg-config --list-all | grep Qt6 || true
-
-  # ------------------------------------------------------------------
-  # LINUX BUILD (native & cross‑compile)
-  # ------------------------------------------------------------------
-  build-linux-x86_64:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install dependencies (Ubuntu x86_64)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake pkg-config \
-            valac libjson-glib-dev libsodium-dev libsodium23 zstd tar imagemagick \
-            ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev nsis wget || exit 1
-          # patchelf will be used to set rpath for bundled libs
-          sudo apt-get install -y patchelf || true
-
-      - name: Configure ccache
-        run: |
-          ccache -M 5G
-          echo "CCACHE_DIR=$HOME/.cache/ccache" >> $GITHUB_ENV
-          echo "PATH=/usr/lib/ccache:$PATH" >> $GITHUB_ENV
-          echo "CC=gcc" >> $GITHUB_ENV
-          echo "CXX=g++" >> $GITHUB_ENV
-
-      - name: Build GUI (Linux x86_64)
-        run: |
-          chmod +x build_gui.sh
-          ./build_gui.sh || exit 1
-
-      - name: Build AppImage
-        run: |
-          # Prepare linuxdeployqt and appimagetool
-          wget -qO linuxdeployqt.AppImage https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage || true
-          chmod +x linuxdeployqt.AppImage || true
-          sudo mv linuxdeployqt.AppImage /usr/local/bin/linuxdeployqt || true
-          chmod +x appimagetool-x86_64.AppImage || true
-          sudo mv appimagetool-x86_64.AppImage /usr/local/bin/appimagetool || true
-          chmod +x pack-appimage.sh
-          ./pack-appimage.sh || true
-
-      - name: Prepare Linux releases
-        run: |
-          mkdir -p Releases/linux/lib
-          cp backup-manager backup-manager-gui dvx3 libdvx3.so Releases/linux/ || true
-          cp Dvx3-Backup-Manager.AppImage Releases/ || true
-          # Add a small wrapper to ensure runnable binaries find bundled libs (LD_LIBRARY_PATH)
-          printf '%s\n' '#!/bin/sh' 'DIR=$(cd "$(dirname "${0}")" && pwd)' 'export LD_LIBRARY_PATH="$DIR/lib:${LD_LIBRARY_PATH}"' 'exec "$DIR/backup-manager-gui" "$@"' > Releases/linux/backup-manager-gui.sh
-          printf '%s\n' '#!/bin/sh' 'DIR=$(cd "$(dirname "${0}")" && pwd)' 'export LD_LIBRARY_PATH="$DIR/lib:${LD_LIBRARY_PATH}"' 'exec "$DIR/backup-manager" "$@"' > Releases/linux/backup-manager.sh
-          printf '%s\n' '#!/bin/sh' 'DIR=$(cd "$(dirname "${0}")" && pwd)' 'export LD_LIBRARY_PATH="$DIR/lib:${LD_LIBRARY_PATH}"' 'exec "$DIR/dvx3" "$@"' > Releases/linux/dvx3.sh
-          chmod +x Releases/linux/backup-manager-gui.sh || true
-          chmod +x Releases/linux/backup-manager.sh || true
-          chmod +x Releases/linux/dvx3.sh || true
-          # Always copy libsodium.so.23* for portability
-          cp /usr/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || cp /usr/local/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || echo "libsodium.so.23* not found in /usr/lib or /usr/local/lib"
-
+            Releases/Dvx3-Backup-Manager-Windows-${{ matrix.arch }}.zip
+            Releases/Dvx3-Backup-Manager-Windows-${{ matrix.arch }}.zip.sha256
+          overwrite: true
+          # continue gracefully if missing
+                
       - name: Set runtime RPATH and Package Linux tarball
         run: |
           mkdir -p Releases/linux/lib
@@ -299,10 +135,98 @@ jobs:
       - name: Upload Linux artifacts (x86_64)
         uses: actions/upload-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-Linux-x86_64-${{ github.run_id }}-${{ github.job }}
+          name: Dvx3-Backup-Manager-Linux-x86_64-${{ github.run_id }}-build-linux-x86_64
           path: |
             Releases/Dvx3-Backup-Manager-Linux-x86_64.tar.gz
             Releases/Dvx3-Backup-Manager.AppImage
+          overwrite: true
+          
+
+      - name: CI diagnostics on failure (Linux x86_64)
+        if: failure()
+        run: |
+          echo "=== Linux CI failure diagnostics ==="
+          ls -la
+          ls -la Releases || true
+          ldd backup-manager || true
+          ldd backup-manager-gui || true
+          ldd dvx3 || true
+
+  build-linux-x86_64:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (Ubuntu x86_64)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config \
+            valac libjson-glib-dev libsodium-dev libsodium23 zstd tar imagemagick \
+            ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev nsis wget || exit 1
+          sudo apt-get install -y patchelf || true
+
+      - name: Configure ccache
+        run: |
+          ccache -M 5G
+          echo "CCACHE_DIR=$HOME/.cache/ccache" >> $GITHUB_ENV
+          echo "PATH=/usr/lib/ccache:$PATH" >> $GITHUB_ENV
+          echo "CC=gcc" >> $GITHUB_ENV
+          echo "CXX=g++" >> $GITHUB_ENV
+
+      - name: Build GUI (Linux x86_64)
+        run: |
+          chmod +x build_gui.sh
+          ./build_gui.sh || exit 1
+
+      - name: Build AppImage
+        run: |
+          wget -qO linuxdeployqt.AppImage https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage || true
+          chmod +x linuxdeployqt.AppImage || true
+          sudo mv linuxdeployqt.AppImage /usr/local/bin/linuxdeployqt || true
+          chmod +x appimagetool-x86_64.AppImage || true
+          sudo mv appimagetool-x86_64.AppImage /usr/local/bin/appimagetool || true
+          chmod +x pack-appimage.sh
+          ./pack-appimage.sh || true
+
+      - name: Prepare Linux releases
+        run: |
+          mkdir -p Releases/linux/lib
+          cp backup-manager backup-manager-gui dvx3 libdvx3.so Releases/linux/ || true
+          cp Dvx3-Backup-Manager.AppImage Releases/ || true
+          printf '%s\n' '#!/bin/sh' 'DIR=$(cd "$(dirname "${0}")" && pwd)' 'export LD_LIBRARY_PATH="$DIR/lib:${LD_LIBRARY_PATH}"' 'exec "$DIR/backup-manager-gui" "$@"' > Releases/linux/backup-manager-gui.sh
+          printf '%s\n' '#!/bin/sh' 'DIR=$(cd "$(dirname "${0}")" && pwd)' 'export LD_LIBRARY_PATH="$DIR/lib:${LD_LIBRARY_PATH}"' 'exec "$DIR/backup-manager" "$@"' > Releases/linux/backup-manager.sh
+          printf '%s\n' '#!/bin/sh' 'DIR=$(cd "$(dirname "${0}")" && pwd)' 'export LD_LIBRARY_PATH="$DIR/lib:${LD_LIBRARY_PATH}"' 'exec "$DIR/dvx3" "$@"' > Releases/linux/dvx3.sh
+          chmod +x Releases/linux/backup-manager-gui.sh || true
+          chmod +x Releases/linux/backup-manager.sh || true
+          chmod +x Releases/linux/dvx3.sh || true
+          cp /usr/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || cp /usr/local/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || echo "libsodium.so.23* not found in /usr/lib or /usr/local/lib"
+
+      - name: Set runtime RPATH and Package Linux tarball
+        run: |
+          mkdir -p Releases/linux/lib
+          cp /usr/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || cp /usr/local/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || echo "libsodium.so.23* not found in /usr/lib or /usr/local/lib"
+          if command -v patchelf >/dev/null 2>&1; then
+            for bin in Releases/linux/backup-manager Releases/linux/backup-manager-gui Releases/linux/dvx3; do
+              if [ -f "$bin" ]; then
+                patchelf --set-rpath '$ORIGIN/lib:$ORIGIN' "$bin" || true
+              fi
+            done
+            if [ -f Releases/linux/libdvx3.so ]; then
+              patchelf --set-rpath '$ORIGIN/lib:$ORIGIN' Releases/linux/libdvx3.so || true
+            fi
+          fi
+          tar -czf Releases/Dvx3-Backup-Manager-Linux-x86_64.tar.gz -C Releases/linux . || true
+
+      - name: Upload Linux artifacts (x86_64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dvx3-Backup-Manager-Linux-x86_64-${{ github.run_id }}-build-linux-x86_64
+          path: |
+            Releases/Dvx3-Backup-Manager-Linux-x86_64.tar.gz
+            Releases/Dvx3-Backup-Manager.AppImage
+          overwrite: true
+          
 
       - name: CI diagnostics on failure (Linux x86_64)
         if: failure()
@@ -388,9 +312,11 @@ jobs:
       - name: Upload Linux artifacts (arm64)
         uses: actions/upload-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-Linux-arm64-${{ github.run_id }}-${{ github.job }}
+          name: Dvx3-Backup-Manager-Linux-arm64-${{ github.run_id }}-build-linux-arm64
           path: |
             Releases/Dvx3-Backup-Manager-Linux-arm64.tar.gz
+          overwrite: true
+          
 
       - name: CI diagnostics on failure (Linux arm64)
         if: failure()
@@ -407,8 +333,12 @@ jobs:
   build-macos:
     strategy:
       matrix:
-        arch: [arm64, x86_64]
-    runs-on: ${{ matrix.arch == 'arm64' && 'macos-latest' || 'macos-12' }}
+        include:
+          - arch: arm64
+            runs_on: macos-latest
+          - arch: x86_64
+            runs_on: macos-12
+    runs-on: ${{ matrix.runs_on }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -434,7 +364,7 @@ jobs:
         run: |
           set -ex
           if brew search --cask 0ad >/dev/null 2>&1; then
-            if ! brew list --cask 0ad >/dev/null 2>&1; then
+              brew install qttools || true
               brew install --cask 0ad || echo "Failed to install 0ad; continuing without it"
             else
               echo "0ad cask already installed"
@@ -442,9 +372,9 @@ jobs:
           else
             echo "Homebrew cask '0ad' not available; skipping"
           fi
-
+                echo "Found moc at: $MOC_PATH (added to PATH)"
   
-
+                echo "moc not found after installing qttools. Listing all files for debug:"
       # Optional: if you must install GUI casks such as '0ad', use the correct cask name (e.g., 0ad not 0-ad).
       # brew install --cask 0ad
 
@@ -460,9 +390,9 @@ jobs:
           # Verify moc presence
           MOC_PATH=$(find /opt/homebrew /usr/local "$QT6_PREFIX" -type f -name moc | head -n1)
           if [ -n "$MOC_PATH" ]; then
-            echo "Found moc at: $MOC_PATH (added to PATH)")
+            echo "Found moc at: $MOC_PATH (added to PATH)"
           else
-            echo "moc not found after installing qttools/qt6-tools. Listing all files for debug:"
+            echo "moc not found after installing qttools. Listing all files for debug:"
             find /opt/homebrew /usr/local "$QT6_PREFIX" -type f | sort
             exit 1
           fi
@@ -933,11 +863,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download Windows artifact
+      - name: Download Windows artifact (x64)
         uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
-          name: Dvx3-Backup-Manager-Windows-${{ github.run_id }}-build-windows
-          path: artifacts/windows
+          name: Dvx3-Backup-Manager-Windows-${{ github.run_id }}-build-windows-x64
+          path: artifacts/windows_x64
+          
+
+      - name: Download Windows artifact (arm64)
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: Dvx3-Backup-Manager-Windows-${{ github.run_id }}-build-windows-arm64
+          path: artifacts/windows_arm64
+          
 
       - name: Download Linux x86_64 artifact
         uses: actions/download-artifact@v4
