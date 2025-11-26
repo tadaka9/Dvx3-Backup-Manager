@@ -277,7 +277,7 @@ jobs:
       - name: Install Homebrew packages
         run: |
           brew update
-          brew install qt@6-tools
+          brew install --cask qctools
           find /opt/homebrew/Cellar/qt@6-tools -name moc
           find /opt/homebrew/Cellar/qt/6.9.3 -name mo
           find /opt/homebrew/Cellar/qt/6.9.3 -name moc
