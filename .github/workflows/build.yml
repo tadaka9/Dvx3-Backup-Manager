@@ -129,7 +129,7 @@ jobs:
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-Windows-${{ github.job }}
+          name: Dvx3-Backup-Manager-Windows-${{ github.run_id }}
           path: |
             Releases/Dvx3-Backup-Manager-Windows.zip
             Releases/Dvx3-Backup-Manager-Windows.zip.sha256
@@ -182,7 +182,7 @@ jobs:
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-Linux-ubuntu-latest-${{ github.job }}
+          name: Dvx3-Backup-Manager-Linux-ubuntu-latest-${{ github.run_id }}
           path: |
             Releases/Dvx3-Backup-Manager-Linux-ubuntu-latest.tar.gz
 
@@ -267,7 +267,7 @@ jobs:
       - name: Upload Linux artifacts (x86_64)
         uses: actions/upload-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-Linux-x86_64-${{ github.job }}
+          name: Dvx3-Backup-Manager-Linux-x86_64-${{ github.run_id }}
           path: |
             Releases/Dvx3-Backup-Manager-Linux-x86_64.tar.gz
             Releases/Dvx3-Backup-Manager.AppImage
@@ -349,7 +349,7 @@ jobs:
       - name: Upload Linux artifacts (arm64)
         uses: actions/upload-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-Linux-arm64-${{ github.job }}
+          name: Dvx3-Backup-Manager-Linux-arm64-${{ github.run_id }}
           path: |
             Releases/Dvx3-Backup-Manager-Linux-arm64.tar.gz
 
@@ -583,7 +583,7 @@ jobs:
       - name: Upload Mac artifacts (arm64)
         uses: actions/upload-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-macOS-arm64-${{ github.job }}
+          name: Dvx3-Backup-Manager-macOS-arm64-${{ github.run_id }}
           path: |
             Releases/Dvx3-Backup-Manager-macOS-arm64.dmg
             Releases/Dvx3-Backup-Manager-macOS-arm64.dmg.sha256
@@ -772,7 +772,7 @@ jobs:
       - name: Upload Mac artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-macOS-x86_64-${{ github.job }}
+          name: Dvx3-Backup-Manager-macOS-x86_64-${{ github.run_id }}
           path: |
             Releases/Dvx3-Backup-Manager-macOS-x86_64.dmg
             Releases/Dvx3-Backup-Manager-macOS-x86_64.dmg.sha256
@@ -804,13 +804,13 @@ jobs:
       - name: Download ARM64 artifact
         uses: actions/download-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-macOS-arm64-build-macos-arm64
+          name: Dvx3-Backup-Manager-macOS-arm64-${{ github.run_id }}
           path: artifacts/arm64
 
       - name: Download x86_64 artifact
         uses: actions/download-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-macOS-x86_64-build-macos-x86_64
+          name: Dvx3-Backup-Manager-macOS-x86_64-${{ github.run_id }}
           path: artifacts/x86_64
 
       - name: Create universal app and package
@@ -876,7 +876,7 @@ jobs:
       - name: Upload universal DMG & PKG
         uses: actions/upload-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-macOS-universal-${{ github.job }}
+          name: Dvx3-Backup-Manager-macOS-universal-${{ github.run_id }}
           path: |
             Releases/Dvx3-BackupManager-macOS-Universal.dmg
             Releases/Dvx3-BackupManager-macOS-Universal.dmg.sha256
@@ -895,25 +895,25 @@ jobs:
       - name: Download Windows artifact
         uses: actions/download-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-Windows-build-windows
+          name: Dvx3-Backup-Manager-Windows-${{ github.run_id }}
           path: artifacts/windows
 
       - name: Download Linux x86_64 artifact
         uses: actions/download-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-Linux-x86_64-build-linux-x86_64
+          name: Dvx3-Backup-Manager-Linux-x86_64-${{ github.run_id }}
           path: artifacts/linux_x86_64
 
       - name: Download Linux arm64 artifact
         uses: actions/download-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-Linux-arm64-build-linux-arm64
+          name: Dvx3-Backup-Manager-Linux-arm64-${{ github.run_id }}
           path: artifacts/linux_arm64
 
       - name: Download Mac universal artifact
         uses: actions/download-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-macOS-universal-package-macos-universal
+          name: Dvx3-Backup-Manager-macOS-universal-${{ github.run_id }}
           path: artifacts/macos_universal
 
       - name: Create GitHub Release
