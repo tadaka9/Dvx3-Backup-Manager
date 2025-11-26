@@ -282,7 +282,7 @@ jobs:
           ccache -M 5G
           echo "PATH=$(brew --prefix ccache)/libexec:$PATH" >> $GITHUB_ENV
 
-            - name: Symlink Qt6 moc from libexec if present
+      - name: Symlink Qt6 moc from libexec if present
         run: |
           set -ex
           echo "Listing Qt6 bin and libexec directories:"
