@@ -280,12 +280,27 @@ jobs:
           brew install pkg-config vala glib json-glib libsodium zstd qt@6 ninja cmake ccache || exit 1
       - name: Symlink Qt6 moc to /usr/local/bin (macOS)
         run: |
-          MOC_PATH="$(brew --prefix qt@6)/libexec/moc"
-          if [ -f "$MOC_PATH" ]; then
-            ln -sf "$MOC_PATH" /usr/local/bin/moc
-            echo "Symlinked moc from $MOC_PATH to /usr/local/bin/moc"
-          else
-            echo "moc not found at $MOC_PATH"
+          FOUND_MOC=""
+          for MOC_PATH in \
+            /opt/homebrew/opt/qt@6/libexec/moc \
+            /opt/homebrew/opt/qt@6/bin/moc \
+            /usr/local/opt/qt@6/libexec/moc \
+            /usr/local/opt/qt@6/bin/moc \
+            /opt/homebrew/opt/qt/libexec/moc \
+            /opt/homebrew/opt/qt/bin/moc \
+            /usr/local/opt/qt/libexec/moc \
+            /usr/local/opt/qt/bin/moc \
+            /mingw64/lib/qt6/libexec/moc \
+            /mingw64/bin/moc; do
+            if [ -f "$MOC_PATH" ]; then
+              ln -sf "$MOC_PATH" /usr/local/bin/moc
+              echo "Symlinked moc from $MOC_PATH to /usr/local/bin/moc"
+              FOUND_MOC="$MOC_PATH"
+              break
+            fi
+          done
+          if [ -z "$FOUND_MOC" ]; then
+            echo "moc not found in any known location"
             exit 1
           fi
           which moc || exit 1
