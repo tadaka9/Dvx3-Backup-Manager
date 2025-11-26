@@ -338,17 +338,16 @@ jobs:
       - name: Ensure Qt6 moc is available (macOS)
         run: |
           brew link --overwrite qt@6 || true
-          brew install qttools || true
+          brew install qttools qt6-tools || true
           QT6_PREFIX=$(brew --prefix qt@6)
-          CELLAR_QT_PATH=$(brew --cellar qt@6)
           export PATH="$QT6_PREFIX/bin:$QT6_PREFIX/libexec:$PATH"
-          MOC_PATH=$(find "$QT6_PREFIX" "$CELLAR_QT_PATH" -type f -name moc | head -n1)
+          MOC_PATH=$(find /opt/homebrew /usr/local "$QT6_PREFIX" -type f -name moc | head -n1)
           if [ -n "$MOC_PATH" ]; then
             ln -sf "$MOC_PATH" /usr/local/bin/moc
             echo "Symlinked moc from $MOC_PATH to /usr/local/bin/moc"
           else
-            echo "moc not found after installing qttools. Listing all files under $QT6_PREFIX and $CELLAR_QT_PATH for debug:"
-            find "$QT6_PREFIX" "$CELLAR_QT_PATH" -type f | sort
+            echo "moc not found after installing qttools/qt6-tools. Listing all files for debug:"
+            find /opt/homebrew /usr/local "$QT6_PREFIX" -type f | sort
             exit 1
           fi
           which moc || exit 1
