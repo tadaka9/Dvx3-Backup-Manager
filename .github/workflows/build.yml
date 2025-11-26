@@ -341,12 +341,13 @@ jobs:
           brew install qttools || true
           QT6_PREFIX=$(brew --prefix qt@6)
           export PATH="$QT6_PREFIX/bin:$QT6_PREFIX/libexec:$PATH"
-          MOC_PATH=$(find "$QT6_PREFIX" -name moc | head -n1)
+          MOC_PATH=$(find "$QT6_PREFIX" -type f -name moc | head -n1)
           if [ -n "$MOC_PATH" ]; then
             ln -sf "$MOC_PATH" /usr/local/bin/moc
             echo "Symlinked moc from $MOC_PATH to /usr/local/bin/moc"
           else
-            echo "moc not found after installing qt@6-tools. Failing."
+            echo "moc not found after installing qttools. Listing all files under $QT6_PREFIX for debug:"
+            find "$QT6_PREFIX" -type f | sort
             exit 1
           fi
           which moc || exit 1
