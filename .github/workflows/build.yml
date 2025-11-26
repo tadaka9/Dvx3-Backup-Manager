@@ -240,6 +240,8 @@ jobs:
         run: |
           mkdir -p Releases/linux
           cp backup-manager backup-manager-gui dvx3 libdvx3.so Releases/linux/ || true
+          # Copy libsodium shared library if present
+          cp /usr/lib/libsodium.so.* Releases/linux/ 2>/dev/null || cp /usr/local/lib/libsodium.so.* Releases/linux/ 2>/dev/null || echo "libsodium.so.* not found in /usr/lib or /usr/local/lib"
 
       - name: Package Linux tarball
         run: |
@@ -366,9 +368,35 @@ jobs:
           sudo apt-get install -y libfuse2 || exit 1
       - name: Build AppImage (if script exists)
         run: |
-          if [ -x build-appimage.sh ]; then
-            ./build-appimage.sh || exit 1
-          fi
+            # Ensure .desktop file exists in AppDir
+            APPDIR="Dvx3BackupManager.AppDir"
+            DESKTOP_FILE="$APPDIR/Dvx3BackupManager.desktop"
+            if [ ! -d "$APPDIR" ]; then
+              echo "AppDir $APPDIR not found, aborting AppImage build."
+              exit 1
+            fi
+            if [ ! -f "$DESKTOP_FILE" ]; then
+              echo "Generating minimal desktop file: $DESKTOP_FILE"
+              cat > "$DESKTOP_FILE" <<EOF
+              [Desktop Entry]
+              Type=Application
+              Name=Dvx3 Backup Manager
+              Exec=backup-manager-gui
+              Icon=backup-manager
+              Categories=Utility;
+              EOF
+            fi
+            # Copy libsodium shared library into AppDir if present
+            if ls /usr/lib/libsodium.so.* 1>/dev/null 2>&1; then
+              cp /usr/lib/libsodium.so.* "$APPDIR/" || echo "Failed to copy libsodium from /usr/lib"
+            elif ls /usr/local/lib/libsodium.so.* 1>/dev/null 2>&1; then
+              cp /usr/local/lib/libsodium.so.* "$APPDIR/" || echo "Failed to copy libsodium from /usr/local/lib"
+            else
+              echo "libsodium.so.* not found in /usr/lib or /usr/local/lib"
+            fi
+            if [ -x build-appimage.sh ]; then
+              ./build-appimage.sh || exit 1
+            fi
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
         with:
