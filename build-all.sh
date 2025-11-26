@@ -28,6 +28,16 @@ elif [[ ! -x backup-manager-gui ]]; then
         exit 1
     fi
 fi
+# Platform check: ensure Linux build produces ELF binary
+if [[ "$(uname -s)" == "Linux" ]]; then
+    if file backup-manager-gui | grep -q 'ELF'; then
+        echo "✓ backup-manager-gui is a native Linux ELF binary."
+    else
+        echo "❌ ERROR: backup-manager-gui is not a native Linux binary!"
+        file backup-manager-gui
+        exit 1
+    fi
+fi
 ((BUILD_COUNT++))
 echo ""
 
