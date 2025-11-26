@@ -217,7 +217,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential cmake pkg-config \
-            valac libjson-glib-dev libsodium-dev zstd tar imagemagick \
+            valac libjson-glib-dev libsodium-dev libsodium23 zstd tar imagemagick \
             ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev || exit 1
 
       - name: Install dependencies (cross‑compile)
@@ -277,8 +277,8 @@ jobs:
         run: |
           mkdir -p Releases/linux
           cp backup-manager backup-manager-gui dvx3 libdvx3.so Releases/linux/ || true
-          # Copy libsodium shared library if present
-          cp /usr/lib/libsodium.so.* Releases/linux/ 2>/dev/null || cp /usr/local/lib/libsodium.so.* Releases/linux/ 2>/dev/null || echo "libsodium.so.* not found in /usr/lib or /usr/local/lib"
+          # Always copy libsodium.so.23 for portability
+          cp /usr/lib/libsodium.so.23 Releases/linux/lib/ 2>/dev/null || echo "libsodium.so.23 not found in /usr/lib"
 
       - name: Package Linux tarball
         run: |
