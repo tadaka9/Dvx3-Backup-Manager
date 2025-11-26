@@ -404,8 +404,11 @@ jobs:
   # ------------------------------------------------------------------
   # MACOS BUILD
   # ------------------------------------------------------------------
-  build-macos-arm64:
-    runs-on: macos-latest
+  build-macos:
+    strategy:
+      matrix:
+        arch: [arm64, x86_64]
+    runs-on: ${{ matrix.arch == 'arm64' && 'macos-latest' || 'macos-12' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -509,7 +512,7 @@ jobs:
         run: |
           set -ex
           export PATH=/opt/homebrew/opt/qt@6/bin:/usr/local/opt/qt@6/bin:$PATH
-          ARCH="arm64"
+          ARCH="${{ matrix.arch }}"
           chmod +x build-all.sh build_gui.sh || true
           sed -i 's/\r$//' build-all.sh || true
           sed -i 's/\r$//' build_gui.sh || true
@@ -619,24 +622,23 @@ jobs:
             otool -L "$APP_DIR/Contents/MacOS/backup-manager-gui" || true
           fi
 
-      - name: Upload Mac artifacts (arm64)
+      - name: Upload Mac artifacts (per-arch)
         uses: actions/upload-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-macOS-arm64-${{ github.run_id }}-${{ github.job }}
+          name: Dvx3-Backup-Manager-macOS-${{ matrix.arch }}-${{ github.run_id }}-${{ github.job }}
           path: |
-            Releases/Dvx3-Backup-Manager-macOS-arm64.dmg
-            Releases/Dvx3-Backup-Manager-macOS-arm64.dmg.sha256
-            Releases/Dvx3-Backup-Manager-macOS-arm64.pkg
-            Releases/Dvx3-Backup-Manager-macOS-arm64.pkg.sha256
-            Releases/Dvx3-Backup-Manager-macOS-arm64.tar.gz
+            Releases/Dvx3-Backup-Manager-macOS-${{ matrix.arch }}.dmg
+            Releases/Dvx3-Backup-Manager-macOS-${{ matrix.arch }}.dmg.sha256
+            Releases/Dvx3-Backup-Manager-macOS-${{ matrix.arch }}.pkg
+            Releases/Dvx3-Backup-Manager-macOS-${{ matrix.arch }}.pkg.sha256
+            Releases/Dvx3-Backup-Manager-macOS-${{ matrix.arch }}.tar.gz
 
       # Per-arch code signing and notarization were removed per project policy (no Apple secrets available)
 
       # Duplicate notarization block removed (notarization already handled above)
 
-  build-macos-x86_64:
-    runs-on: macos-12
-    steps:
+  # The separate macOS per-arch jobs were replaced by the matrix job `build-macos` above.
+  # This job will run for both arm64 and x86_64 on the appropriate hosted runner.
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -833,7 +835,7 @@ jobs:
 
   package-macos-universal:
     # Packaging job runs once after the macOS jobs complete
-    needs: [build-macos-arm64, build-macos-x86_64]
+    needs: [build-macos]
     runs-on: macos-latest
     if: always()
     steps:
@@ -843,13 +845,13 @@ jobs:
       - name: Download ARM64 artifact
         uses: actions/download-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-macOS-arm64-${{ github.run_id }}-build-macos-arm64
+          name: Dvx3-Backup-Manager-macOS-arm64-${{ github.run_id }}-build-macos
           path: artifacts/arm64
 
       - name: Download x86_64 artifact
         uses: actions/download-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-macOS-x86_64-${{ github.run_id }}-build-macos-x86_64
+          name: Dvx3-Backup-Manager-macOS-x86_64-${{ github.run_id }}-build-macos
           path: artifacts/x86_64
 
       - name: Create universal app and package
