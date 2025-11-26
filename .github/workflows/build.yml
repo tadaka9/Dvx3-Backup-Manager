@@ -281,6 +281,8 @@ jobs:
       - name: Symlink Qt6 moc to /usr/local/bin (macOS)
         run: |
           FOUND_MOC=""
+          brew reinstall qt@6 || true
+          find $(brew --prefix qt@6) -name moc
           for MOC_PATH in \
             /opt/homebrew/opt/qt@6/libexec/moc \
             /opt/homebrew/opt/qt@6/bin/moc \
