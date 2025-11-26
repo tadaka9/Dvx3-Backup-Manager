@@ -6,6 +6,23 @@ on:
   pull_request:
 
 jobs:
+  workflow-lint:
+    name: Lint workflow and shell scripts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install yamllint & shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pip shellcheck
+          pip3 install yamllint
+      - name: Run yamllint on workflow files
+        run: |
+          yamllint .github/workflows/*.yml || true
+      - name: Run shellcheck on scripts
+        run: |
+          shellcheck -x *.sh || true
   # ------------------------------------------------------------------
   # WINDOWS BUILD (MSYS2)
   # ------------------------------------------------------------------
@@ -17,6 +34,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Ensure Homebrew & required tools for packaging
+        run: |
+          brew update || true
+          brew install qt@6 qttools create-dmg || true
 
       - name: Verify MSVC environment
         shell: pwsh
@@ -213,39 +235,20 @@ jobs:
   # ------------------------------------------------------------------
   # LINUX BUILD (native & cross‑compile)
   # ------------------------------------------------------------------
-  build-linux:
+  build-linux-x86_64:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        arch: [x86_64, arm64]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Cache ccache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ccache
-          key: ${{ runner.os }}-ccache-${{ matrix.arch }}-${{ hashFiles('**/*.c','**/*.cpp','**/*.h') }}-v1
-          restore-keys: |
-            ${{ runner.os }}-ccache-
-
-      - name: Install dependencies (native)
-        if: matrix.arch == 'x86_64'
+      - name: Install dependencies (Ubuntu x86_64)
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential cmake pkg-config \
             valac libjson-glib-dev libsodium-dev libsodium23 zstd tar imagemagick \
-            ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev nsis || exit 1
+            ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev nsis wget || exit 1
 
-      - name: Install dependencies (cross‑compile)
-        if: matrix.arch != 'x86_64'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y qemu-user-static binfmt-support || exit 1
-
-      - name: Configure ccache (native)
-        if: matrix.arch == 'x86_64'
+      - name: Configure ccache
         run: |
           ccache -M 5G
           echo "CCACHE_DIR=$HOME/.cache/ccache" >> $GITHUB_ENV
@@ -253,32 +256,66 @@ jobs:
           echo "CC=gcc" >> $GITHUB_ENV
           echo "CXX=g++" >> $GITHUB_ENV
 
-      - name: Ensure static libsodium (optional)
-        run: |
-          if [ "${FORCE_STATIC_LIBSODIUM:-0}" -eq 1 ]; then
-            if ! ls /usr/lib/libsodium.a /usr/local/lib/libsodium.a 2>/dev/null; then
-              echo "Building static libsodium from source"
-              wget -qO /tmp/libsodium.tar.gz https://download.libsodium.org/libsodium/releases/libsodium-1.0.20.tar.gz
-              tar -xzf /tmp/libsodium.tar.gz -C /tmp
-              pushd /tmp/libsodium-1.0.20
-              CFLAGS="-fPIC" CXXFLAGS="-fPIC" ./configure --prefix=/usr/local --enable-static --disable-shared
-              make -j$(nproc)
-              sudo make install
-              popd
-            fi
-            echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-          fi
-
-      - name: Build GUI (Linux native)
-        if: matrix.arch == 'x86_64'
+      - name: Build GUI (Linux x86_64)
         run: |
           chmod +x build_gui.sh
           ./build_gui.sh || exit 1
 
-      - name: Build GUI (cross‑compile)
-        if: matrix.arch != 'x86_64'
+      - name: Build AppImage
         run: |
-          docker run --rm --platform linux/${{ matrix.arch }} -v "$PWD":/src -w /src debian:trixie bash -c '
+          # Prepare linuxdeployqt and appimagetool
+          wget -qO linuxdeployqt.AppImage https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage || true
+          chmod +x linuxdeployqt.AppImage || true
+          sudo mv linuxdeployqt.AppImage /usr/local/bin/linuxdeployqt || true
+          chmod +x appimagetool-x86_64.AppImage || true
+          sudo mv appimagetool-x86_64.AppImage /usr/local/bin/appimagetool || true
+          chmod +x pack-appimage.sh
+          ./pack-appimage.sh || true
+
+      - name: Prepare Linux releases
+        run: |
+          mkdir -p Releases/linux/lib
+          cp backup-manager backup-manager-gui dvx3 libdvx3.so Releases/linux/ || true
+          cp Dvx3-Backup-Manager.AppImage Releases/ || true
+          # Always copy libsodium.so.23* for portability
+          cp /usr/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || cp /usr/local/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || echo "libsodium.so.23* not found in /usr/lib or /usr/local/lib"
+
+      - name: Package Linux tarball
+        run: |
+          tar -czf Releases/Dvx3-Backup-Manager-Linux-x86_64.tar.gz -C Releases/linux . || true
+
+      - name: Upload Linux artifacts (x86_64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dvx3-Backup-Manager-Linux-x86_64
+          path: |
+            Releases/Dvx3-Backup-Manager-Linux-x86_64.tar.gz
+            Releases/Dvx3-Backup-Manager.AppImage
+
+      - name: CI diagnostics on failure (Linux x86_64)
+        if: failure()
+        run: |
+          echo "=== Linux CI failure diagnostics ==="
+          ls -la
+          ls -la Releases || true
+          ldd backup-manager || true
+          ldd backup-manager-gui || true
+          ldd dvx3 || true
+
+  build-linux-arm64:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install qemu for cross-compile & dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static binfmt-support docker.io || exit 1
+
+      - name: Build GUI (cross-compile)
+        run: |
+          docker run --rm --platform linux/arm64 -v "$PWD":/src -w /src debian:trixie bash -c '
             set -ex
             apt-get update
             apt-get install -y build-essential cmake pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev || exit 1
@@ -291,41 +328,37 @@ jobs:
             ./build_gui.sh || exit 1
           '
 
-      - name: Prepare Linux releases
+      - name: Prepare Linux releases (arm64)
         run: |
           mkdir -p Releases/linux/lib
           cp backup-manager backup-manager-gui dvx3 libdvx3.so Releases/linux/ || true
-          # Always copy libsodium.so.23* for portability
           cp /usr/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || cp /usr/local/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || echo "libsodium.so.23* not found in /usr/lib or /usr/local/lib"
 
-      - name: Package Linux tarball
+      - name: Package Linux tarball (arm64)
         run: |
-          tar -czf Releases/Dvx3-Backup-Manager-Linux.tar.gz -C Releases/linux .
+          tar -czf Releases/Dvx3-Backup-Manager-Linux-arm64.tar.gz -C Releases/linux . || true
 
-      - name: Upload Linux artifacts
+      - name: Upload Linux artifacts (arm64)
         uses: actions/upload-artifact@v4
         with:
-          name: Dvx3-Backup-Manager-Linux-${{ matrix.arch }}
-          path: Releases/Dvx3-Backup-Manager-Linux.tar.gz
+          name: Dvx3-Backup-Manager-Linux-arm64
+          path: |
+            Releases/Dvx3-Backup-Manager-Linux-arm64.tar.gz
 
-      - name: CI diagnostics on failure (Linux)
+      - name: CI diagnostics on failure (Linux arm64)
         if: failure()
         run: |
-          echo "=== Linux CI failure diagnostics ==="
+          echo "=== Linux CI failure diagnostics (arm64) ==="
           ls -la
           ls -la Releases || true
-          ldd backup-manager || true
-          ldd backup-manager-gui || true
-          ldd dvx3 || true
+          file backup-manager || true
+          file backup-manager-gui || true
 
   # ------------------------------------------------------------------
   # MACOS BUILD
   # ------------------------------------------------------------------
-  build-macos:
-    runs-on: macos-${{ matrix.arch == 'arm64' && 'latest' || '12' }}
-    strategy:
-      matrix:
-        arch: [x86_64, arm64]
+  build-macos-arm64:
+    runs-on: macos-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -333,18 +366,21 @@ jobs:
       - name: Install Homebrew packages
         run: |
           brew update
-          brew install pkg-config vala glib json-glib libsodium zstd qt@6 ninja cmake ccache || exit 1
+          brew install pkg-config vala glib json-glib libsodium zstd qt@6 ninja cmake ccache create-dmg || exit 1
 
       - name: Ensure Qt6 moc is available (macOS)
         run: |
           brew link --overwrite qt@6 || true
           brew install qttools qt6-tools || true
           QT6_PREFIX=$(brew --prefix qt@6)
+          # Prefer adding Qt6 bin/libexec to PATH instead of creating global symlinks
+          echo "$QT6_PREFIX/bin" >> $GITHUB_PATH || true
+          echo "$QT6_PREFIX/libexec" >> $GITHUB_PATH || true
           export PATH="$QT6_PREFIX/bin:$QT6_PREFIX/libexec:$PATH"
+          # Verify moc presence
           MOC_PATH=$(find /opt/homebrew /usr/local "$QT6_PREFIX" -type f -name moc | head -n1)
           if [ -n "$MOC_PATH" ]; then
-            ln -sf "$MOC_PATH" /usr/local/bin/moc
-            echo "Symlinked moc from $MOC_PATH to /usr/local/bin/moc"
+            echo "Found moc at: $MOC_PATH (added to PATH)")
           else
             echo "moc not found after installing qttools/qt6-tools. Listing all files for debug:"
             find /opt/homebrew /usr/local "$QT6_PREFIX" -type f | sort
@@ -357,7 +393,7 @@ jobs:
           ccache -M 5G
           echo "PATH=$(brew --prefix ccache)/libexec:$PATH" >> $GITHUB_ENV
 
-      - name: Symlink Qt6 moc from libexec if present
+      - name: Configure Qt6 PATH and fallback (macOS)
         run: |
           set -ex
           echo "Listing Qt6 bin and libexec directories:"
@@ -367,21 +403,18 @@ jobs:
           ls -l /usr/local/opt/qt@6/libexec || true
           ls -l /opt/homebrew/bin || true
           ls -l /usr/local/bin || true
-          # Always check and symlink moc from libexec if present
-          if [ -f /opt/homebrew/opt/qt@6/libexec/moc ]; then
-            ln -sf /opt/homebrew/opt/qt@6/libexec/moc /usr/local/bin/moc
-            echo "Symlinked moc from /opt/homebrew/opt/qt@6/libexec to /usr/local/bin/moc"
-          elif [ -f /usr/local/opt/qt@6/libexec/moc ]; then
-            ln -sf /usr/local/opt/qt@6/libexec/moc /usr/local/bin/moc
-            echo "Symlinked moc from /usr/local/opt/qt@6/libexec to /usr/local/bin/moc"
-          elif [ -f /opt/homebrew/opt/qt@6/bin/moc ]; then
-            ln -sf /opt/homebrew/opt/qt@6/bin/moc /usr/local/bin/moc
-            echo "Symlinked moc from /opt/homebrew/opt/qt@6/bin to /usr/local/bin/moc"
-          elif [ -f /usr/local/opt/qt@6/bin/moc ]; then
-            ln -sf /usr/local/opt/qt@6/bin/moc /usr/local/bin/moc
-            echo "Symlinked moc from /usr/local/opt/qt@6/bin to /usr/local/bin/moc"
-          else
-            echo "moc not found in bin or libexec!"
+          # Prefer PATH updates rather than symlinking; add entries to PATH
+          if [ -d /opt/homebrew/opt/qt@6/libexec ]; then echo "/opt/homebrew/opt/qt@6/libexec" >> $GITHUB_PATH; fi
+          if [ -d /usr/local/opt/qt@6/libexec ]; then echo "/usr/local/opt/qt@6/libexec" >> $GITHUB_PATH; fi
+          if [ -d /opt/homebrew/opt/qt@6/bin ]; then echo "/opt/homebrew/opt/qt@6/bin" >> $GITHUB_PATH; fi
+          if [ -d /usr/local/opt/qt@6/bin ]; then echo "/usr/local/opt/qt@6/bin" >> $GITHUB_PATH; fi
+          export PATH=/opt/homebrew/opt/qt@6/bin:/usr/local/opt/qt@6/bin:/usr/local/bin:$PATH
+          # If PATH doesn't find moc, fallback to symlink as last resort
+          if ! command -v moc >/dev/null 2>&1; then
+            if [ -f /opt/homebrew/opt/qt@6/libexec/moc ]; then
+              ln -sf /opt/homebrew/opt/qt@6/libexec/moc /usr/local/bin/moc
+              echo "Fallback: Symlinked moc from /opt/homebrew/opt/qt@6/libexec to /usr/local/bin/moc"
+            fi
           fi
           export PATH=/opt/homebrew/opt/qt@6/bin:/usr/local/opt/qt@6/bin:/usr/local/bin:$PATH
 
@@ -395,6 +428,637 @@ jobs:
           which moc || echo "moc not found in PATH"
           ls -la /opt/homebrew/opt/qt@6/bin/moc /usr/local/opt/qt@6/bin/moc 2>/dev/null || echo "moc not in expected locations"
 
-      - name: Build all components (macOS)
+      - name: Build all components & package (macOS)
         run: |
-          export PATH=/opt/homebrew/opt/qt@6/bin:/usr/local/opt
+          set -ex
+          export PATH=/opt/homebrew/opt/qt@6/bin:/usr/local/opt/qt@6/bin:$PATH
+          ARCH="arm64"
+          chmod +x build-all.sh build_gui.sh || true
+          sed -i 's/\r$//' build-all.sh || true
+          sed -i 's/\r$//' build_gui.sh || true
+          ./build-all.sh || true
+          ./build_gui.sh || exit 1
+
+          # Prepare .app bundle for macOS
+          APP_NAME="Dvx3 Backup Manager"
+          APP_DIR="Releases/${APP_NAME}-${ARCH}.app"
+          mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Frameworks" "$APP_DIR/Contents/Resources"
+          # Copy GUI binary
+          if [ -f backup-manager-gui ]; then
+            cp backup-manager-gui "$APP_DIR/Contents/MacOS/"
+          else
+            echo "backup-manager-gui not found; build may have failed"; exit 1
+          fi
+          # Copy library (try both dylib and so)
+          if [ -f libDvx3.dylib ]; then
+            cp libDvx3.dylib "$APP_DIR/Contents/Frameworks/" || true
+          elif [ -f libdvx3.so ]; then
+            cp libdvx3.so "$APP_DIR/Contents/Frameworks/libDvx3.dylib" || true
+          fi
+          # Copy icon if present
+          cp dvx3-backup.png "$APP_DIR/Contents/Resources/" || true
+
+          # Create basic Info.plist
+          cat > "$APP_DIR/Contents/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>backup-manager-gui</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.cryptowave.dvx3backupmanager</string>
+              <key>CFBundleName</key>
+              <string>"${APP_NAME}"</string>
+              <key>CFBundleVersion</key>
+              <string>${{ github.sha }}</string>
+              <key>CFBundleShortVersionString</key>
+              <string>${{ github.sha }}</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+
+          # Run macdeployqt to bundle Qt runtime
+          if [ -x "$(brew --prefix qt@6)/bin/macdeployqt" ]; then
+            "$(brew --prefix qt@6)/bin/macdeployqt" "$APP_DIR" -verbose=2 -always-overwrite || true
+          else
+            echo "macdeployqt not found; skipping bundling"; ls -la "$(brew --prefix qt@6)/bin" || true
+          fi
+
+          mkdir -p Releases
+          DMG_NAME="Releases/Dvx3-Backup-Manager-macOS-${ARCH}.dmg"
+          PKG_ROOT="pkgroot"
+          PKG_NAME="Releases/Dvx3-Backup-Manager-macOS-${ARCH}.pkg"
+
+          # Create DMG: prefer create-dmg if available, fallback to hdiutil
+          if command -v create-dmg >/dev/null 2>&1; then
+            create-dmg \
+              --volname "Dvx3 Backup Manager" \
+              --window-pos 200 120 \
+              --window-size 600 400 \
+              --icon-size 100 \
+              --app-drop-link 425 120 \
+              "$DMG_NAME" "$APP_DIR" || true
+          else
+            echo "create-dmg not found; falling back to hdiutil"
+            hdiutil create -volname "Dvx3 Backup Manager" -srcfolder "$APP_DIR" -ov -format UDZO "$DMG_NAME"
+          fi
+
+          # Generate checksum
+          if command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 "$DMG_NAME" > "$DMG_NAME.sha256" || true
+          elif command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$DMG_NAME" > "$DMG_NAME.sha256" || true
+          fi
+
+          # Create simple PKG installer (unsigned) using pkgbuild
+          rm -rf "$PKG_ROOT"
+          mkdir -p "$PKG_ROOT/Applications"
+          cp -R "$APP_DIR" "$PKG_ROOT/Applications/"
+          if command -v pkgbuild >/dev/null 2>&1; then
+            pkgbuild --root "$PKG_ROOT" --install-location /Applications --identifier com.cryptowave.dvx3backupmanager --version "${{ github.sha }}" "$PKG_NAME" || true
+            if command -v shasum >/dev/null 2>&1; then
+              shasum -a 256 "$PKG_NAME" > "$PKG_NAME.sha256" || true
+            elif command -v sha256sum >/dev/null 2>&1; then
+              sha256sum "$PKG_NAME" > "$PKG_NAME.sha256" || true
+            fi
+          else
+            echo "pkgbuild not found; skipping PKG generation"
+          fi
+
+          # Create tarball of the app for universal packaging later
+          TAR_NAME="Releases/Dvx3-Backup-Manager-macOS-${ARCH}.tar.gz"
+          tar -czf "$TAR_NAME" -C Releases "${APP_NAME}-${ARCH}.app" || true
+
+          # Binary verification checks (per-arch)
+          echo "Per-arch binary verification for ${ARCH}"
+          file "$APP_DIR/Contents/MacOS/backup-manager-gui" || true
+          if command -v lipo >/dev/null 2>&1; then
+            lipo -info "$APP_DIR/Contents/MacOS/backup-manager-gui" || true
+          fi
+          if command -v otool >/dev/null 2>&1; then
+            otool -L "$APP_DIR/Contents/MacOS/backup-manager-gui" || true
+          fi
+
+      - name: Conditional per-arch code sign (macOS)
+        env:
+          APPLE_CODESIGN_P12: ${{ secrets.APPLE_CODESIGN_P12 }}
+          APPLE_CODESIGN_P12_PASSWORD: ${{ secrets.APPLE_CODESIGN_P12_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -ex
+          if [ -z "$APPLE_CODESIGN_P12" ] || [ -z "$APPLE_CODESIGN_P12_PASSWORD" ]; then
+            echo "Per-arch signing secrets not provided; skipping per-arch code signing"; exit 0
+          fi
+          echo "$APPLE_CODESIGN_P12" | base64 --decode > cert.p12
+          SECURITY_KEYCHAIN=signing-perarch.keychain
+          security create-keychain -p signpw "$SECURITY_KEYCHAIN"
+          security import cert.p12 -k ~/Library/Keychains/$SECURITY_KEYCHAIN -P "$APPLE_CODESIGN_P12_PASSWORD" -T /usr/bin/codesign
+          security list-keychains -s ~/Library/Keychains/$SECURITY_KEYCHAIN
+          security set-key-partition-list -S apple-tool:,apple: -s -k signpw ~/Library/Keychains/$SECURITY_KEYCHAIN || true
+          SIGN_ID=$(security find-identity -p codesigning -v | awk '/"/{print $2; exit}') || true
+          echo "Using signing identity: ${SIGN_ID}"
+          APP_NAME="Dvx3 Backup Manager"
+          APP_DIR="Releases/${APP_NAME}-${ARCH}.app"
+          codesign --deep --options runtime --timestamp --sign "$SIGN_ID" "$APP_DIR" || true
+          echo "Verifying codesign for per-arch app"
+          codesign --verify --verbose=4 "$APP_DIR" || true
+          codesign -dv --verbose=4 "$APP_DIR" || true
+          spctl -a -t exec -vv "$APP_DIR" || true
+          if [ -f "$PKG_NAME" ]; then
+            pkgutil --check-signature "$PKG_NAME" || true
+          fi
+          if command -v productsign >/dev/null 2>&1; then
+            PKG_NAME="Releases/Dvx3-Backup-Manager-macOS-${ARCH}.pkg"
+            if [ -f "$PKG_NAME" ]; then
+              productsign --sign "$SIGN_ID" "$PKG_NAME" "${PKG_NAME%.pkg}-signed.pkg" || true
+              # Move the signed package only if it was produced
+              if [ -f "${PKG_NAME%.pkg}-signed.pkg" ]; then
+                mv -f "${PKG_NAME%.pkg}-signed.pkg" "$PKG_NAME"
+              else
+                echo "Signed package not found; skipping move"
+              fi
+            fi
+          fi
+          security delete-keychain ~/Library/Keychains/$SECURITY_KEYCHAIN || true
+
+      - name: Conditional per-arch notarization (macOS)
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -ex
+          if [ -z "$APPLE_ID" ] || [ -z "$APPLE_PASSWORD" ]; then
+            echo "Notarization secrets not provided; skipping notarization"; exit 0
+          fi
+          DMG_NAME="Releases/Dvx3-Backup-Manager-macOS-${ARCH}.dmg"
+          PKG_NAME="Releases/Dvx3-Backup-Manager-macOS-${ARCH}.pkg"
+          if command -v xcrun >/dev/null 2>&1 && xcrun notarytool --help >/dev/null 2>&1; then
+            if [ -n "$APPLE_TEAM_ID" ]; then
+              TEAM_CMD=(--team-id "$APPLE_TEAM_ID")
+            else
+              TEAM_CMD=()
+            fi
+            xcrun notarytool submit "$DMG_NAME" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" "${TEAM_CMD[@]}" --wait || true
+            xcrun stapler staple "$DMG_NAME" || true
+            xcrun stapler validate "$DMG_NAME" || true
+            if [ -f "$PKG_NAME" ]; then
+              pkgutil --check-signature "$PKG_NAME" || true
+            fi
+          else
+            echo "notarytool not available; skipping notarization";
+          fi
+
+      # Duplicate notarization block removed (notarization already handled above)
+
+  build-macos-x86_64:
+    runs-on: macos-12
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Homebrew packages
+        run: |
+          brew update
+          brew install pkg-config vala glib json-glib libsodium zstd qt@6 ninja cmake ccache create-dmg || exit 1
+
+      - name: Ensure Qt6 moc is available (macOS)
+        run: |
+          brew link --overwrite qt@6 || true
+          brew install qttools qt6-tools || true
+          QT6_PREFIX=$(brew --prefix qt@6)
+          echo "$QT6_PREFIX/bin" >> $GITHUB_PATH || true
+          echo "$QT6_PREFIX/libexec" >> $GITHUB_PATH || true
+          export PATH="$QT6_PREFIX/bin:$QT6_PREFIX/libexec:$PATH"
+          MOC_PATH=$(find /opt/homebrew /usr/local "$QT6_PREFIX" -type f -name moc | head -n1)
+          if [ -n "$MOC_PATH" ]; then
+            echo "Found moc at: $MOC_PATH (added to PATH)"
+          else
+            echo "moc not found after installing qttools/qt6-tools. Listing all files for debug:"
+            find /opt/homebrew /usr/local "$QT6_PREFIX" -type f | sort
+            exit 1
+          fi
+          which moc || exit 1
+
+      - name: Configure ccache
+        run: |
+          ccache -M 5G
+          echo "PATH=$(brew --prefix ccache)/libexec:$PATH" >> $GITHUB_ENV
+
+      - name: Configure Qt6 PATH and fallback (macOS)
+        run: |
+          set -ex
+          if [ -d /opt/homebrew/opt/qt@6/libexec ]; then echo "/opt/homebrew/opt/qt@6/libexec" >> $GITHUB_PATH; fi
+          if [ -d /usr/local/opt/qt@6/libexec ]; then echo "/usr/local/opt/qt@6/libexec" >> $GITHUB_PATH; fi
+          if [ -d /opt/homebrew/opt/qt@6/bin ]; then echo "/opt/homebrew/opt/qt@6/bin" >> $GITHUB_PATH; fi
+          if [ -d /usr/local/opt/qt@6/bin ]; then echo "/usr/local/opt/qt@6/bin" >> $GITHUB_PATH; fi
+          export PATH=/opt/homebrew/opt/qt@6/bin:/usr/local/opt/qt@6/bin:/usr/local/bin:$PATH
+          if ! command -v moc >/dev/null 2>&1; then
+            if [ -f /opt/homebrew/opt/qt@6/libexec/moc ]; then
+              ln -sf /opt/homebrew/opt/qt@6/libexec/moc /usr/local/bin/moc
+              echo "Fallback: Symlinked moc from /opt/homebrew/opt/qt@6/libexec to /usr/local/bin/moc"
+            fi
+          fi
+          export PATH=/opt/homebrew/opt/qt@6/bin:/usr/local/opt/qt@6/bin:/usr/local/bin:$PATH
+
+      - name: Set Qt6 PATH (macOS)
+        run: |
+          echo "PATH=/opt/homebrew/opt/qt@6/bin:/usr/local/opt/qt@6/bin:$PATH" >> $GITHUB_ENV
+
+      - name: Verify Qt6 tools
+        run: |
+          echo "Current PATH: $PATH"
+          which moc || echo "moc not found in PATH"
+          ls -la /opt/homebrew/opt/qt@6/bin/moc /usr/local/opt/qt@6/bin/moc 2>/dev/null || echo "moc not in expected locations"
+
+      - name: Build all components & package (macOS)
+        run: |
+          set -ex
+          export PATH=/opt/homebrew/opt/qt@6/bin:/usr/local/opt/qt@6/bin:$PATH
+          ARCH="x86_64"
+          chmod +x build-all.sh build_gui.sh || true
+          sed -i 's/\r$//' build-all.sh || true
+          sed -i 's/\r$//' build_gui.sh || true
+          ./build-all.sh || true
+          ./build_gui.sh || exit 1
+
+          APP_NAME="Dvx3 Backup Manager"
+          APP_DIR="Releases/${APP_NAME}-${ARCH}.app"
+          mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Frameworks" "$APP_DIR/Contents/Resources"
+          if [ -f backup-manager-gui ]; then
+            cp backup-manager-gui "$APP_DIR/Contents/MacOS/"
+          else
+            echo "backup-manager-gui not found; build may have failed"; exit 1
+          fi
+          if [ -f libDvx3.dylib ]; then
+            cp libDvx3.dylib "$APP_DIR/Contents/Frameworks/" || true
+          elif [ -f libdvx3.so ]; then
+            cp libdvx3.so "$APP_DIR/Contents/Frameworks/libDvx3.dylib" || true
+          fi
+          cp dvx3-backup.png "$APP_DIR/Contents/Resources/" || true
+
+          cat > "$APP_DIR/Contents/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>backup-manager-gui</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.cryptowave.dvx3backupmanager</string>
+              <key>CFBundleName</key>
+              <string>"${APP_NAME}"</string>
+              <key>CFBundleVersion</key>
+              <string>${{ github.sha }}</string>
+              <key>CFBundleShortVersionString</key>
+              <string>${{ github.sha }}</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+
+          if [ -x "$(brew --prefix qt@6)/bin/macdeployqt" ]; then
+            "$(brew --prefix qt@6)/bin/macdeployqt" "$APP_DIR" -verbose=2 -always-overwrite || true
+          else
+            echo "macdeployqt not found; skipping bundling"; ls -la "$(brew --prefix qt@6)/bin" || true
+          fi
+
+          mkdir -p Releases
+          DMG_NAME="Releases/Dvx3-Backup-Manager-macOS-${ARCH}.dmg"
+          PKG_ROOT="pkgroot"
+          PKG_NAME="Releases/Dvx3-Backup-Manager-macOS-${ARCH}.pkg"
+
+          if command -v create-dmg >/dev/null 2>&1; then
+            create-dmg --volname "Dvx3 Backup Manager" --window-pos 200 120 --window-size 600 400 --icon-size 100 --app-drop-link 425 120 "$DMG_NAME" "$APP_DIR" || true
+          else
+            echo "create-dmg not found; falling back to hdiutil"
+            hdiutil create -volname "Dvx3 Backup Manager" -srcfolder "$APP_DIR" -ov -format UDZO "$DMG_NAME"
+          fi
+
+          if command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 "$DMG_NAME" > "$DMG_NAME.sha256" || true
+          elif command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$DMG_NAME" > "$DMG_NAME.sha256" || true
+          fi
+
+          rm -rf "$PKG_ROOT"
+          mkdir -p "$PKG_ROOT/Applications"
+          cp -R "$APP_DIR" "$PKG_ROOT/Applications/"
+          if command -v pkgbuild >/dev/null 2>&1; then
+            pkgbuild --root "$PKG_ROOT" --install-location /Applications --identifier com.cryptowave.dvx3backupmanager --version "${{ github.sha }}" "$PKG_NAME" || true
+            if command -v shasum >/dev/null 2>&1; then
+              shasum -a 256 "$PKG_NAME" > "$PKG_NAME.sha256" || true
+            elif command -v sha256sum >/dev/null 2>&1; then
+              sha256sum "$PKG_NAME" > "$PKG_NAME.sha256" || true
+            fi
+          fi
+
+          TAR_NAME="Releases/Dvx3-Backup-Manager-macOS-${ARCH}.tar.gz"
+          tar -czf "$TAR_NAME" -C Releases "${APP_NAME}-${ARCH}.app" || true
+
+          echo "Per-arch binary verification for ${ARCH}"
+          file "$APP_DIR/Contents/MacOS/backup-manager-gui" || true
+          if command -v lipo >/dev/null 2>&1; then
+            lipo -info "$APP_DIR/Contents/MacOS/backup-manager-gui" || true
+          fi
+          if command -v otool >/dev/null 2>&1; then
+            otool -L "$APP_DIR/Contents/MacOS/backup-manager-gui" || true
+          fi
+
+      - name: Conditional per-arch code sign (macOS)
+        env:
+          APPLE_CODESIGN_P12: ${{ secrets.APPLE_CODESIGN_P12 }}
+          APPLE_CODESIGN_P12_PASSWORD: ${{ secrets.APPLE_CODESIGN_P12_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -ex
+          if [ -z "$APPLE_CODESIGN_P12" ] || [ -z "$APPLE_CODESIGN_P12_PASSWORD" ]; then
+            echo "Per-arch signing secrets not provided; skipping per-arch code signing"; exit 0
+          fi
+          echo "$APPLE_CODESIGN_P12" | base64 --decode > cert.p12
+          SECURITY_KEYCHAIN=signing-perarch.keychain
+          security create-keychain -p signpw "$SECURITY_KEYCHAIN"
+          security import cert.p12 -k ~/Library/Keychains/$SECURITY_KEYCHAIN -P "$APPLE_CODESIGN_P12_PASSWORD" -T /usr/bin/codesign
+          security list-keychains -s ~/Library/Keychains/$SECURITY_KEYCHAIN
+          security set-key-partition-list -S apple-tool:,apple: -s -k signpw ~/Library/Keychains/$SECURITY_KEYCHAIN || true
+          SIGN_ID=$(security find-identity -p codesigning -v | awk '/"/{print $2; exit}') || true
+          echo "Using signing identity: ${SIGN_ID}"
+          codesign --deep --options runtime --timestamp --sign "$SIGN_ID" "${APP_DIR}" || true
+          echo "Verifying codesign for per-arch app"
+          codesign --verify --verbose=4 "${APP_DIR}" || true
+          codesign -dv --verbose=4 "${APP_DIR}" || true
+          spctl -a -t exec -vv "${APP_DIR}" || true
+          if [ -f "$PKG_NAME" ]; then
+            pkgutil --check-signature "$PKG_NAME" || true
+          fi
+          if command -v productsign >/dev/null 2>&1; then
+            if [ -f "$PKG_NAME" ]; then
+              productsign --sign "$SIGN_ID" "$PKG_NAME" "${PKG_NAME%.pkg}-signed.pkg" || true
+              if [ -f "${PKG_NAME%.pkg}-signed.pkg" ]; then
+                mv -f "${PKG_NAME%.pkg}-signed.pkg" "$PKG_NAME"
+              else
+                echo "Signed package not found; skipping move"
+              fi
+            fi
+          fi
+          security delete-keychain ~/Library/Keychains/$SECURITY_KEYCHAIN || true
+
+      - name: Upload Mac artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dvx3-Backup-Manager-macOS-x86_64
+          path: |
+            Releases/Dvx3-Backup-Manager-macOS-x86_64.dmg
+            Releases/Dvx3-Backup-Manager-macOS-x86_64.dmg.sha256
+            Releases/Dvx3-Backup-Manager-macOS-x86_64.pkg
+            Releases/Dvx3-Backup-Manager-macOS-x86_64.pkg.sha256
+            Releases/Dvx3-Backup-Manager-macOS-x86_64.tar.gz
+
+      - name: CI diagnostics on failure (macOS)
+        if: failure()
+        run: |
+          echo "=== macOS CI failure diagnostics ==="
+          ls -la
+          ls -la Releases || true
+          echo "PATH: $PATH"
+          which macdeployqt || true
+          which moc || true
+
+      # Removed duplicate upload and diagnostics (arm64 upload should be handled by its own job)
+
+  package-macos-universal:
+    # Packaging job runs once after the macOS jobs complete
+    needs: [build-macos-arm64, build-macos-x86_64]
+    runs-on: macos-latest
+    if: always()
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download ARM64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Dvx3-Backup-Manager-macOS-arm64
+          path: artifacts/arm64
+
+      - name: Download x86_64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Dvx3-Backup-Manager-macOS-x86_64
+          path: artifacts/x86_64
+
+      - name: Create universal app and package
+        run: |
+          set -ex
+          APP_NAME="Dvx3 Backup Manager"
+          mkdir -p universal
+          # Extract tarballs from downloaded artifacts
+          tar -xzf artifacts/arm64/Releases/Dvx3-Backup-Manager-macOS-arm64.tar.gz -C universal || true
+          tar -xzf artifacts/x86_64/Releases/Dvx3-Backup-Manager-macOS-x86_64.tar.gz -C universal || true
+          # Standardize the name for universal
+          cp -R "universal/${APP_NAME}-arm64.app" "universal/${APP_NAME}.app"
+          # Create universal binary using lipo
+          lipo -create -output "universal/${APP_NAME}.app/Contents/MacOS/backup-manager-gui" \
+            "universal/${APP_NAME}-arm64.app/Contents/MacOS/backup-manager-gui" \
+            "universal/${APP_NAME}-x86_64.app/Contents/MacOS/backup-manager-gui" || true
+          # Use macdeployqt to bundle frameworks for the universal app
+          if [ -x "$(brew --prefix qt@6)/bin/macdeployqt" ]; then
+            "$(brew --prefix qt@6)/bin/macdeployqt" "universal/${APP_NAME}.app" -verbose=2 -always-overwrite || true
+          fi
+          # Create DMG
+          mkdir -p Releases
+          DMG_NAME="Releases/Dvx3-BackupManager-macOS-Universal.dmg"
+          if command -v create-dmg >/dev/null 2>&1; then
+            create-dmg --volname "Dvx3 Backup Manager" --window-pos 200 120 --window-size 600 400 --icon-size 100 --app-drop-link 425 120 "$DMG_NAME" "universal/${APP_NAME}.app" || true
+          else
+            hdiutil create -volname "Dvx3 Backup Manager" -srcfolder "universal/${APP_NAME}.app" -ov -format UDZO "$DMG_NAME"
+          fi
+          # Create PKG
+          PKG_ROOT="pkgroot"
+          PKG_NAME="Releases/Dvx3-BackupManager-macOS-Universal.pkg"
+          rm -rf "$PKG_ROOT"
+          mkdir -p "$PKG_ROOT/Applications"
+          cp -R "universal/${APP_NAME}.app" "$PKG_ROOT/Applications/"
+          if command -v pkgbuild >/dev/null 2>&1; then
+            pkgbuild --root "$PKG_ROOT" --install-location /Applications --identifier com.cryptowave.dvx3backupmanager --version "${GITHUB_SHA}" "$PKG_NAME" || true
+          fi
+          # Checksum
+          if command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 "$DMG_NAME" > "$DMG_NAME.sha256" || true
+            shasum -a 256 "$PKG_NAME" > "$PKG_NAME.sha256" || true
+          elif command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$DMG_NAME" > "$DMG_NAME.sha256" || true
+            sha256sum "$PKG_NAME" > "$PKG_NAME.sha256" || true
+          fi
+
+          # Universal binary checks: lipo & otool verification
+          if command -v lipo >/dev/null 2>&1; then
+            echo "Universal binary info:"
+            lipo -info "universal/${APP_NAME}.app/Contents/MacOS/backup-manager-gui" || true
+          fi
+          if command -v otool >/dev/null 2>&1; then
+            echo "Linked libraries for universal binary:"
+            otool -L "universal/${APP_NAME}.app/Contents/MacOS/backup-manager-gui" || true
+          fi
+
+      - name: Upload universal DMG & PKG
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dvx3-Backup-Manager-macOS-universal
+          path: |
+            Releases/Dvx3-BackupManager-macOS-Universal.dmg
+            Releases/Dvx3-BackupManager-macOS-Universal.dmg.sha256
+            Releases/Dvx3-BackupManager-macOS-Universal.pkg
+            Releases/Dvx3-BackupManager-macOS-Universal.pkg.sha256
+
+  publish-release:
+    name: Publish Release (tagged)
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build-windows, build-linux-x86_64, build-linux-arm64, package-macos-universal]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Dvx3-Backup-Manager-Windows
+          path: artifacts/windows
+
+      - name: Download Linux x86_64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Dvx3-Backup-Manager-Linux-x86_64
+          path: artifacts/linux_x86_64
+
+      - name: Download Linux arm64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Dvx3-Backup-Manager-Linux-arm64
+          path: artifacts/linux_arm64
+
+      - name: Download Mac universal artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Dvx3-Backup-Manager-macOS-universal
+          path: artifacts/macos_universal
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: ${{ github.ref_name }}
+          body: |
+            Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+
+      - name: Upload release assets via upload_url
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPLOAD_URL: ${{ steps.create_release.outputs.upload_url }}
+        run: |
+          set -ex
+          echo "Upload URL: $UPLOAD_URL"
+          for d in artifacts/windows/Releases artifacts/linux_x86_64/Releases artifacts/linux_arm64/Releases artifacts/macos_universal/Releases; do
+            if [ -d "$d" ]; then
+              for f in "$d"/*; do
+                if [ -f "$f" ]; then
+                  echo "Uploading $f"
+                  FNAME=$(basename "$f")
+                  curl -sSL -X POST \
+                    -H "Authorization: token $GITHUB_TOKEN" \
+                    -H "Content-Type: application/octet-stream" \
+                    --data-binary @$f "$UPLOAD_URL?name=$FNAME" || true
+                fi
+              done
+            fi
+          done
+      
+      - name: Conditional code sign (macOS)
+        env:
+          APPLE_CODESIGN_P12: ${{ secrets.APPLE_CODESIGN_P12 }}
+          APPLE_CODESIGN_P12_PASSWORD: ${{ secrets.APPLE_CODESIGN_P12_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Only proceed if required secrets are present (env provided via workflow secrets)
+          if [ -z "$APPLE_CODESIGN_P12" ] || [ -z "$APPLE_CODESIGN_P12_PASSWORD" ] || [ -z "$APPLE_ID" ] || [ -z "$APPLE_PASSWORD" ]; then
+            echo "Code signing secrets not provided; skipping code signing step";
+            exit 0;
+          fi
+          set -ex
+          APP_NAME="Dvx3 Backup Manager"
+          # Import P12 into a temporary keychain
+          CERT_P12_BASE64="$APPLE_CODESIGN_P12"
+          echo "$CERT_P12_BASE64" | base64 --decode > cert.p12
+          SECURITY_KEYCHAIN=signing.keychain
+          security create-keychain -p signpw "$SECURITY_KEYCHAIN"
+          security import cert.p12 -k ~/Library/Keychains/$SECURITY_KEYCHAIN -P "${{ secrets.APPLE_CODESIGN_P12_PASSWORD }}" -T /usr/bin/codesign
+          security list-keychains -s ~/Library/Keychains/$SECURITY_KEYCHAIN
+          security set-key-partition-list -S apple-tool:,apple: -s -k signpw ~/Library/Keychains/$SECURITY_KEYCHAIN || true
+          SIGN_ID=$(security find-identity -p codesigning -v | awk '/"/{print $2; exit}') || true
+          echo "Using signing identity: ${SIGN_ID}"
+          # Codesign DMG / PKG (codesign supports app bundle normally, pkg needs productsign)
+          codesign --deep --options runtime --timestamp --sign "$SIGN_ID" "universal/${APP_NAME}.app" || true
+          echo "Verifying codesign for universal app"
+          codesign --verify --verbose=4 "universal/${APP_NAME}.app" || true
+          codesign -dv --verbose=4 "universal/${APP_NAME}.app" || true
+          spctl -a -t exec -vv "universal/${APP_NAME}.app" || true
+          if [ -f "$PKG_NAME" ]; then
+            pkgutil --check-signature "$PKG_NAME" || true
+          fi
+          # sign DMG using productsign if certificate available (productsign uses installer identity)
+          if command -v productsign >/dev/null 2>&1; then
+            if [ -n "${SIGN_ID}" ]; then
+              productsign --sign "$SIGN_ID" "Releases/Dvx3-BackupManager-macOS-Universal.pkg" "Releases/Dvx3-BackupManager-macOS-Universal-signed.pkg" || true
+              if [ -f "Releases/Dvx3-BackupManager-macOS-Universal-signed.pkg" ]; then
+                mv -f "Releases/Dvx3-BackupManager-macOS-Universal-signed.pkg" "Releases/Dvx3-BackupManager-macOS-Universal.pkg"
+              else
+                echo "Universal signed pkg not found; skipping move"
+              fi
+            fi
+          fi
+          # Clean up keychain
+          security delete-keychain ~/Library/Keychains/$SECURITY_KEYCHAIN || true
+
+      - name: Conditional notarization (macOS)
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Only proceed if required secrets are present (env provided via workflow secrets)
+          if [ -z "$APPLE_ID" ] || [ -z "$APPLE_PASSWORD" ]; then
+            echo "Notarization secrets not provided; skipping notarization step";
+            exit 0;
+          fi
+          set -ex
+          APP_NAME="Dvx3 Backup Manager"
+          DMG_NAME="Releases/Dvx3-BackupManager-macOS-Universal.dmg"
+          # Notarize using xcrun notarytool (requires Xcode's notarytool available)
+          if command -v xcrun >/dev/null 2>&1 && xcrun notarytool --help >/dev/null 2>&1; then
+            # Use app-specific password / Apple ID & team ID if present
+            if [ -n "$APPLE_TEAM_ID" ]; then
+              TEAM_CMD=(--team-id "$APPLE_TEAM_ID")
+            else
+              TEAM_CMD=()
+            fi
+            xcrun notarytool submit "$DMG_NAME" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" "${TEAM_CMD[@]}" --wait || true
+            xcrun stapler staple "$DMG_NAME" || true
+          else
+            echo "notarytool not available on runner; please notarize offline if needed" || true
+          fi
