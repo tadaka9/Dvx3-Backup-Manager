@@ -245,6 +245,13 @@ jobs:
           mkdir -p Releases/linux/lib
           cp backup-manager backup-manager-gui dvx3 libdvx3.so Releases/linux/ || true
           cp Dvx3-Backup-Manager.AppImage Releases/ || true
+          # Add a small wrapper to ensure runnable binaries find bundled libs (LD_LIBRARY_PATH)
+          printf '%s\n' '#!/bin/sh' 'DIR=$(cd "$(dirname "${0}")" && pwd)' 'export LD_LIBRARY_PATH="$DIR/lib:${LD_LIBRARY_PATH}"' 'exec "$DIR/backup-manager-gui" "$@"' > Releases/linux/backup-manager-gui.sh
+          printf '%s\n' '#!/bin/sh' 'DIR=$(cd "$(dirname "${0}")" && pwd)' 'export LD_LIBRARY_PATH="$DIR/lib:${LD_LIBRARY_PATH}"' 'exec "$DIR/backup-manager" "$@"' > Releases/linux/backup-manager.sh
+          printf '%s\n' '#!/bin/sh' 'DIR=$(cd "$(dirname "${0}")" && pwd)' 'export LD_LIBRARY_PATH="$DIR/lib:${LD_LIBRARY_PATH}"' 'exec "$DIR/dvx3" "$@"' > Releases/linux/dvx3.sh
+          chmod +x Releases/linux/backup-manager-gui.sh || true
+          chmod +x Releases/linux/backup-manager.sh || true
+          chmod +x Releases/linux/dvx3.sh || true
           # Always copy libsodium.so.23* for portability
           cp /usr/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || cp /usr/local/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || echo "libsodium.so.23* not found in /usr/lib or /usr/local/lib"
 
@@ -261,6 +268,31 @@ jobs:
             if [ -f Releases/linux/libdvx3.so ]; then
               patchelf --set-rpath '$ORIGIN/lib:$ORIGIN' Releases/linux/libdvx3.so || true
             fi
+            for bin in Releases/linux/backup-manager Releases/linux/backup-manager-gui Releases/linux/dvx3 Releases/linux/libdvx3.so; do
+              if [ -f "$bin" ]; then
+                echo "### Diagnostics for $bin"
+                echo "RPATH: $(patchelf --print-rpath "$bin" || echo 'patchelf-print-rpath-not-available')"
+                if command -v ldd >/dev/null 2>&1; then
+                  echo "ldd output:"
+                  ldd "$bin" || true
+                else
+                  echo "ldd not available"
+                fi
+              fi
+            done
+            # Show RPATH and ldd output to provide diagnostics for missing libs like libsodium
+            for bin in Releases/linux/backup-manager Releases/linux/backup-manager-gui Releases/linux/dvx3 Releases/linux/libdvx3.so; do
+              if [ -f "$bin" ]; then
+                echo "### Diagnostics for $bin"
+                echo "RPATH: $(patchelf --print-rpath "$bin" || echo 'patchelf-print-rpath-not-available')"
+                if command -v ldd >/dev/null 2>&1; then
+                  echo "ldd output:"
+                  ldd "$bin" || true
+                else
+                  echo "ldd not available"
+                fi
+              fi
+            done
           fi
           tar -czf Releases/Dvx3-Backup-Manager-Linux-x86_64.tar.gz -C Releases/linux . || true
 
@@ -321,6 +353,13 @@ jobs:
           mkdir -p Releases/linux/lib
           cp backup-manager backup-manager-gui dvx3 libdvx3.so Releases/linux/ || true
           cp /usr/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || cp /usr/local/lib/libsodium.so.23* Releases/linux/lib/ 2>/dev/null || echo "libsodium.so.23* not found in /usr/lib or /usr/local/lib"
+          # Add wrapper for arm64 to set LD_LIBRARY_PATH to ./lib to find bundled libs
+          printf '%s\n' '#!/bin/sh' 'DIR=$(cd "$(dirname "${0}")" && pwd)' 'export LD_LIBRARY_PATH="$DIR/lib:${LD_LIBRARY_PATH}"' 'exec "$DIR/backup-manager-gui" "$@"' > Releases/linux/backup-manager-gui.sh
+          printf '%s\n' '#!/bin/sh' 'DIR=$(cd "$(dirname "${0}")" && pwd)' 'export LD_LIBRARY_PATH="$DIR/lib:${LD_LIBRARY_PATH}"' 'exec "$DIR/backup-manager" "$@"' > Releases/linux/backup-manager.sh
+          printf '%s\n' '#!/bin/sh' 'DIR=$(cd "$(dirname "${0}")" && pwd)' 'export LD_LIBRARY_PATH="$DIR/lib:${LD_LIBRARY_PATH}"' 'exec "$DIR/dvx3" "$@"' > Releases/linux/dvx3.sh
+          chmod +x Releases/linux/backup-manager-gui.sh || true
+          chmod +x Releases/linux/backup-manager.sh || true
+          chmod +x Releases/linux/dvx3.sh || true
 
       - name: Install patchelf (runner)
         run: |
