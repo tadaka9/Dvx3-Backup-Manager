@@ -282,6 +282,33 @@ jobs:
           ccache -M 5G
           echo "PATH=$(brew --prefix ccache)/libexec:$PATH" >> $GITHUB_ENV
 
+            - name: Symlink Qt6 moc from libexec if present
+        run: |
+          set -ex
+          echo "Listing Qt6 bin and libexec directories:"
+          ls -l /opt/homebrew/opt/qt@6/bin || true
+          ls -l /usr/local/opt/qt@6/bin || true
+          ls -l /opt/homebrew/opt/qt@6/libexec || true
+          ls -l /usr/local/opt/qt@6/libexec || true
+          ls -l /opt/homebrew/bin || true
+          ls -l /usr/local/bin || true
+          # Always check and symlink moc from libexec if present
+          if [ -f /opt/homebrew/opt/qt@6/libexec/moc ]; then
+            ln -sf /opt/homebrew/opt/qt@6/libexec/moc /usr/local/bin/moc
+            echo "Symlinked moc from /opt/homebrew/opt/qt@6/libexec to /usr/local/bin/moc"
+          elif [ -f /usr/local/opt/qt@6/libexec/moc ]; then
+            ln -sf /usr/local/opt/qt@6/libexec/moc /usr/local/bin/moc
+            echo "Symlinked moc from /usr/local/opt/qt@6/libexec to /usr/local/bin/moc"
+          elif [ -f /opt/homebrew/opt/qt@6/bin/moc ]; then
+            ln -sf /opt/homebrew/opt/qt@6/bin/moc /usr/local/bin/moc
+            echo "Symlinked moc from /opt/homebrew/opt/qt@6/bin to /usr/local/bin/moc"
+          elif [ -f /usr/local/opt/qt@6/bin/moc ]; then
+            ln -sf /usr/local/opt/qt@6/bin/moc /usr/local/bin/moc
+            echo "Symlinked moc from /usr/local/opt/qt@6/bin to /usr/local/bin/moc"
+          else
+            echo "moc not found in bin or libexec!"
+          fi
+          export PATH=/opt/homebrew/opt/qt@6/bin:/usr/local/opt/qt@6/bin:/usr/local/bin:$PATH
       - name: Set Qt6 PATH (macOS)
         run: |
           echo "PATH=/opt/homebrew/opt/qt@6/bin:/usr/local/opt/qt@6/bin:$PATH" >> $GITHUB_ENV
