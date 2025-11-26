@@ -1,3 +1,10 @@
+<think>
+First, the YAML is a GitHub Actions workflow for building a "Backup Manager" project across multiple platforms: Windows, Linux (multiple distros), macOS, and an optional AppImage for Linux.
+
+
+## Examining workflow details
+- The YAML file outlines a GitHub Actions workflow for the "Backup Manager" project.
+</think>```yaml
 name: Build Backup Manager
 
 on:
@@ -13,10 +20,10 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        arch: [x64]   # aggiungere arm64 se necessario
+        arch: [x64]  # aggiungere arm64 se necessario
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Verify MSVC environment
         shell: pwsh
@@ -29,9 +36,7 @@ jobs:
           Write-Output "PATH: $env:PATH"
 
       - name: Cache ccache (Windows)
-        if: runner.os == 'Windows'
         uses: actions/cache@v4
-
         with:
           path: C:\Users\runneradmin\AppData\Local\ccache
           key: ${{ runner.os }}-ccache-windows-${{ hashFiles('**/*.c','**/*.cpp') }}
@@ -43,77 +48,18 @@ jobs:
         with:
           msystem: MINGW64
           update: true
-          install:
-            - mingw-w64-x86_64-toolchain
-            - mingw-w64-x86_64-qt6-base
-            - mingw-w64-x86_64-qt6-tools
-            - mingw-w64-x86_64-pkg-config
-            - mingw-w64-x86_64-vala
-            - mingw-w64-x86_64-ninja
-            - mingw-w64-x86_64-cmake
-            - mingw-w64-x86_64-json-glib
-            - mingw-w64-x86_64-libsodium
-            - mingw-w64-x86_64-gtest
-            - upx
-          # ------------------------------------------------------------------
-  # ------------------------------------------------------------------
-  # MULTI-DISTRO LINUX BUILD
-  # ------------------------------------------------------------------
-  build-linux-matrix:
-    runs-on: ${{ matrix.distro }}
-    strategy:
-      matrix:
-        distro: [ubuntu-latest, archlinux, fedora-latest]
-        arch: [x86_64]
-    steps:
-      - uses: actions/checkout@v3
-      - name: Install dependencies (Ubuntu)
-        if: matrix.distro == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake pkg-config \
-            valac libjson-glib-dev libsodium-dev libsodium23 zstd tar imagemagick \
-            ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev nsis || exit 1
-      - name: Install dependencies (Arch)
-        if: matrix.distro == 'archlinux'
-        run: |
-          sudo pacman -Syu --noconfirm
-          sudo pacman -S --noconfirm base-devel cmake pkgconf vala json-glib libsodium zstd tar imagemagick ninja ccache gtest qt6-base qt6-tools
-      - name: Install dependencies (Fedora)
-        if: matrix.distro == 'fedora-latest'
-        run: |
-          sudo dnf -y update
-          sudo dnf -y install @development-tools cmake pkgconf-pkg-config vala json-glib-devel libsodium-devel zstd tar ImageMagick ninja-build ccache gtest qt6-qtbase-devel qt6-qttools-devel
-      - name: Build GUI
-        run: |
-          chmod +x build_gui.sh
-          ./build_gui.sh || exit 1
-      - name: Prepare Linux releases
-        run: |
-          mkdir -p Releases/linux
-          cp backup-manager backup-manager-gui dvx3 libdvx3.so Releases/linux/ || true
-          # Copy libsodium shared library if present
-          cp /usr/lib/libsodium.so.* Releases/linux/ 2>/dev/null || cp /usr/local/lib/libsodium.so.* Releases/linux/ 2>/dev/null || echo "libsodium.so.* not found in /usr/lib or /usr/local/lib"
-      - name: Package Linux tarball
-        run: |
-          tar -czf Releases/Dvx3-Backup-Manager-Linux-${{ matrix.distro }}.tar.gz -C Releases/linux .
-      - name: Upload Linux artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: Dvx3-Backup-Manager-Linux-${{ matrix.distro }}
-          path: |
-            Releases/Dvx3-Backup-Manager-Linux-${{ matrix.distro }}.tar.gz
-      - name: Verify Qt6 installation
-        shell: bash
-        run: |
-          echo "Checking Qt6Widgets with pkg-config"
-          pkg-config --modversion Qt6Widgets || true
-          echo "Locating moc"
-          which moc || true
-          echo "PATH:"
-          echo $PATH
-          echo "Listing Qt6 packages"
-          pacman -Qs qt6 || true
+          install: |
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-qt6-base
+            mingw-w64-x86_64-qt6-tools
+            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-vala
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-json-glib
+            mingw-w64-x86_64-libsodium
+            mingw-w64-x86_64-gtest
+            upx
 
       - name: Install NSIS (optional)
         shell: msys2 {0}
@@ -178,7 +124,6 @@ jobs:
           fi
 
       - name: Create ZIP archive (Windows)
-        if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
           cd Releases
@@ -205,6 +150,74 @@ jobs:
           which moc || true
 
   # ------------------------------------------------------------------
+  # MULTI-DISTRO LINUX BUILD
+  # ------------------------------------------------------------------
+  build-linux-matrix:
+    runs-on: ${{ matrix.distro }}
+    strategy:
+      matrix:
+        distro: [ubuntu-latest, archlinux, fedora-latest]
+        arch: [x86_64]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (Ubuntu)
+        if: matrix.distro == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config \
+            valac libjson-glib-dev libsodium-dev libsodium23 zstd tar imagemagick \
+            ninja-build ccache libgtest-dev qt6-base-dev qt6-tools-dev nsis || exit 1
+
+      - name: Install dependencies (Arch)
+        if: matrix.distro == 'archlinux'
+        run: |
+          sudo pacman -Syu --noconfirm
+          sudo pacman -S --noconfirm base-devel cmake pkgconf vala json-glib libsodium zstd tar imagemagick ninja ccache gtest qt6-base qt6-tools
+
+      - name: Install dependencies (Fedora)
+        if: matrix.distro == 'fedora-latest'
+        run: |
+          sudo dnf -y update
+          sudo dnf -y install @development-tools cmake pkgconf-pkg-config vala json-glib-devel libsodium-devel zstd tar ImageMagick ninja-build ccache gtest qt6-qtbase-devel qt6-qttools-devel
+
+      - name: Build GUI
+        run: |
+          chmod +x build_gui.sh
+          ./build_gui.sh || exit 1
+
+      - name: Prepare Linux releases
+        run: |
+          mkdir -p Releases/linux
+          cp backup-manager backup-manager-gui dvx3 libdvx3.so Releases/linux/ || true
+          # Copy libsodium shared library if present
+          cp /usr/lib/libsodium.so.* Releases/linux/ 2>/dev/null || cp /usr/local/lib/libsodium.so.* Releases/linux/ 2>/dev/null || echo "libsodium.so.* not found in /usr/lib or /usr/local/lib"
+
+      - name: Package Linux tarball
+        run: |
+          tar -czf Releases/Dvx3-Backup-Manager-Linux-${{ matrix.distro }}.tar.gz -C Releases/linux .
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dvx3-Backup-Manager-Linux-${{ matrix.distro }}
+          path: |
+            Releases/Dvx3-Backup-Manager-Linux-${{ matrix.distro }}.tar.gz
+
+      - name: Verify Qt6 installation
+        shell: bash
+        run: |
+          echo "Checking Qt6Widgets with pkg-config"
+          pkg-config --modversion Qt6Widgets || true
+          echo "Locating moc"
+          which moc || true
+          echo "PATH:"
+          echo $PATH
+          echo "Listing Qt6 packages"
+          pacman -Qs qt6 || true
+
+  # ------------------------------------------------------------------
   # LINUX BUILD (native & cross‑compile)
   # ------------------------------------------------------------------
   build-linux:
@@ -213,7 +226,8 @@ jobs:
       matrix:
         arch: [x86_64, arm64]
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Cache ccache
         uses: actions/cache@v4
@@ -320,13 +334,14 @@ jobs:
       matrix:
         arch: [x86_64, arm64]
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Install Homebrew packages
         run: |
           brew update
-          brew install --cask qctools
           brew install pkg-config vala glib json-glib libsodium zstd qt@6 ninja cmake ccache || exit 1
+
       - name: Ensure Qt6 moc is available (macOS)
         run: |
           FOUND_MOC=""
@@ -396,6 +411,7 @@ jobs:
             echo "moc not found in bin or libexec!"
           fi
           export PATH=/opt/homebrew/opt/qt@6/bin:/usr/local/opt/qt@6/bin:/usr/local/bin:$PATH
+
       - name: Set Qt6 PATH (macOS)
         run: |
           echo "PATH=/opt/homebrew/opt/qt@6/bin:/usr/local/opt/qt@6/bin:$PATH" >> $GITHUB_ENV
@@ -408,86 +424,4 @@ jobs:
 
       - name: Build all components (macOS)
         run: |
-          export PATH=/opt/homebrew/opt/qt@6/bin:/usr/local/opt/qt@6/bin:$PATH
-          chmod +x build-all.sh
-          ./build-all.sh || exit 1
-
-      - name: Build GUI (macOS)
-        run: |
-          export PATH=/opt/homebrew/opt/qt@6/bin:/usr/local/opt/qt@6/bin:$PATH
-          chmod +x build_gui.sh
-          ./build_gui.sh || exit 1
-
-      - name: Gather releases
-        run: |
-          mkdir -p Releases
-          cp backup-manager backup-manager-gui dvx3 Releases/ || true
-
-      - name: Upload macOS artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: Dvx3-Backup-Manager-macOS-${{ matrix.arch }}
-          path: Releases/*
-
-  # ------------------------------------------------------------------
-  # OPTIONAL: APPIMAGE (Linux)
-  # ------------------------------------------------------------------
-  build-linux-appimage:
-    runs-on: ubuntu-latest
-    needs: build-linux
-    steps:
-      - uses: actions/checkout@v3
-      - name: Download Linux build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: Dvx3-Backup-Manager-Linux-x86_64
-          path: .
-      - name: Extract Linux build artifacts
-        run: |
-          tar -xzf Dvx3-Backup-Manager-Linux.tar.gz
-          mv Releases/linux/* . || true
-          rm -rf Releases
-      - name: Install FUSE for AppImage
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libfuse2 || exit 1
-      - name: Build AppImage (if script exists)
-        run: |
-            # Ensure .desktop file exists in AppDir
-            APPDIR="Dvx3BackupManager.AppDir"
-            DESKTOP_FILE="$APPDIR/Dvx3BackupManager.desktop"
-            if [ ! -d "$APPDIR" ]; then
-              echo "AppDir $APPDIR not found, aborting AppImage build."
-              exit 1
-            fi
-              if [ ! -f "$DESKTOP_FILE" ]; then
-                echo "Generating minimal desktop file: $DESKTOP_FILE"
-                cat <<'EOF' > "$DESKTOP_FILE"
-                [Desktop Entry]
-                Type=Application
-                Name=Dvx3 Backup Manager
-                Exec=backup-manager-gui
-                Icon=backup-manager
-                Categories=Utility;
-                EOF
-            fi
-            # Ensure desktop file is in usr/share/applications for AppImage
-            mkdir -p "$APPDIR/usr/share/applications"
-            cp "$DESKTOP_FILE" "$APPDIR/usr/share/applications/"
-            fi
-            # Copy libsodium shared library into AppDir if present
-            if ls /usr/lib/libsodium.so.* 1>/dev/null 2>&1; then
-              cp /usr/lib/libsodium.so.* "$APPDIR/" || echo "Failed to copy libsodium from /usr/lib"
-            elif ls /usr/local/lib/libsodium.so.* 1>/dev/null 2>&1; then
-              cp /usr/local/lib/libsodium.so.* "$APPDIR/" || echo "Failed to copy libsodium from /usr/local/lib"
-            else
-              echo "libsodium.so.* not found in /usr/lib or /usr/local/lib"
-            fi
-            if [ -x build-appimage.sh ]; then
-              ./build-appimage.sh || exit 1
-            fi
-      - name: Upload AppImage
-        uses: actions/upload-artifact@v4
-        with:
-          name: Dvx3-Backup-Manager-Linux-AppImage
-          path: "*.AppImage"
+          export PATH=/opt/homebrew/opt/qt@6/bin:/usr/local/opt
