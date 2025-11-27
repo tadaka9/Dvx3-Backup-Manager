@@ -221,6 +221,30 @@ This prints the scopes that will be accessible to the token; make sure `repo` or
 5. ⏳ Create a version tag to test release creation
 6. ⏳ Download and test packaged applications
 
+## Publish-only (upload artifacts from a prior run)
+
+If you have artifacts uploaded by a previous workflow run and you want to publish them to a GitHub Release without re-running all build jobs, you can use the `publish_only` workflow input combined with `publish_artifacts_run_id`.
+
+Steps:
+
+1. Find the run id that produced the artifacts you want to publish:
+```bash
+gh run list --workflow 'Build, Package & Release'
+# Note the 'Run ID' for the build run that uploaded the artifacts
+```
+2. Run the workflow in publish-only mode to download artifacts from that run and publish them to a release:
+```bash
+gh workflow run 'Build, Package & Release' --ref clean-version \
+   --field publish_only=true \
+   --field publish_artifacts_run_id=<RUN_ID> \
+   --field release_tag=vX.Y.Z
+```
+
+Notes:
+- `publish_artifacts_run_id` is required when `publish_only=true` as the workflow needs to know which run to fetch artifacts from.
+- If the release tag doesn't exist and you want the workflow to create it, set `create_tag_if_missing=true` and provide a `RELEASE_PAT` secret with `repo` scope. Otherwise, ensure the tag exists before running the workflow.
+- The `publish-only` job verifies checksums and validates the tag before uploading artifacts to the release. If verification fails, the publish step will be blocked.
+
 ## Support
 
 If you encounter issues:
