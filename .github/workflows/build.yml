@@ -12,6 +12,10 @@ on:
         description: 'Tag to publish as release (e.g. v1.2.3)'
         required: false
         default: ''
+      create_tag_if_missing:
+        description: 'Automatically create the provided tag if missing (requires RELEASE_PAT or GITHUB_TOKEN with permission)'
+        required: false
+        default: 'false'
       strict_artifact_checks:
         description: 'Strict artifact checks (true|false)'
         required: false
@@ -1249,6 +1253,34 @@ jobs:
             echo "release_tag=" >> $GITHUB_OUTPUT
           fi
           echo "Determined release_tag=${{ steps.determine_release_tag.outputs.release_tag }}"
+
+      - name: Preflight validate release tag and optionally auto-create
+        id: preflight_tag
+        env:
+          TOKEN: ${{ env.RELEASE_TOKEN != '' && env.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          set -ex
+          TAG=${{ steps.determine_release_tag.outputs.release_tag }}
+          if [ -z "$TAG" ]; then
+            echo "No release_tag provided; skipping preflight tag validation" && echo "tag_exists=false" >> $GITHUB_OUTPUT && exit 0
+          fi
+          echo "Checking if tag $TAG exists in ${GITHUB_REPOSITORY}"
+          status=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token $TOKEN" "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG}") || true
+          if [ "$status" -eq 200 ]; then
+            echo "Tag $TAG exists" && echo "tag_exists=true" >> $GITHUB_OUTPUT && exit 0
+          fi
+          echo "Tag $TAG does not exist (HTTP $status)"
+          if [ "${{ github.event.inputs.create_tag_if_missing }}" = "true" ]; then
+            echo "create_tag_if_missing requested: attempting to create tag $TAG"
+            # Create a tag ref pointing to the current commit (github.sha)
+            create_status=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Authorization: token $TOKEN" -H "Content-Type: application/json" "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/refs" -d "{\"ref\": \"refs/tags/${TAG}\", \"sha\": \"${GITHUB_SHA}\"}") || true
+            if [ "$create_status" -eq 201 ]; then
+              echo "Tag $TAG created successfully" && echo "tag_exists=true" >> $GITHUB_OUTPUT && exit 0
+            else
+              echo "Failed to create tag $TAG (HTTP $create_status). Please create the tag manually or ensure your token has repo permissions" && echo "tag_exists=false" >> $GITHUB_OUTPUT && exit 1
+            fi
+          fi
+          echo "Please create tag ${TAG} and re-run, or run with create_tag_if_missing=true and a token with repo scope (RELEASE_PAT)" && echo "tag_exists=false" >> $GITHUB_OUTPUT && exit 1
 
       - name: Verify checksums of downloaded artifacts
         run: |
