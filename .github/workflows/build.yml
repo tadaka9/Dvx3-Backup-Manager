@@ -76,30 +76,30 @@ jobs:
       - name: Bundle macOS app and fix libsodium linking
         run: |
           set -ex
-          mkdir -p $RELEASE_DIR/mac/${{ matrix.arch }}/lib
+          mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib"
           # Use macdeployqt (bundle Qt and plugins) if available
           if command -v macdeployqt >/dev/null 2>&1; then
             # If our build produced an .app bundle, use macdeployqt
             if [ -d build/backup-manager-gui.app ]; then
               macdeployqt build/backup-manager-gui.app || true
-              cp -r build/backup-manager-gui.app $RELEASE_DIR/mac/${{ matrix.arch }}/ || true
+              cp -r build/backup-manager-gui.app "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" || true
             fi
           fi
           # Copy executable artifacts into release folder
           if [ -f backup-manager-gui ]; then
-            cp backup-manager-gui $RELEASE_DIR/mac/${{ matrix.arch }}/ || true
+            cp backup-manager-gui "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" || true
           fi
           # Fallback: copy everything from build/Releases into Releases/mac/<arch>/ if present
           if [ -d build/Releases ]; then
-            echo "Copying build/Releases contents to $RELEASE_DIR/mac/${{ matrix.arch }}"
-            cp -r build/Releases/* $RELEASE_DIR/mac/${{ matrix.arch }}/ 2>/dev/null || true
+            echo "Copying build/Releases contents to $GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}"
+            cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" 2>/dev/null || true
           fi
           # Fix libsodium for runtime: copy library and change install names
           if brew --prefix libsodium >/dev/null 2>&1; then
             LIBSODIUM=$(brew --prefix libsodium)/lib/libsodium*.dylib || true
             if [ -e "$LIBSODIUM" ]; then
-              cp $LIBSODIUM $RELEASE_DIR/mac/${{ matrix.arch }}/lib/ || true
-              for f in $RELEASE_DIR/mac/${{ matrix.arch }}/*; do
+              cp $LIBSODIUM "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib/" || true
+              for f in "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}"/*; do
                 if file "$f" | grep -qi "Mach-O"; then
                   install_name_tool -change "$LIBSODIUM" "@executable_path/../lib/$(basename $LIBSODIUM)" "$f" || true
                 fi
@@ -110,9 +110,9 @@ jobs:
       - name: Show mac release dir and create mac artifact
         run: |
           set -ex
-          echo "Contents of $RELEASE_DIR/mac/${{ matrix.arch }} before creating tar:"
-          ls -la $RELEASE_DIR/mac/${{ matrix.arch }} || true
-          cd $RELEASE_DIR/mac/${{ matrix.arch }} || true
+          echo "Contents of $GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }} before creating tar:"
+          ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}" || true
+          cd "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}" || true
           tar -czf ../../${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz . || true
           cd -
 
@@ -175,7 +175,7 @@ jobs:
           update: true
 
       - name: Install MSYS2 packages (arch-aware)
-        shell: bash -l {0}
+        shell: msys2 {0}
         run: |
           set -ex
           if [ "${{ matrix.arch }}" = "x86_64" ]; then
@@ -193,7 +193,7 @@ jobs:
           ls -la /mingw32/bin || true
 
       - name: Build GUI (Windows)
-        shell: bash -l {0}
+        shell: msys2 {0}
         run: |
           set -ex
           # Ensure scripts are executable in MSYS2
@@ -201,43 +201,43 @@ jobs:
           ./build_gui.sh || true
 
       - name: Collect Windows artifacts and ensure libsodium.dll present
-        shell: bash -l {0}
+        shell: msys2 {0}
         run: |
           set -ex
-          mkdir -p $RELEASE_DIR/windows/${{ matrix.arch }}
+          mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}"
           # Copy produced executables and DLLs
           if [ -f backup-manager-gui.exe ]; then
-            cp backup-manager-gui.exe $RELEASE_DIR/windows/${{ matrix.arch }}/ || true
+            cp backup-manager-gui.exe "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" || true
           elif [ -f backup-manager-gui ]; then
-            cp backup-manager-gui $RELEASE_DIR/windows/${{ matrix.arch }}/ || true
+            cp backup-manager-gui "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" || true
           fi
           # Copy libsodium DLL into Releases folder (MSYS2 path)
           if [ -f /mingw64/bin/libsodium.dll ]; then
-            cp /mingw64/bin/libsodium.dll $RELEASE_DIR/windows/${{ matrix.arch }}/ || true
+            cp /mingw64/bin/libsodium.dll "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" || true
           elif [ -f /usr/bin/libsodium.dll ]; then
-            cp /usr/bin/libsodium.dll $RELEASE_DIR/windows/${{ matrix.arch }}/ || true
+            cp /usr/bin/libsodium.dll "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" || true
           fi
           # Use windeployqt if available to gather Qt dependencies
           if command -v windeployqt >/dev/null 2>&1; then
             if [ -f backup-manager-gui.exe ]; then
-              windeployqt --dir $RELEASE_DIR/windows/${{ matrix.arch }} backup-manager-gui.exe || true
+              windeployqt --dir "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}" backup-manager-gui.exe || true
             fi
           fi
           # Fallback: If build/Releases exists and has files, copy them to final Releases folder
           if [ -d build/Releases ]; then
-            echo "Copying build/Releases contents to $RELEASE_DIR/windows/${{ matrix.arch }}"
-            cp -r build/Releases/* $RELEASE_DIR/windows/${{ matrix.arch }}/ 2>/dev/null || true
+            echo "Copying build/Releases contents to $GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}"
+            cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" 2>/dev/null || true
           fi
 
       - name: Show windows release dir and create Windows artifact
-        shell: bash -l {0}
+        shell: msys2 {0}
         run: |
           set -ex
           # Ensure Releases top-level exists, even if empty
-          mkdir -p "$RELEASE_DIR" || true
-          echo "Contents of $RELEASE_DIR/windows/${{ matrix.arch }} before creating zip:"
-          ls -la $RELEASE_DIR/windows/${{ matrix.arch }} || true
-          cd $RELEASE_DIR/windows/${{ matrix.arch }} || true
+          mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR" || true
+          echo "Contents of $GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }} before creating zip:"
+          ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}" || true
+          cd "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}" || true
           # Try zip first (MSYS2); fallback to PowerShell Compress-Archive if zip not available
           if command -v zip >/dev/null 2>&1; then
             zip -r ../../${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip . || true
@@ -246,47 +246,54 @@ jobs:
             # Use PowerShell from bash to compress: convert path to Windows style for both source and destination
             WINPATH=$(cygpath -w "$PWD")
             PSZIP_UNIX="$RELEASE_DIR/${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip"
-            WINPSZIP=$(cygpath -w "$PSZIP_UNIX")
+            # Convert both source and dest to absolute Windows paths using GITHUB_WORKSPACE
+            WINPSZIP=$(cygpath -w "$GITHUB_WORKSPACE/$PSZIP_UNIX")
+            echo "WINPATH $WINPATH"
+            echo "WINPSZIP $WINPSZIP"
             powershell -Command "Compress-Archive -Path '${WINPATH}\*' -DestinationPath '${WINPSZIP}' -Force" || true
           fi
           cd -
           cd -
           # Ensure the top-level Releases dir contains the created zip
           ZIP_NAME="${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip"
-            if [ -f "$RELEASE_DIR/$ZIP_NAME" ]; then
-            echo "Created zip: $RELEASE_DIR/$ZIP_NAME"
-            ls -la "$RELEASE_DIR/$ZIP_NAME" || true
+            if [ -f "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" ]; then
+              echo "Created zip: $GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME"
+              ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" || true
           else
             # Fallback: try to build a zip from build/Releases or Releases/windows/<arch>
             if [ -d build/Releases ]; then
               echo "Fallback: Creating zip from build/Releases"
               if command -v zip >/dev/null 2>&1; then
-                zip -r "$RELEASE_DIR/$ZIP_NAME" build/Releases/* || true
-              else
-                # Use PowerShell to zip on Windows
-                WINSRC=$(cygpath -w "build/Releases/*")
-                WINDEST=$(cygpath -w "$RELEASE_DIR/$ZIP_NAME")
+                zip -r "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" build/Releases/* || true
+                else
+                # Use PowerShell to zip on Windows - convert to absolute paths
+                WINSRC=$(cygpath -w "$GITHUB_WORKSPACE/build/Releases/*")
+                WINDEST=$(cygpath -w "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME")
+                echo "WINSRC $WINSRC"
+                echo "WINDEST $WINDEST"
                 powershell -Command "Compress-Archive -Path '${WINSRC}' -DestinationPath '${WINDEST}' -Force" || true
               fi
-            elif [ -d "$RELEASE_DIR/windows/${{ matrix.arch }}" ]; then
-              echo "Fallback: Creating zip from $RELEASE_DIR/windows/${{ matrix.arch }}"
+            elif [ -d "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}" ]; then
+              echo "Fallback: Creating zip from $GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}"
               if command -v zip >/dev/null 2>&1; then
-                (cd "$RELEASE_DIR/windows/${{ matrix.arch }}" && zip -r "../../$ZIP_NAME" .) || true
-              else
-                WINPATH=$(cygpath -w "$RELEASE_DIR/windows/${{ matrix.arch }}")
-                WINDEST=$(cygpath -w "$RELEASE_DIR/$ZIP_NAME")
+                (cd "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}" && zip -r "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" .) || true
+                else
+                WINPATH=$(cygpath -w "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}")
+                WINDEST=$(cygpath -w "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME")
+                echo "WINPATH $WINPATH"
+                echo "WINDEST $WINDEST"
                 powershell -Command "Compress-Archive -Path '${WINPATH}\*' -DestinationPath '${WINDEST}' -Force" || true
               fi
             fi
-            if [ -f "$RELEASE_DIR/$ZIP_NAME" ]; then
-              echo "Created fallback zip: $RELEASE_DIR/$ZIP_NAME" && ls -la "$RELEASE_DIR/$ZIP_NAME" || true
+            if [ -f "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" ]; then
+              echo "Created fallback zip: $GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" && ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" || true
             else
-              echo "ERROR: Expected zip not found at $RELEASE_DIR/$ZIP_NAME" && ls -la "$RELEASE_DIR" || true && exit 1
+              echo "ERROR: Expected zip not found at $GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" && ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR" || true && exit 1
             fi
           fi
 
       - name: Verify Windows artifact contents
-        shell: bash -l {0}
+        shell: msys2 {0}
         run: |
           set -ex
           ART_PATH=${{ env.RELEASE_DIR }}
@@ -336,10 +343,10 @@ jobs:
           fi
 
       - name: Compute windows artifact sha256
-        shell: bash -l {0}
+        shell: msys2 {0}
         run: |
           set -ex
-          ART=${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip
+          ART="$GITHUB_WORKSPACE/${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip"
           DIR=$(dirname "$ART")
           BASE=$(basename "$ART")
           pushd "$DIR"
@@ -384,8 +391,8 @@ jobs:
       - name: Package Linux artifacts and fix libsodium linking
         run: |
           set -ex
-          mkdir -p $RELEASE_DIR/linux/x86_64/lib || true
-          cp backup-manager-gui $RELEASE_DIR/linux/x86_64 || true
+          mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/lib" || true
+          cp backup-manager-gui "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64" || true
           # Copy libsodium into release lib
           SODIUM_SO=$(ldconfig -p | grep libsodium | head -n 1 | awk '{print $NF}' || true)
           if [ -n "$SODIUM_SO" ] && [ -f "$SODIUM_SO" ]; then
@@ -402,21 +409,21 @@ jobs:
           fi
           # Create a tar.gz artifact
           echo "Contents of $RELEASE_DIR/linux/x86_64 before creating tar:"
-          ls -la $RELEASE_DIR/linux/x86_64 || true
+          ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64" || true
           # Fallback: copy everything from build/Releases into Releases/linux/x86_64/
           if [ -d build/Releases ]; then
             echo "Copying build/Releases contents to $RELEASE_DIR/linux/x86_64"
-            cp -r build/Releases/* $RELEASE_DIR/linux/x86_64/ 2>/dev/null || true
+            cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/" 2>/dev/null || true
           fi
           # Try to include Qt platform plugins for Linux (XCB platform)
           if [ -d "/usr/lib/qt6/plugins/platforms" ]; then
-            mkdir -p $RELEASE_DIR/linux/x86_64/plugins/platforms || true
-            cp -r /usr/lib/qt6/plugins/platforms/* $RELEASE_DIR/linux/x86_64/plugins/platforms/ 2>/dev/null || true
+            mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/plugins/platforms" || true
+            cp -r /usr/lib/qt6/plugins/platforms/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/plugins/platforms/" 2>/dev/null || true
           elif [ -d "/usr/lib/x86_64-linux-gnu/qt6/plugins/platforms" ]; then
-            mkdir -p $RELEASE_DIR/linux/x86_64/plugins/platforms || true
-            cp -r /usr/lib/x86_64-linux-gnu/qt6/plugins/platforms/* $RELEASE_DIR/linux/x86_64/plugins/platforms/ 2>/dev/null || true
+            mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/plugins/platforms" || true
+            cp -r /usr/lib/x86_64-linux-gnu/qt6/plugins/platforms/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/plugins/platforms/" 2>/dev/null || true
           fi
-          cd $RELEASE_DIR/linux || true
+          cd "$GITHUB_WORKSPACE/$RELEASE_DIR/linux" || true
           tar -czf ../${ARTIFACT_PREFIX}-linux-x86_64-${{ github.run_id }}.tar.gz x86_64 || true
           cd -
 
@@ -732,7 +739,7 @@ jobs:
       - name: Create universal app or binary using lipo
         run: |
           set -ex
-          mkdir -p $RELEASE_DIR/mac/universal
+          mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/universal"
           # Prefer .app bundles if present
           if [ -d mac-arm64-extracted/*.app ] || [ -d mac-arm64-extracted/*/*.app ] || [ -d mac-x86_64-extracted/*.app ]; then
             # Find the app bundle in each folder
