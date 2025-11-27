@@ -66,6 +66,30 @@ cmake -S . -B build-msvc -G "Visual Studio 17 2022" -A ARM64 -DCMAKE_TOOLCHAIN_F
 cmake --build build-msvc --config Release
 ctest -C Release --output-on-failure
 ```
+
+### Windows ARM64 (Cross-compile or Native Build)
+Producing a Windows ARM64 (win64-aarch64) artifact is best done on a native Windows ARM64 environment, but there are other options:
+
+1) Native Windows ARM64 build (recommended):
+  - Use a native Windows ARM64 machine or self-hosted runner with MSYS2 or Visual Studio installed.
+  - Install MSYS2 aarch64 packages:
+    ```powershell
+    pacman -Syu
+    pacman -S --noconfirm mingw-w64-aarch64-toolchain mingw-w64-aarch64-vala mingw-w64-aarch64-qt6-base mingw-w64-aarch64-qt6-tools mingw-w64-aarch64-pkgconf
+    ```
+  - Build using the aarch64 MinGW toolchain or Visual Studio ARM64 toolchain as appropriate.
+
+2) Cross-compile from Linux (experimental):
+  - You may try to cross-compile using mingw-w64 cross toolchains or `aarch64-w64-mingw32-gcc` if available:
+    ```bash
+    sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu mingw-w64
+    # Configure and use a CMake toolchain that targets aarch64-w64-mingw32
+    ```
+  - Cross-compiling Qt-based GUI apps for Windows ARM64 requires an ARM64-built Qt and proper linking of platform plugins; this is non-trivial.
+
+3) CI / Runners:
+  - GitHub-hosted `windows-latest` uses x86_64 hosts. To both build and run tests for ARM64 Windows artifacts you will need a self-hosted `windows-arm64` runner or a build farm that provides ARM64 Windows hosts.
+
 ```
 
 ### Raspberry Pi
