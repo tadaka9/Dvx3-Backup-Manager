@@ -185,6 +185,20 @@ jobs:
             else
               cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" 2>/dev/null || true
             fi
+            # If artifacts.txt is present, copy only listed artifacts instead to avoid nested copies
+            if [ -f build/Releases/mac/${{ matrix.arch }}/artifacts.txt ]; then
+              while IFS= read -r line || [ -n "$line" ]; do
+                [ -z "$line" ] && continue
+                # Strip leading slash if present and normalize relative path
+                rel=$(echo "$line" | sed 's|^/||')
+                src="build/Releases/mac/${{ matrix.arch }}/$rel"
+                if [ -e "$src" ]; then
+                  destdir="$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/$(dirname "$rel")"
+                  mkdir -p "$destdir" || true
+                  cp -a "$src" "$destdir/" || true
+                fi
+              done < build/Releases/mac/${{ matrix.arch }}/artifacts.txt || true
+            fi
             # After copying, if macdeployqt is available run it against the copied .app in the release folder
             if command -v macdeployqt >/dev/null 2>&1; then
               # Find a bundled .app under the copied release dir
@@ -251,6 +265,64 @@ jobs:
           echo "TARGET_ARCH (env): $TARGET_ARCH; runner arch: $(uname -m || true)"
           echo "Contents of $GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }} before creating tar:"
           ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}" || true
+          # If release dir lacks artifacts, try to find built artifacts in build/ and copy them here
+          echo "Debug: Listing build/ for files (first 200 lines)" || true
+          find build -maxdepth 6 -type f -print -quit || true
+          if ! ls "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}" | grep -E 'backup-manager-gui|\.app|libdvx3|libb2|libsodium' >/dev/null 2>&1; then
+            echo "No artifacts in Releases dir; searching build/ for possible mac artifacts"
+            # Copy binary and .app candidates (search build, but fallback to entire workspace if necessary)
+            FIND_BIN=$(find build -maxdepth 6 -type f -name 'backup-manager-gui' -print -quit || true)
+            if [ -z "$FIND_BIN" ]; then
+              FIND_BIN=$(find . -maxdepth 6 -type f -name 'backup-manager-gui' -print -quit || true)
+            fi
+            if [ -n "$FIND_BIN" ]; then
+              echo "Found binary candidate in build: $FIND_BIN; copying to release root"
+              cp "$FIND_BIN" "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" || true
+            fi
+            # Find any generated .app bundles in build/Releases or build/
+            FIND_APP=$(find build -maxdepth 6 -type d -name '*.app' -print -quit || true)
+            if [ -z "$FIND_APP" ]; then
+              FIND_APP=$(find . -maxdepth 6 -type d -name '*.app' -print -quit || true)
+            fi
+            if [ -n "$FIND_APP" ]; then
+              echo "Found .app bundle: $FIND_APP" ; cp -r "$FIND_APP" "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" || true
+            fi
+            # Find dylibs of interest and copy into lib/
+            mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib" || true
+            for libp in $(find build -type f -name 'libdvx3.*' -o -name 'libb2.*' -o -name 'libsodium*' 2>/dev/null); do
+              echo "Copying $libp to lib/" || true
+              cp "$libp" "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib/" || true
+            done
+            # If none found in build, search entire repo as a last resort
+            if ! ls "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}" | grep -E 'backup-manager-gui|\.app|libdvx3|libb2|libsodium' >/dev/null 2>&1; then
+              echo "Nothing found in build/; searching entire repo for artifacts"
+              for f in $(find . -type f -name 'backup-manager-gui' -o -name 'libdvx3.*' -o -name 'libb2.*' -o -name 'libsodium*' 2>/dev/null); do
+                if [ -f "$f" ]; then
+                  if [ "$(basename $f)" = 'backup-manager-gui' ]; then cp "$f" "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" || true; fi
+                  # Put libs into lib folder
+                  mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib" || true
+                  case "$(basename $f)" in
+                    libdvx3*|libb2*|libsodium*) cp "$f" "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib/" || true ;;
+                  esac
+                fi
+              done
+            fi
+          fi
+          # If the binary exists in nested release subfolders (e.g., mac/arm64/backup-manager-gui), relocate it to the release root for packaging
+          # Also move any libs from nested lib/ into top-level lib/
+          if ! ls "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}" | grep -E 'backup-manager-gui|\.app' >/dev/null 2>&1; then
+            echo "Looking for nested artifacts under $GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}"
+            NESTED_BIN=$(find "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}" -type f -name 'backup-manager-gui' -print -quit || true)
+            if [ -n "$NESTED_BIN" ]; then
+              echo "Found nested binary: $NESTED_BIN; copying to release root"
+              cp "$NESTED_BIN" "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" || true
+            fi
+            # Move nested 'lib' files into top-level lib
+            for nested_lib in $(find "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}" -type f -path '*/lib/*' -print 2>/dev/null); do
+              mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib" || true
+              cp "$nested_lib" "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib/" || true
+            done
+          fi
           cd "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}" || true
           # If the build/Releases content was nested (e.g. mac/${{ matrix.arch }}/mac/${{ matrix.arch }}), flatten it
           if [ -d "mac/${{ matrix.arch }}" ]; then
@@ -426,6 +498,18 @@ jobs:
               cp -r build/Releases/${{ matrix.arch }}/* "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" 2>/dev/null || true
             else
               cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" 2>/dev/null || true
+            fi
+            if [ -f build/Releases/windows/${{ matrix.arch }}/artifacts.txt ]; then
+              while IFS= read -r line || [ -n "$line" ]; do
+                [ -z "$line" ] && continue
+                rel=$(echo "$line" | sed 's|^/||')
+                src="build/Releases/windows/${{ matrix.arch }}/$rel"
+                if [ -e "$src" ]; then
+                  destdir="$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/$(dirname "$rel")"
+                  mkdir -p "$destdir" || true
+                  cp -a "$src" "$destdir/" || true
+                fi
+              done < build/Releases/windows/${{ matrix.arch }}/artifacts.txt || true
             fi
           fi
 
@@ -1345,6 +1429,26 @@ jobs:
         run: |
           set -ex
           cd $RELEASE_DIR/mac/universal || true
+          # If the universal release dir lacks artifacts, try to find them under build/Releases and copy them in
+          if ! ls . | grep -E 'backup-manager-gui|\.app|libdvx3|libb2|libsodium' >/dev/null 2>&1; then
+            echo "mac/universal dir empty; searching build/ for universal artifacts"
+            echo "Debug: Listing build/ for files (first 200 lines)" || true
+            find build -maxdepth 6 -type f -print -quit || true
+            FIND_BIN=$(find build -maxdepth 6 -type f -name 'backup-manager-gui' -print -quit || true)
+            if [ -n "$FIND_BIN" ]; then
+              echo "Found binary candidate in build: $FIND_BIN; copying to universal root"
+              cp "$FIND_BIN" . || true
+            fi
+            FIND_APP=$(find build -maxdepth 6 -type d -name '*.app' -print -quit || true)
+            if [ -n "$FIND_APP" ]; then
+              echo "Found .app in build: $FIND_APP"; cp -r "$FIND_APP" . || true
+            fi
+            mkdir -p lib || true
+            for libp in $(find build -type f -name 'libdvx3.*' -o -name 'libb2.*' -o -name 'libsodium*' 2>/dev/null); do
+              echo "Copying $libp to lib/ in universal"
+              cp "$libp" lib/ || true
+            done
+          fi
           # If the universal release dir is empty, try to find nested mac/universal content to tar instead
           if [ -z "$(ls -A . 2>/dev/null)" ]; then
             echo "mac/universal release dir empty; searching for nested content"

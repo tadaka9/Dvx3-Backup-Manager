@@ -416,6 +416,8 @@ if [ -n "$TARGET_ARCH" ]; then
 fi
 OUTDIR="build/Releases/$PLATFORM/$ARCH"
 mkdir -p "$OUTDIR"
+# Enable strict artifact checks by default (set to 0 to use warn-only behavior)
+STRICT_BUILD_ARTIFACTS=${STRICT_BUILD_ARTIFACTS:-1}
 
 # Prefer binary without extension, then .exe, then any matching name
 BIN_PATH=""
@@ -462,10 +464,10 @@ fi
     # Copy libdvx3 shared lib if it was built into this tree
     if [ -f "libdvx3.$SHARED_EXT" ]; then
         cp "libdvx3.$SHARED_EXT" "$OUTDIR/lib/" || true
-        echo "$OUTDIR/lib/$(basename libdvx3.$SHARED_EXT)" >> "$OUTDIR/artifacts.txt" || true
+        echo "lib/$(basename libdvx3.$SHARED_EXT)" >> "$OUTDIR/artifacts.txt" || true
     fi
     # Record artifact path
-    echo "$OUTDIR/$(basename $BIN_PATH)" >> "$OUTDIR/artifacts.txt" || true
+    echo "$(basename $BIN_PATH)" >> "$OUTDIR/artifacts.txt" || true
     echo "Copied $BIN_PATH to $OUTDIR/"
     # On macOS, create a minimal .app bundle inside build/Releases so packaging can use an app
     if [ "$UNAME_OUT" = "Darwin" ]; then
@@ -486,9 +488,35 @@ fi
             for s in build/*/libb2*.$SHARED_EXT; do cp "$s" "$APPDIR/Contents/Frameworks/" || true; done
         fi
         echo "Created minimal app bundle at $APPDIR"
+        # Use relative path for artifacts so packaging can copy accordingly
+        echo "backup-manager-gui.app" >> "$OUTDIR/artifacts.txt" || true
     fi
 else
     echo "Warning: No backup-manager-gui binary found to package into $OUTDIR" >&2
+fi
+
+# Add any Qt plugin platform files copied to the build/Releases dir
+if [ -d "platforms" ]; then
+    mkdir -p "$OUTDIR/plugins/platforms" || true
+    cp -r platforms/* "$OUTDIR/plugins/platforms/" 2>/dev/null || true
+    for p in "$OUTDIR/plugins/platforms"/*; do echo "plugins/platforms/$(basename $p)" >> "$OUTDIR/artifacts.txt" || true; done
+fi
+
+# Final strict artifact checks: enforce that required artifacts exist in OUTDIR
+ART_CHECK_FAILED=0
+if [ ! -f "$OUTDIR/backup-manager-gui" ] && [ ! -f "$OUTDIR/backup-manager-gui.exe" ] && [ ! -d "$OUTDIR/backup-manager-gui.app" ]; then
+    echo "ERROR: No GUI binary/app found in $OUTDIR" >&2
+    ART_CHECK_FAILED=1
+fi
+if [ ! -f "$OUTDIR/lib/libdvx3.$SHARED_EXT" ]; then
+    echo "ERROR: libdvx3.$SHARED_EXT missing in $OUTDIR/lib" >&2
+    ART_CHECK_FAILED=1
+fi
+if [ "$STRICT_BUILD_ARTIFACTS" -eq 1 ] && [ "$ART_CHECK_FAILED" -eq 1 ]; then
+    echo "STRICT_BUILD_ARTIFACTS=1 and required artifacts are missing; failing build." >&2
+    exit 1
+elif [ "$ART_CHECK_FAILED" -eq 1 ]; then
+    echo "Warning: Some artifacts missing but STRICT_BUILD_ARTIFACTS=0; continuing (warn-only)" >&2
 fi
 
 
