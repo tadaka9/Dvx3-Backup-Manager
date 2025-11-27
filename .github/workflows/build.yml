@@ -23,6 +23,7 @@ env:
   RELEASE_DIR: Releases
   ARTIFACT_PREFIX: Dvx3-Backup-Manager
   STRICT_ARTIFACT_CHECKS: ${{ github.event.inputs.strict_artifact_checks || 'true' }}  # Set input on workflow_dispatch to alter behavior
+  # Backup release token env name: if you create a PAT for release creation, name it 'RELEASE_PAT'
 
 jobs:
   # ------------------------------------------------------------------
@@ -1211,6 +1212,9 @@ jobs:
     env:
       GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
       GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      # If you need to use a Personal Access Token with more permissions than GITHUB_TOKEN,
+      # store it in repository secrets as RELEASE_PAT (with 'repo' scope) and it will be used.
+      RELEASE_TOKEN: ${{ secrets.RELEASE_PAT || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -1307,7 +1311,7 @@ jobs:
             downloaded-artifacts-SHA256SUMS.sig
           draft: false
           prerelease: false
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ env.RELEASE_TOKEN != '' && env.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
           # Use the computed release tag output, or fall back to empty (if running on tag-ref github.ref_name will be used)
           tag: ${{ steps.determine_release_tag.outputs.release_tag }}
           # Use current workflow commit as the target commitish - this avoids invalid branch names like 'main'
