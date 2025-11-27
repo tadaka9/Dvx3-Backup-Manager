@@ -1030,6 +1030,18 @@ jobs:
             else
               cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/" 2>/dev/null || true
             fi
+            if [ -f build/Releases/linux/aarch64/artifacts.txt ]; then
+              while IFS= read -r line || [ -n "$line" ]; do
+                [ -z "$line" ] && continue
+                rel=$(echo "$line" | sed 's|^/||')
+                src="build/Releases/linux/aarch64/$rel"
+                if [ -e "$src" ]; then
+                  destdir="$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/$(dirname "$rel")"
+                  mkdir -p "$destdir" || true
+                  cp -a "$src" "$destdir/" || true
+                fi
+              done < build/Releases/linux/aarch64/artifacts.txt || true
+            fi
           fi
           # Debug: confirm if libdvx3.so is included; if strict, fail when absent
           if [ ! -f "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/lib/libdvx3.so" ]; then
@@ -1490,6 +1502,19 @@ jobs:
               cp -r build/Releases/mac/* $RELEASE_DIR/mac/universal/ 2>/dev/null || true
             else
               cp -r build/Releases/* $RELEASE_DIR/mac/universal/ 2>/dev/null || true
+            fi
+            # Copy artifacts listed in artifacts.txt if present
+            if [ -f build/Releases/mac/universal/artifacts.txt ]; then
+              while IFS= read -r line || [ -n "$line" ]; do
+                [ -z "$line" ] && continue
+                rel=$(echo "$line" | sed 's|^/||')
+                src="build/Releases/mac/universal/$rel"
+                if [ -e "$src" ]; then
+                  destdir="$RELEASE_DIR/mac/universal/$(dirname "$rel")"
+                  mkdir -p "$destdir" || true
+                  cp -a "$src" "$destdir/" || true
+                fi
+              done < build/Releases/mac/universal/artifacts.txt || true
             fi
           fi
           tar -czf ../../${ARTIFACT_PREFIX}-macos-universal-${{ github.run_id }}.tar.gz . || true

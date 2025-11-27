@@ -24,6 +24,25 @@ if ! pkg-config --exists json-glib-1.0; then
     echo "  Arch Linux: sudo pacman -S json-glib"
     echo "  Debian/Ubuntu: sudo apt-get install libjson-glib-dev"
     exit 1
+
+# Also copy Qt plugins for Linux/mac into the OUTDIR so packaging can include them
+mkdir -p "$OUTDIR/plugins/platforms" || true
+if [ -d "/usr/lib/qt6/plugins/platforms" ]; then
+    cp -r /usr/lib/qt6/plugins/platforms/* "$OUTDIR/plugins/platforms/" 2>/dev/null || true
+elif [ -d "/usr/lib/x86_64-linux-gnu/qt6/plugins/platforms" ]; then
+    cp -r /usr/lib/x86_64-linux-gnu/qt6/plugins/platforms/* "$OUTDIR/plugins/platforms/" 2>/dev/null || true
+elif [ -d "/usr/lib/aarch64-linux-gnu/qt6/plugins/platforms" ]; then
+    cp -r /usr/lib/aarch64-linux-gnu/qt6/plugins/platforms/* "$OUTDIR/plugins/platforms/" 2>/dev/null || true
+fi
+for p in "$OUTDIR/plugins/platforms"/*; do
+    [ -f "$p" ] || continue
+    echo "plugins/platforms/$(basename $p)" >> "$OUTDIR/artifacts.txt" || true
+done
+
+# Add the simple wrapper script to artifacts if present
+if [ -f "$OUTDIR/Dvx3-Run.sh" ]; then
+    echo "Dvx3-Run.sh" >> "$OUTDIR/artifacts.txt" || true
+fi
 fi
 
 # Check for libsodium
