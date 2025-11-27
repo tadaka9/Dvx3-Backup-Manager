@@ -334,6 +334,10 @@ jobs:
             fi
           fi
           echo "Using artifact: $ART"
+          # Debug: print some workspace directories to assist with tracing file locations
+          echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
+          echo "Releases dir listing:" && ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR" || true
+          echo "build/Releases listing (if present):" && ls -la build/Releases || true
           if [ -z "$ART" ] || [ ! -f "$ART" ]; then
             if [ "${STRICT_ARTIFACT_CHECKS}" = "false" ]; then
               echo "⚠ Artifact not found ($ART). Skipping verification (warn-only)" || true
@@ -353,11 +357,11 @@ jobs:
           else
             echo "unzip not found; attempting to extract and list with PowerShell" || true
             mkdir -p ps_zip_extracted || true
-            powershell -Command "Expand-Archive -Path \"$ART\" -DestinationPath \"ps_zip_extracted\" -Force; Get-ChildItem -Path ps_zip_extracted -Recurse | select -Expand FullName" | sed -n '1,200p' > zip_contents.txt || true
+            powershell -Command "Expand-Archive -Path \"$ART\" -DestinationPath \"ps_zip_extracted\" -Force; Get-ChildItem -Path ps_zip_extracted -Recurse | select -Expand FullName" > zip_contents_raw.txt || true
+            sed -n '1,200p' zip_contents_raw.txt > zip_contents.txt || true
           fi
           echo "--- zip_contents.txt (first 200 lines) ---"
           sed -n '1,200p' zip_contents.txt || true
-          fi
             greps='backup-manager-gui.exe|backup-manager-gui|libsodium\.dll|qwindows\.dll|libb2|Qt'
             if ! grep -E "$greps" zip_contents.txt > /dev/null; then
               if [ "${STRICT_ARTIFACT_CHECKS}" = "false" ]; then
