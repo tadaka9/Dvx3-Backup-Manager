@@ -463,6 +463,26 @@ fi
     # Record artifact path
     echo "$OUTDIR/$(basename $BIN_PATH)" >> "$OUTDIR/artifacts.txt" || true
     echo "Copied $BIN_PATH to $OUTDIR/"
+    # On macOS, create a minimal .app bundle inside build/Releases so packaging can use an app
+    if [ "$UNAME_OUT" = "Darwin" ]; then
+        APPDIR="$OUTDIR/backup-manager-gui.app"
+        mkdir -p "$APPDIR/Contents/MacOS" || true
+        mkdir -p "$APPDIR/Contents/Frameworks" || true
+        # Copy binary into Contents/MacOS
+        cp "$OUTDIR/$(basename $BIN_PATH)" "$APPDIR/Contents/MacOS/$(basename $BIN_PATH)" || true
+        chmod +x "$APPDIR/Contents/MacOS/$(basename $BIN_PATH)" || true
+        # Copy libdvx3 to app frameworks as dylib if present
+        if [ -f libdvx3.$SHARED_EXT ]; then
+            cp libdvx3.$SHARED_EXT "$APPDIR/Contents/Frameworks/" || true
+        elif [ -f build/libdvx3.$SHARED_EXT ]; then
+            cp build/libdvx3.$SHARED_EXT "$APPDIR/Contents/Frameworks/" || true
+        fi
+        # Copy any found libb2 dylibs to frameworks
+        if ls build/*/libb2*.$SHARED_EXT >/dev/null 2>&1; then
+            for s in build/*/libb2*.$SHARED_EXT; do cp "$s" "$APPDIR/Contents/Frameworks/" || true; done
+        fi
+        echo "Created minimal app bundle at $APPDIR"
+    fi
 else
     echo "Warning: No backup-manager-gui binary found to package into $OUTDIR" >&2
 fi
