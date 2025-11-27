@@ -580,6 +580,15 @@ jobs:
           if [ -d build/Releases ]; then
             cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/" 2>/dev/null || true
           fi
+          # Debug: confirm if libdvx3.so is included; if strict, fail when absent
+          if [ ! -f "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/lib/libdvx3.so" ]; then
+            echo "Warning: libdvx3.so not present in packaged lib folder" || true
+            if [ "${STRICT_ARTIFACT_CHECKS}" = "true" ]; then
+              echo "::error::libdvx3.so missing from packaging; failing" && exit 1
+            fi
+          else
+            echo "libdvx3.so is present in package: $(ls -la $GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/lib/libdvx3.so)" || true
+          fi
           cd "$GITHUB_WORKSPACE/$RELEASE_DIR/linux" || true
           tar -czf ../${ARTIFACT_PREFIX}-linux-x86_64-${{ github.run_id }}.tar.gz x86_64 || true
           cd -

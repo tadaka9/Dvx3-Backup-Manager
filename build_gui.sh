@@ -453,6 +453,13 @@ fi
         strip --strip-all "$BIN_PATH" || true
     fi
     cp "$BIN_PATH" "$OUTDIR/" || true
+    # Ensure lib directory exists and copy the built shared library for runtime
+    mkdir -p "$OUTDIR/lib"
+    # Copy libdvx3 shared lib if it was built into this tree
+    if [ -f "libdvx3.$SHARED_EXT" ]; then
+        cp "libdvx3.$SHARED_EXT" "$OUTDIR/lib/" || true
+        echo "$OUTDIR/lib/$(basename libdvx3.$SHARED_EXT)" >> "$OUTDIR/artifacts.txt" || true
+    fi
     # Record artifact path
     echo "$OUTDIR/$(basename $BIN_PATH)" >> "$OUTDIR/artifacts.txt" || true
     echo "Copied $BIN_PATH to $OUTDIR/"
