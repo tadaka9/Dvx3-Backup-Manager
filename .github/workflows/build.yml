@@ -186,6 +186,8 @@ jobs:
           pacman -Syu --noconfirm || true
           # Attempt to install packages; on failure we continue so builds don't completely abort here
           pacman -S --noconfirm ${PACMAN_PREFIX}-toolchain ${PACMAN_PREFIX}-vala ${PACMAN_PREFIX}-glib2 ${PACMAN_PREFIX}-json-glib ${PACMAN_PREFIX}-libsodium ${PACMAN_PREFIX}-qt6-base ${PACMAN_PREFIX}-qt6-tools ${PACMAN_PREFIX}-pkgconf || true
+          # Ensure zip is available for packaging; msys/zip is available under MSYS2
+          pacman -S --noconfirm zip || true
           # List contents of /mingw*/bin to help debug missing files in pre-checks
           ls -la /mingw64/bin || true
           ls -la /mingw32/bin || true
@@ -234,21 +236,41 @@ jobs:
           echo "Contents of $RELEASE_DIR/windows/${{ matrix.arch }} before creating zip:"
           ls -la $RELEASE_DIR/windows/${{ matrix.arch }} || true
           cd $RELEASE_DIR/windows/${{ matrix.arch }} || true
-          zip -r ../../${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip . || true
+          # Try zip first (MSYS2); fallback to PowerShell Compress-Archive if zip not available
+          if command -v zip >/dev/null 2>&1; then
+            zip -r ../../${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip . || true
+          else
+            echo "zip not found; attempting PowerShell Compress-Archive fallback"
+            # Use PowerShell from bash to compress: convert path to Windows style
+            WINPATH=$(cygpath -w "$PWD")
+            PSZIP="$RELEASE_DIR/${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip"
+            powershell -Command "Compress-Archive -Path '${WINPATH}\*' -DestinationPath '${PSZIP}' -Force" || true
+          fi
+          cd -
           cd -
           # Ensure the top-level Releases dir contains the created zip
           ZIP_NAME="${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip"
-          if [ -f "$RELEASE_DIR/$ZIP_NAME" ]; then
+            if [ -f "$RELEASE_DIR/$ZIP_NAME" ]; then
             echo "Created zip: $RELEASE_DIR/$ZIP_NAME"
             ls -la "$RELEASE_DIR/$ZIP_NAME" || true
           else
             # Fallback: try to build a zip from build/Releases or Releases/windows/<arch>
             if [ -d build/Releases ]; then
               echo "Fallback: Creating zip from build/Releases"
-              zip -r "$RELEASE_DIR/$ZIP_NAME" build/Releases/* || true
+              if command -v zip >/dev/null 2>&1; then
+                zip -r "$RELEASE_DIR/$ZIP_NAME" build/Releases/* || true
+              else
+                # Use PowerShell to zip on Windows
+                powershell -Command "Compress-Archive -Path 'build/Releases/*' -DestinationPath '$RELEASE_DIR/$ZIP_NAME' -Force" || true
+              fi
             elif [ -d "$RELEASE_DIR/windows/${{ matrix.arch }}" ]; then
               echo "Fallback: Creating zip from $RELEASE_DIR/windows/${{ matrix.arch }}"
-              (cd "$RELEASE_DIR/windows/${{ matrix.arch }}" && zip -r "../../$ZIP_NAME" .) || true
+              if command -v zip >/dev/null 2>&1; then
+                (cd "$RELEASE_DIR/windows/${{ matrix.arch }}" && zip -r "../../$ZIP_NAME" .) || true
+              else
+                WINPATH=$(cygpath -w "$RELEASE_DIR/windows/${{ matrix.arch }}")
+                powershell -Command "Compress-Archive -Path '${WINPATH}\*' -DestinationPath '$RELEASE_DIR/$ZIP_NAME' -Force" || true
+              fi
             fi
             if [ -f "$RELEASE_DIR/$ZIP_NAME" ]; then
               echo "Created fallback zip: $RELEASE_DIR/$ZIP_NAME" && ls -la "$RELEASE_DIR/$ZIP_NAME" || true
