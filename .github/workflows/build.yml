@@ -1152,6 +1152,43 @@ jobs:
   # Publish Release - gathers and uploads artifacts to GitHub Release
   # This job depends on all builds above
   # ------------------------------------------------------------------
+  # Diagnostics job: runs only for manual workflow_dispatch and provides info when 'publish-release' would be skipped
+  publish-release-diagnostics:
+    if: github.event_name == 'workflow_dispatch'
+    name: Publish Release Diagnostics
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Print event info
+        run: |
+          echo "GITHUB_EVENT_NAME: $GITHUB_EVENT_NAME"
+          echo "GITHUB_REF: $GITHUB_REF"
+          echo "GITHUB_RUN_ID: $GITHUB_RUN_ID"
+          echo "Release Tag input: ${{ github.event.inputs.release_tag }}"
+          echo "STRICT_ARTIFACT_CHECKS input: ${{ github.event.inputs.strict_artifact_checks }}"
+
+      - name: List workspace & release dirs
+        run: |
+          set -ex
+          echo "Workspace: $GITHUB_WORKSPACE"
+          ls -la "$GITHUB_WORKSPACE" || true
+          echo "RELEASE_DIR: $RELEASE_DIR"
+          ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR" || true
+          ls -la "$GITHUB_WORKSPACE/build/Releases" || true
+
+      - name: Try to download any existing artifacts
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          path: ./diag-artifacts
+
+      - name: List downloaded artifacts
+        run: |
+          set -ex
+          ls -la diag-artifacts || true
+
   publish-release:
     # Allow the job to run for workflow_dispatch so we get diagnostics/logs even when no tag is provided.
     # The actual release action below is still gated to only run when we have a tag or explicit release_tag.
