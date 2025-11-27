@@ -175,7 +175,7 @@ jobs:
           update: true
 
       - name: Install MSYS2 packages (arch-aware)
-        shell: bash -lc "{0}"
+        shell: bash -l {0}
         run: |
           set -ex
           if [ "${{ matrix.arch }}" = "x86_64" ]; then
@@ -191,7 +191,7 @@ jobs:
           ls -la /mingw32/bin || true
 
       - name: Build GUI (Windows)
-        shell: bash -lc "{0}"
+        shell: bash -l {0}
         run: |
           set -ex
           # Ensure scripts are executable in MSYS2
@@ -199,7 +199,7 @@ jobs:
           ./build_gui.sh || true
 
       - name: Collect Windows artifacts and ensure libsodium.dll present
-        shell: bash -lc "{0}"
+        shell: bash -l {0}
         run: |
           set -ex
           mkdir -p $RELEASE_DIR/windows/${{ matrix.arch }}
@@ -228,7 +228,7 @@ jobs:
           fi
 
       - name: Show windows release dir and create Windows artifact
-        shell: bash -lc "{0}"
+        shell: bash -l {0}
         run: |
           set -ex
           echo "Contents of $RELEASE_DIR/windows/${{ matrix.arch }} before creating zip:"
@@ -238,7 +238,7 @@ jobs:
           cd -
 
       - name: Verify Windows artifact contents
-        shell: bash -lc "{0}"
+        shell: bash -l {0}
         run: |
           set -ex
           ART=${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip
@@ -258,7 +258,7 @@ jobs:
           fi
 
       - name: Compute windows artifact sha256
-        shell: bash -lc "{0}"
+        shell: bash -l {0}
         run: |
           set -ex
           ART=${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip
