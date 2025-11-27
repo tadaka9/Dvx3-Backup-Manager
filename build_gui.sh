@@ -409,7 +409,11 @@ case "$UNAME_OUT" in
         Darwin) PLATFORM=mac ;;
         *) PLATFORM=linux ;;
 esac
-ARCH=$(uname -m || true)
+ARCH=${TARGET_ARCH:-$(uname -m || true)}
+
+if [ -n "$TARGET_ARCH" ]; then
+    echo "Using TARGET_ARCH override: $TARGET_ARCH (runner reports: $(uname -m || true))"
+fi
 OUTDIR="build/Releases/$PLATFORM/$ARCH"
 mkdir -p "$OUTDIR"
 

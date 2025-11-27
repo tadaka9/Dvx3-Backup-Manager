@@ -33,6 +33,8 @@ jobs:
           - arch: x86_64
             runs_on: macos-12
     runs-on: ${{ matrix.runs_on }}
+    env:
+      TARGET_ARCH: ${{ matrix.arch }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -96,6 +98,8 @@ jobs:
           moc --version || true
 
       - name: Build GUI (macOS)
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
         run: |
           set -ex
           chmod +x build_gui.sh || true
@@ -173,7 +177,29 @@ jobs:
           # Fallback: copy everything from build/Releases into Releases/mac/<arch>/ if present
           if [ -d build/Releases ]; then
             echo "Copying build/Releases contents to $GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}"
-            cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" 2>/dev/null || true
+            # Avoid copying platform parent dirs (e.g., build/Releases/mac/arm64) into RELEASE_DIR causing nested mac/arm64/mac/arm64
+            if [ -d build/Releases/mac/${{ matrix.arch }} ]; then
+              cp -r build/Releases/mac/${{ matrix.arch }}/* "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" 2>/dev/null || true
+            elif [ -d build/Releases/${{ matrix.arch }} ]; then
+              cp -r build/Releases/${{ matrix.arch }}/* "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" 2>/dev/null || true
+            else
+              cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" 2>/dev/null || true
+            fi
+            # After copying, if macdeployqt is available run it against the copied .app in the release folder
+            if command -v macdeployqt >/dev/null 2>&1; then
+              # Find a bundled .app under the copied release dir
+              APP_CANDIDATE=$(find "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}" -maxdepth 2 -name '*.app' -print -quit || true)
+              if [ -n "$APP_CANDIDATE" ]; then
+                echo "macdeployqt: Re-running macdeployqt on $APP_CANDIDATE"
+                macdeployqt "$APP_CANDIDATE" || true
+              fi
+            fi
+            # If we accidentally copied a nested build/Releases/mac/${{ matrix.arch }}/mac/${{ matrix.arch }} path, flatten it into the current dir
+            if [ -d "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/mac/${{ matrix.arch }}" ]; then
+              echo "Flattening nested mac/${{ matrix.arch }} directories"
+              mv "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/mac/${{ matrix.arch }}"/* "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" 2>/dev/null || true
+              rm -rf "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/mac" || true
+            fi
           fi
           # Fix libsodium for runtime: copy library and change install names
           if brew --prefix libsodium >/dev/null 2>&1; then
@@ -185,6 +211,12 @@ jobs:
                   install_name_tool -change "$LIBSODIUM" "@executable_path/../lib/$(basename $LIBSODIUM)" "$f" || true
                 fi
               done
+            fi
+            # If copying from build/Releases/windows/<arch> nested into our release dir, flatten windows/<arch>
+            if [ -d "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/windows/${{ matrix.arch }}" ]; then
+              echo "Flattening nested windows/${{ matrix.arch }} directories"
+              mv "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/windows/${{ matrix.arch }}"/* "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" 2>/dev/null || true
+              rm -rf "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/windows" || true
             fi
           fi
           # Copy libdvx3 and other built dylibs (libb2) into the release lib folder if present
@@ -216,9 +248,16 @@ jobs:
       - name: Show mac release dir and create mac artifact
         run: |
           set -ex
+          echo "TARGET_ARCH (env): $TARGET_ARCH; runner arch: $(uname -m || true)"
           echo "Contents of $GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }} before creating tar:"
           ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}" || true
           cd "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}" || true
+          # If the build/Releases content was nested (e.g. mac/${{ matrix.arch }}/mac/${{ matrix.arch }}), flatten it
+          if [ -d "mac/${{ matrix.arch }}" ]; then
+            echo "Flattening nested mac/${{ matrix.arch }} content into release root"
+            mv mac/${{ matrix.arch }}/* . || true
+            rm -rf mac || true
+          fi
           tar -czf ../../${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz . || true
           cd -
 
@@ -322,6 +361,8 @@ jobs:
           ls -la /mingw32/bin || true
 
       - name: Build GUI (Windows)
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
         shell: msys2 {0}
         run: |
           set -ex
@@ -363,7 +404,13 @@ jobs:
           # Fallback: If build/Releases exists and has files, copy them to final Releases folder
           if [ -d build/Releases ]; then
             echo "Copying build/Releases contents to $GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}"
-            cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" 2>/dev/null || true
+            if [ -d build/Releases/windows/${{ matrix.arch }} ]; then
+              cp -r build/Releases/windows/${{ matrix.arch }}/* "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" 2>/dev/null || true
+            elif [ -d build/Releases/${{ matrix.arch }} ]; then
+              cp -r build/Releases/${{ matrix.arch }}/* "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" 2>/dev/null || true
+            else
+              cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" 2>/dev/null || true
+            fi
           fi
 
       - name: Show windows release dir and create Windows artifact
@@ -375,6 +422,12 @@ jobs:
           echo "Contents of $GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }} before creating zip:"
           ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}" || true
           cd "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}" || true
+          # Flatten nested windows/${{ matrix.arch }}/windows/${{ matrix.arch }} if present
+          if [ -d "windows/${{ matrix.arch }}" ]; then
+            echo "Flattening nested windows/${{ matrix.arch }} directories"
+            mv "windows/${{ matrix.arch }}"/* . || true
+            rm -rf windows || true
+          fi
           # If the per-arch Releases dir is empty, handle accordingly (skip for optional archs or bail based on STRICT_ARTIFACT_CHECKS)
           # Use a robust nullglob-safe test to determine if the directory has any files
           shopt -s nullglob || true
@@ -450,6 +503,12 @@ jobs:
                 echo "WINDEST $WINDEST"
                 powershell -Command "Compress-Archive -Path '${WINPATH}\*' -DestinationPath '${WINDEST}' -Force" || true
               fi
+            fi
+            # Flatten nested linux/aarch64/linux/aarch64 directories if they exist
+            if [ -d "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/linux/aarch64" ]; then
+              echo "Flattening nested linux/aarch64 directories"
+              mv "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/linux/aarch64"/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/" 2>/dev/null || true
+              rm -rf "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/linux" || true
             fi
             if [ -f "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" ]; then
               echo "Created fallback zip: $GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" && ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" || true
@@ -583,6 +642,8 @@ jobs:
             qt6-base-dev || true
 
       - name: Build GUI (Linux)
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
         run: |
           set -ex
           chmod +x build_gui.sh || true
@@ -624,7 +685,19 @@ jobs:
             echo "Warning: backup-manager-gui binary not found in workspace. Trying fallback to build/Releases..."
             if [ -d build/Releases ] && [ -n "$(ls -A build/Releases 2>/dev/null)" ]; then
               echo "Found build/Releases contents; copying to release dir"
-              cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/" 2>/dev/null || true
+              if [ -d build/Releases/linux/x86_64 ]; then
+                cp -r build/Releases/linux/x86_64/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/" 2>/dev/null || true
+              elif [ -d build/Releases/x86_64 ]; then
+                cp -r build/Releases/x86_64/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/" 2>/dev/null || true
+              else
+                cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/" 2>/dev/null || true
+              fi
+              # Flatten nested linux/x86_64/linux/x86_64 if present
+              if [ -d "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/linux/x86_64" ]; then
+                echo "Flattening nested linux/x86_64 directories"
+                mv "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/linux/x86_64"/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/" 2>/dev/null || true
+                rm -rf "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/linux" || true
+              fi
             else
               if [ "${STRICT_ARTIFACT_CHECKS}" = "false" ]; then
                 echo "⚠ backup-manager-gui not found; continuing (warn-only)"
@@ -664,7 +737,13 @@ jobs:
           fi
           # Copy any build/Releases contents as a fallback
           if [ -d build/Releases ]; then
-            cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/" 2>/dev/null || true
+            if [ -d build/Releases/linux/x86_64 ]; then
+              cp -r build/Releases/linux/x86_64/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/" 2>/dev/null || true
+            elif [ -d build/Releases/x86_64 ]; then
+              cp -r build/Releases/x86_64/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/" 2>/dev/null || true
+            else
+              cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/" 2>/dev/null || true
+            fi
           fi
           # Debug: confirm if libdvx3.so is included; if strict, fail when absent
           if [ ! -f "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/lib/libdvx3.so" ]; then
@@ -778,7 +857,13 @@ jobs:
             echo "Warning: backup-manager-gui binary not found in workspace. Trying fallback to build/Releases..."
             if [ -d build/Releases ] && [ -n "$(ls -A build/Releases 2>/dev/null)" ]; then
               echo "Found build/Releases contents; copying to release dir"
-              cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/" 2>/dev/null || true
+              if [ -d build/Releases/linux/aarch64 ]; then
+                cp -r build/Releases/linux/aarch64/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/" 2>/dev/null || true
+              elif [ -d build/Releases/aarch64 ]; then
+                cp -r build/Releases/aarch64/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/" 2>/dev/null || true
+              else
+                cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/" 2>/dev/null || true
+              fi
             else
               if [ "${STRICT_ARTIFACT_CHECKS}" = "false" ]; then
                 echo "⚠ backup-manager-gui not found; continuing (warn-only)"
@@ -826,7 +911,13 @@ jobs:
           fi
           # Copy any build/Releases contents as a fallback
           if [ -d build/Releases ]; then
-            cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/" 2>/dev/null || true
+            if [ -d build/Releases/linux/aarch64 ]; then
+              cp -r build/Releases/linux/aarch64/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/" 2>/dev/null || true
+            elif [ -d build/Releases/aarch64 ]; then
+              cp -r build/Releases/aarch64/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/" 2>/dev/null || true
+            else
+              cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/" 2>/dev/null || true
+            fi
           fi
           # Debug: confirm if libdvx3.so is included; if strict, fail when absent
           if [ ! -f "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/lib/libdvx3.so" ]; then
@@ -1238,10 +1329,22 @@ jobs:
         run: |
           set -ex
           cd $RELEASE_DIR/mac/universal || true
+          # Flatten nested mac/universal paths if present (e.g., build/Releases/mac/universal copied into RELEASE_DIR/mac/universal/mac/universal)
+          if [ -d "mac/universal" ]; then
+            echo "Flattening nested mac/universal into release root"
+            mv mac/universal/* . || true
+            rm -rf mac || true
+          fi
           # Fallback: copy anything from build/Releases into the universal package directory
           if [ -d build/Releases ]; then
             echo "Copying build/Releases contents to $RELEASE_DIR/mac/universal"
-            cp -r build/Releases/* $RELEASE_DIR/mac/universal/ 2>/dev/null || true
+            if [ -d build/Releases/mac/universal ]; then
+              cp -r build/Releases/mac/universal/* $RELEASE_DIR/mac/universal/ 2>/dev/null || true
+            elif [ -d build/Releases/mac ]; then
+              cp -r build/Releases/mac/* $RELEASE_DIR/mac/universal/ 2>/dev/null || true
+            else
+              cp -r build/Releases/* $RELEASE_DIR/mac/universal/ 2>/dev/null || true
+            fi
           fi
           tar -czf ../../${ARTIFACT_PREFIX}-macos-universal-${{ github.run_id }}.tar.gz . || true
           cd -
