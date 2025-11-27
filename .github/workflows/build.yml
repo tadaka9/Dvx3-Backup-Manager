@@ -121,6 +121,55 @@ jobs:
           if [ -f backup-manager-gui ]; then
             cp backup-manager-gui "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" || true
           fi
+          # If there is no .app bundle but a binary exists, create a minimal .app wrapper
+          if ! ls $GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/*.app 1>/dev/null 2>&1; then
+            # Look for known build output locations for mac artifacts
+            set +e
+            FIND_CANDIDATE=$(find build -type f \( -name 'backup-manager-gui' -o -name 'backup-manager-gui*' -o -name '*.app' \) -print -quit || true)
+            if [ -n "$FIND_CANDIDATE" ]; then
+              echo "Found candidate at $FIND_CANDIDATE"
+            fi
+            set -e
+            if [ -f backup-manager-gui ] || [ -f "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/backup-manager-gui" ] || [ -n "$FIND_CANDIDATE" ]; then
+              echo "Creating minimal .app bundle from binary"
+              APPDIR="$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/backup-manager-gui.app"
+              mkdir -p "$APPDIR/Contents/MacOS" || true
+              mkdir -p "$APPDIR/Contents/Frameworks" || true
+              mkdir -p "$APPDIR/Contents/Plugins" || true
+              # Prefer binary in release dir if present
+              if [ -f "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/backup-manager-gui" ]; then
+                cp "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/backup-manager-gui" "$APPDIR/Contents/MacOS/backup-manager-gui" || true
+              else
+                if [ -n "$FIND_CANDIDATE" ]; then
+                  cp "$FIND_CANDIDATE" "$APPDIR/Contents/MacOS/backup-manager-gui" || true
+                else
+                  cp backup-manager-gui "$APPDIR/Contents/MacOS/backup-manager-gui" || true
+                fi
+              fi
+              chmod +x "$APPDIR/Contents/MacOS/backup-manager-gui" || true
+              # Try to include libdvx3 or libb2 or libsodium into app frameworks
+              if [ -f libdvx3.dylib ]; then
+                cp libdvx3.dylib "$APPDIR/Contents/Frameworks/" || true
+              elif [ -f build/libdvx3.dylib ]; then
+                cp build/libdvx3.dylib "$APPDIR/Contents/Frameworks/" || true
+              fi
+              if ls build/*/libb2*.dylib >/dev/null 2>&1; then
+                for s in build/*/libb2*.dylib; do cp "$s" "$APPDIR/Contents/Frameworks/" || true; done
+              fi
+              if brew --prefix libsodium >/dev/null 2>&1; then
+                SOD=$(brew --prefix libsodium)/lib/libsodium*.dylib || true
+                [ -e "$SOD" ] && cp $SOD "$APPDIR/Contents/Frameworks/" || true
+              fi
+              # Adjust install names to make frameworks local to bundle
+              for f in "$APPDIR/Contents/MacOS"/*; do
+                if file "$f" | grep -qi "Mach-O"; then
+                  if [ -f "$APPDIR/Contents/Frameworks/libdvx3.dylib" ]; then
+                    install_name_tool -change "libdvx3.dylib" "@executable_path/../Frameworks/libdvx3.dylib" "$f" || true
+                  fi
+                fi
+              done
+            fi
+          fi
           # Fallback: copy everything from build/Releases into Releases/mac/<arch>/ if present
           if [ -d build/Releases ]; then
             echo "Copying build/Releases contents to $GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}"
