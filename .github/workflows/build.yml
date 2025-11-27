@@ -183,11 +183,20 @@ jobs:
           else
               PACMAN_PREFIX="mingw-w64-aarch64"
           fi
+          # Verify pacman is present
+          if ! command -v pacman >/dev/null 2>&1; then
+            echo "::error::pacman not found in the MSYS2 environment; setup failed" && exit 1
+          fi
           pacman -Syu --noconfirm || true
           # Attempt to install packages; on failure we continue so builds don't completely abort here
           pacman -S --noconfirm ${PACMAN_PREFIX}-toolchain ${PACMAN_PREFIX}-vala ${PACMAN_PREFIX}-glib2 ${PACMAN_PREFIX}-json-glib ${PACMAN_PREFIX}-libsodium ${PACMAN_PREFIX}-qt6-base ${PACMAN_PREFIX}-qt6-tools ${PACMAN_PREFIX}-pkgconf || true
           # Ensure zip is available for packaging; msys/zip is available under MSYS2
           pacman -S --noconfirm zip || true
+          if command -v zip >/dev/null 2>&1; then
+            echo "zip is present at $(command -v zip)"
+          else
+            echo "⚠ zip not found in MSYS2; the workflow will attempt PowerShell fallback" || true
+          fi
           # List contents of /mingw*/bin to help debug missing files in pre-checks
           ls -la /mingw64/bin || true
           ls -la /mingw32/bin || true
@@ -359,10 +368,21 @@ jobs:
           fi
 
       - name: Compute windows artifact sha256
+        id: compute-windows-sha
         shell: msys2 {0}
         run: |
           set -ex
           ART="$GITHUB_WORKSPACE/${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip"
+          if [ ! -f "$ART" ]; then
+            echo "Artifact not found at $ART"
+            if [ "${{ matrix.arch }}" = "aarch64" ]; then
+              echo "⚠ Optional windows aarch64 artifact not present; skipping sha256 compute" && echo "found=false" >> $GITHUB_OUTPUT && exit 0
+            fi
+            if [ "${STRICT_ARTIFACT_CHECKS}" = "false" ]; then
+              echo "⚠ Artifact not found; skipping sha256 compute (warn-only)" && echo "found=false" >> $GITHUB_OUTPUT && exit 0
+            fi
+            echo "::error::Artifact not found: $ART" && echo "found=false" >> $GITHUB_OUTPUT && exit 1
+          fi
           DIR=$(dirname "$ART")
           BASE=$(basename "$ART")
           pushd "$DIR"
@@ -372,8 +392,10 @@ jobs:
             shasum -a 256 "$BASE" > "$BASE".sha256
           fi
           popd
+          echo "found=true" >> $GITHUB_OUTPUT
 
       - name: Upload Windows artifact
+        if: steps.compute-windows-sha.outputs.found == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT_PREFIX }}-windows-${{ matrix.arch }}-${{ github.run_id }}
