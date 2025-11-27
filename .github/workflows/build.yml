@@ -236,6 +236,14 @@ jobs:
           cd $RELEASE_DIR/windows/${{ matrix.arch }} || true
           zip -r ../../${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip . || true
           cd -
+          # Ensure the top-level Releases dir contains the created zip
+          ZIP_NAME="${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip"
+          if [ -f "$RELEASE_DIR/$ZIP_NAME" ]; then
+            echo "Created zip: $RELEASE_DIR/$ZIP_NAME"
+            ls -la "$RELEASE_DIR/$ZIP_NAME" || true
+          else
+            echo "ERROR: Expected zip not found at $RELEASE_DIR/$ZIP_NAME" && ls -la "$RELEASE_DIR" || true && exit 1
+          fi
 
       - name: Verify Windows artifact contents
         shell: bash -l {0}
