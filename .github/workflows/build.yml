@@ -268,6 +268,14 @@ jobs:
           elif [ -f /usr/bin/libsodium.dll ]; then
             cp /usr/bin/libsodium.dll "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" || true
           fi
+          # Copy libdvx3 dll into Releases folder if it's present
+          if [ -f libdvx3.dll ]; then
+            cp libdvx3.dll "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" || true
+          elif [ -f build/libdvx3.dll ]; then
+            cp build/libdvx3.dll "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" || true
+          elif ls build/*/libdvx3.dll >/dev/null 2>&1; then
+            for s in build/*/libdvx3.dll; do cp "$s" "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" || true; done
+          fi
           # Use windeployqt if available to gather Qt dependencies
           if command -v windeployqt >/dev/null 2>&1; then
             if [ -f backup-manager-gui.exe ]; then
@@ -433,7 +441,7 @@ jobs:
           fi
           echo "--- zip_contents.txt (first 200 lines) ---"
           sed -n '1,200p' zip_contents.txt || true
-            greps='backup-manager-gui.exe|backup-manager-gui|libsodium\.dll|qwindows\.dll|libb2|Qt'
+            greps='backup-manager-gui.exe|backup-manager-gui|libsodium\.dll|libdvx3\.dll|qwindows\.dll|libb2|Qt'
             if ! grep -E "$greps" zip_contents.txt > /dev/null; then
               if [ "${STRICT_ARTIFACT_CHECKS}" = "false" ]; then
                 echo "⚠ Expected files not found in windows artifact (warn-only): $greps" || true
