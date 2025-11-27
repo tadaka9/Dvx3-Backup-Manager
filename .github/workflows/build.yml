@@ -258,7 +258,23 @@ jobs:
             mv mac/${{ matrix.arch }}/* . || true
             rm -rf mac || true
           fi
-          tar -czf ../../${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz . || true
+          # If this dir is empty (created but nothing copied), try to find nested candidate dirs and tar them instead
+          if [ -z "$(ls -A . 2>/dev/null)" ]; then
+            echo "Release dir is empty; searching for nested artifacts to include in mac tar"
+            # Find a file candidate that likely indicates a build artifact
+            CANDIDATE=$(find . -type f \( -name 'backup-manager-gui' -o -name '*.app' -o -name 'libdvx3.dylib' -o -name 'libsodium*.dylib' \) -print -quit || true)
+            if [ -n "$CANDIDATE" ]; then
+              DIR_TO_TAR=$(dirname "$CANDIDATE")
+              echo "Found nested artifact under $DIR_TO_TAR; creating tar from it"
+              # Create tar that contains contents relative to found directory's parent so paths in tar are sane
+              (cd "$DIR_TO_TAR" && tar -czf "../../${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz" .) || true
+            else
+              echo "No nested artifact found; creating tar from current (empty) dir"
+              tar -czf ../../${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz . || true
+            fi
+          else
+            tar -czf ../../${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz . || true
+          fi
           cd -
 
       - name: Verify mac artifact contents
@@ -1329,6 +1345,20 @@ jobs:
         run: |
           set -ex
           cd $RELEASE_DIR/mac/universal || true
+          # If the universal release dir is empty, try to find nested mac/universal content to tar instead
+          if [ -z "$(ls -A . 2>/dev/null)" ]; then
+            echo "mac/universal release dir empty; searching for nested content"
+            CANDIDATE=$(find . -type f \( -name 'backup-manager-gui' -o -name '*.app' -o -name 'libdvx3.dylib' -o -name 'libsodium*.dylib' \) -print -quit || true)
+            if [ -n "$CANDIDATE" ]; then
+              DIR_TO_TAR=$(dirname "$CANDIDATE")
+              echo "Found nested content in $DIR_TO_TAR; creating universal tar from it"
+              (cd "$DIR_TO_TAR" && tar -czf "../../${ARTIFACT_PREFIX}-macos-universal-${{ github.run_id }}.tar.gz" .) || true
+            else
+              tar -czf ../../${ARTIFACT_PREFIX}-macos-universal-${{ github.run_id }}.tar.gz . || true
+            fi
+          else
+            tar -czf ../../${ARTIFACT_PREFIX}-macos-universal-${{ github.run_id }}.tar.gz . || true
+          fi
           # Flatten nested mac/universal paths if present (e.g., build/Releases/mac/universal copied into RELEASE_DIR/mac/universal/mac/universal)
           if [ -d "mac/universal" ]; then
             echo "Flattening nested mac/universal into release root"
