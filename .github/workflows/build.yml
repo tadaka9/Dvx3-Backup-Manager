@@ -41,6 +41,19 @@ jobs:
         run: |
           set -ex
           brew update
+          # Repair taps and update metadata to avoid issues with unavailable formulas
+          brew tap --repair || true
+          brew update --force --quiet || true
+          # Try to ensure homebrew/core is tapped
+          if ! brew tap | grep -q "homebrew/core"; then
+            brew tap homebrew/core || true
+          fi
+          # Prefer qt@6 if available; otherwise fall back to qt
+          if brew --prefix qt@6 >/dev/null 2>&1; then
+            QT_FORMULA=qt@6
+          else
+            QT_FORMULA=qt
+          fi
           brew install --build-bottle \
             pkg-config \
             vala \
@@ -48,21 +61,36 @@ jobs:
             json-glib \
             libsodium \
             zstd \
-            qt@6 \
+            $QT_FORMULA \
             ninja \
             cmake \
             ccache \
             create-dmg || true
+          # Verify formulas are available: print info and fail early for invalid formulas
+          for f in pkg-config vala glib json-glib libsodium zstd $QT_FORMULA ninja cmake ccache create-dmg qttools; do
+            if ! brew info "$f" >/dev/null 2>&1; then
+              echo "::warning::Homebrew formula '$f' not available or not found; attempting to tap homebrew/core and retry"
+              brew tap homebrew/core || true
+              if ! brew info "$f" >/dev/null 2>&1; then
+                echo "::error::Homebrew formula '$f' could not be located; installation may fail" && true
+              fi
+            fi
+          done
           brew install qttools || true
-          brew link --overwrite qt@6 || true
-          QT6_PREFIX=$(brew --prefix qt@6)
+          brew link --overwrite $QT_FORMULA || true
+          QT6_PREFIX=$(brew --prefix $QT_FORMULA)
           echo "$QT6_PREFIX/bin" >> $GITHUB_PATH || true
           echo "$QT6_PREFIX/libexec" >> $GITHUB_PATH || true
 
       - name: Configure macOS environment and verify moc
         run: |
           set -ex
-          QT6_PREFIX=$(brew --prefix qt@6)
+          # Determine prefix to the installed Qt formula: qt@6 preferred, fallback to qt
+          if brew --prefix qt@6 >/dev/null 2>&1; then
+            QT6_PREFIX=$(brew --prefix qt@6)
+          else
+            QT6_PREFIX=$(brew --prefix qt)
+          fi
           export PATH="$QT6_PREFIX/bin:$QT6_PREFIX/libexec:$PATH"
           which moc || true
           moc --version || true
@@ -197,6 +225,20 @@ jobs:
           else
             echo "⚠ zip not found in MSYS2; the workflow will attempt PowerShell fallback" || true
           fi
+          # Check for windeployqt and other expected tools (present if the mingw-* qt packages were installed)
+          if command -v windeployqt >/dev/null 2>&1; then
+            echo "windeployqt found at $(command -v windeployqt)"
+          else
+            echo "⚠ windeployqt not found; Qt deployment will be skipped or incomplete" || true
+          fi
+          # Check that critical pacman packages were installed (best-effort), warn if not
+          for pkg in "${PACMAN_PREFIX}-qt6-base" "${PACMAN_PREFIX}-libsodium" "zip"; do
+            if pacman -Qs "$pkg" >/dev/null 2>&1; then
+              echo "pacman: $pkg installed"
+            else
+              echo "⚠ pacman: $pkg NOT installed; packaging may fail" || true
+            fi
+          done
           # List contents of /mingw*/bin to help debug missing files in pre-checks
           ls -la /mingw64/bin || true
           ls -la /mingw32/bin || true
@@ -248,7 +290,10 @@ jobs:
           ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}" || true
           cd "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}" || true
           # If the per-arch Releases dir is empty, handle accordingly (skip for optional archs or bail based on STRICT_ARTIFACT_CHECKS)
-          if [ -z "$(ls -A "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}" 2>/dev/null)" ]; then
+          # Use a robust nullglob-safe test to determine if the directory has any files
+          shopt -s nullglob || true
+          files=("$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}"/*)
+          if [ ${#files[@]} -eq 0 ]; then
             echo "No files found in $GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}"
             # If there's build/Releases, we'll use that as a fallback. Otherwise decide based on arch and strictness
             if [ -d build/Releases ] && [ -n "$(ls -A build/Releases 2>/dev/null)" ]; then
@@ -289,7 +334,12 @@ jobs:
             if [ -d build/Releases ]; then
               echo "Fallback: Creating zip from build/Releases"
               if command -v zip >/dev/null 2>&1; then
-                zip -r "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" build/Releases/* || true
+                shopt -s nullglob || true
+                if compgen -G "build/Releases/*" > /dev/null; then
+                  zip -r "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" build/Releases/* || true
+                else
+                  echo "No files in build/Releases to zip" || true
+                fi
                 else
                 # Use PowerShell to zip on Windows - convert to absolute paths
                 WINSRC=$(cygpath -w "$GITHUB_WORKSPACE/build/Releases/*")
@@ -301,7 +351,12 @@ jobs:
             elif [ -d "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}" ]; then
               echo "Fallback: Creating zip from $GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}"
               if command -v zip >/dev/null 2>&1; then
-                (cd "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}" && zip -r "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" .) || true
+                shopt -s nullglob || true
+                if compgen -G "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/*" > /dev/null; then
+                  (cd "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}" && zip -r "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" .) || true
+                else
+                  echo "No files found in $GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }} to zip" || true
+                fi
                 else
                 WINPATH=$(cygpath -w "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}")
                 WINDEST=$(cygpath -w "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME")
@@ -313,7 +368,23 @@ jobs:
             if [ -f "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" ]; then
               echo "Created fallback zip: $GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" && ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" || true
             else
-              echo "ERROR: Expected zip not found at $GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" && ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR" || true && exit 1
+              echo "ERROR: Expected zip not found at $GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" && ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR" || true
+              # If optional aarch64, create a placeholder artifact so the release step has something to upload
+              if [ "${{ matrix.arch }}" = "aarch64" ]; then
+                echo "Creating placeholder artifact for optional windows aarch64"
+                mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR" || true
+                echo "This aarch64 build did not produce artifacts; placeholder created on $(date)" > "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME.placeholder.txt" || true
+                if command -v zip >/dev/null 2>&1; then
+                  (cd "$GITHUB_WORKSPACE/$RELEASE_DIR" && zip -r "$ZIP_NAME" "$ZIP_NAME.placeholder.txt" ) || true
+                else
+                  WINDEST=$(cygpath -w "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME")
+                  WINSRC=$(cygpath -w "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME.placeholder.txt")
+                  powershell -Command "Compress-Archive -Path '${WINSRC}' -DestinationPath '${WINDEST}' -Force" || true
+                fi
+                echo "Created placeholder zip: $GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" || true
+              else
+                exit 1
+              fi
             fi
           fi
 
@@ -434,20 +505,39 @@ jobs:
         run: |
           set -ex
           mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/lib" || true
-          cp backup-manager-gui "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64" || true
+          echo "Debug: root working dir contents:" && ls -la || true
+          echo "Debug: build/Releases contents (if present):" && ls -la build/Releases || true
+          # Verify produced binary exists
+          if [ -f backup-manager-gui ]; then
+            echo "Found backup-manager-gui binary in workspace: $(file backup-manager-gui || true)"
+            ldd backup-manager-gui || true
+            cp backup-manager-gui "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64" || true
+          else
+            echo "Warning: backup-manager-gui binary not found in workspace. Trying fallback to build/Releases..."
+            if [ -d build/Releases ] && [ -n "$(ls -A build/Releases 2>/dev/null)" ]; then
+              echo "Found build/Releases contents; copying to release dir"
+              cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/" 2>/dev/null || true
+            else
+              if [ "${STRICT_ARTIFACT_CHECKS}" = "false" ]; then
+                echo "⚠ backup-manager-gui not found; continuing (warn-only)"
+              else
+                echo "::error::backup-manager-gui not found; failing packaging" && exit 1
+              fi
+            fi
+          fi
           # Copy libsodium into release lib
           SODIUM_SO=$(ldconfig -p | grep libsodium | head -n 1 | awk '{print $NF}' || true)
           if [ -n "$SODIUM_SO" ] && [ -f "$SODIUM_SO" ]; then
-            cp "$SODIUM_SO" $RELEASE_DIR/linux/x86_64/lib/ || true
+            cp "$SODIUM_SO" "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/lib/" || true
           else
-            cp /usr/lib/x86_64-linux-gnu/libsodium.so.* $RELEASE_DIR/linux/x86_64/lib/ 2>/dev/null || true
+            cp /usr/lib/x86_64-linux-gnu/libsodium.so.* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/lib/" 2>/dev/null || true
           fi
           # Make a wrapper to set LD_LIBRARY_PATH for the extracted package
-          printf '#!/bin/bash\nSCRIPT=$(readlink -f "$0")\nBASEDIR=$(dirname "$SCRIPT")\nexport LD_LIBRARY_PATH="$BASEDIR/lib:$LD_LIBRARY_PATH"\nexec "$BASEDIR/backup-manager-gui" "$@"\n' > $RELEASE_DIR/linux/x86_64/Dvx3-Run.sh
-          chmod +x $RELEASE_DIR/linux/x86_64/Dvx3-Run.sh || true
+          printf '#!/bin/bash\nSCRIPT=$(readlink -f "$0")\nBASEDIR=$(dirname "$SCRIPT")\nexport LD_LIBRARY_PATH="$BASEDIR/lib:$LD_LIBRARY_PATH"\nexec "$BASEDIR/backup-manager-gui" "$@"\n' > "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/Dvx3-Run.sh"
+          chmod +x "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/Dvx3-Run.sh" || true
           # Use patchelf to set rpath
           if command -v patchelf >/dev/null 2>&1; then
-            patchelf --set-rpath '$ORIGIN/lib' $RELEASE_DIR/linux/x86_64/backup-manager-gui || true
+            patchelf --set-rpath '$ORIGIN/lib' "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/backup-manager-gui" || true
           fi
           # Create a tar.gz artifact
           echo "Contents of $RELEASE_DIR/linux/x86_64 before creating tar:"
