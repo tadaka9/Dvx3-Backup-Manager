@@ -493,13 +493,19 @@ jobs:
           set -ex
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            build-essential cmake pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache patchelf || true
+            build-essential cmake pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache patchelf \
+            qt6-base-dev || true
 
       - name: Build GUI (Linux)
         run: |
           set -ex
           chmod +x build_gui.sh || true
-          ./build_gui.sh || true
+          ./build_gui.sh
+          echo "Build finished; listing root and build/ contents for debugging"
+          ls -la || true
+          ls -la build || true
+          echo "Searching for generated binaries (backup-manager-gui) after build:" || true
+          find . -maxdepth 4 -type f \( -name 'backup-manager-gui' -o -name 'backup-manager-gui*' \) -exec ls -la '{}' \; -exec file '{}' \; || true
 
       - name: Package Linux artifacts and fix libsodium linking
         run: |
@@ -507,11 +513,32 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/lib" || true
           echo "Debug: root working dir contents:" && ls -la || true
           echo "Debug: build/Releases contents (if present):" && ls -la build/Releases || true
-          # Verify produced binary exists
+          # If build/Releases contains an artifacts manifest, print it
+          if ls build/Releases/*/artifacts.txt >/dev/null 2>&1; then
+            echo "Found build/Releases artifact manifests:" && for f in build/Releases/*/artifacts.txt; do echo "---- $f ----"; cat "$f" || true; done || true
+          fi
+          # Verify produced binary exists (search common locations)
           if [ -f backup-manager-gui ]; then
             echo "Found backup-manager-gui binary in workspace: $(file backup-manager-gui || true)"
             ldd backup-manager-gui || true
             cp backup-manager-gui "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64" || true
+          elif [ -f build/backup-manager-gui ]; then
+            echo "Found build/backup-manager-gui binary: $(file build/backup-manager-gui || true)"
+            ldd build/backup-manager-gui || true
+            cp build/backup-manager-gui "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64" || true
+          elif compgen -G "build/*/backup-manager-gui" > /dev/null; then
+            BPATH=$(compgen -G "build/*/backup-manager-gui" | head -n1)
+            echo "Found binary at $BPATH" && file "$BPATH" || true
+            ldd "$BPATH" || true
+            cp "$BPATH" "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64" || true
+          else
+            echo "Not found in the expected paths; attempting a generic find for backup-manager-gui..."
+            BP=$(find . -maxdepth 6 -type f \( -name 'backup-manager-gui' -o -name 'backup-manager-gui*' \) 2>/dev/null | head -n1 || true)
+            if [ -n "$BP" ]; then
+              echo "Found binary at $BP" && file "$BP" || true
+              ldd "$BP" || true
+              cp "$BP" "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64" || true
+            fi
           else
             echo "Warning: backup-manager-gui binary not found in workspace. Trying fallback to build/Releases..."
             if [ -d build/Releases ] && [ -n "$(ls -A build/Releases 2>/dev/null)" ]; then

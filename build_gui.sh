@@ -2,6 +2,7 @@
 # build_gui.sh - Build the Qt6 GUI for Backup Manager
 
 set -e
+set -o pipefail
 
 # Use CC/CXX environment variables if set, otherwise default to gcc/g++
 CC_COMPILER=${CC:-gcc}
@@ -399,6 +400,66 @@ cat > qt.conf << 'EOF'
 [Paths]
 Plugins = .
 EOF
+
+# Final packaging: ensure build/Releases contains the binary for CI packaging
+echo "Packaging: copying artifacts to build/Releases if produced"
+PLATFORM=linux
+case "$UNAME_OUT" in
+        MINGW*|MSYS*|CYGWIN*) PLATFORM=windows ;;
+        Darwin) PLATFORM=mac ;;
+        *) PLATFORM=linux ;;
+esac
+ARCH=$(uname -m || true)
+OUTDIR="build/Releases/$PLATFORM/$ARCH"
+mkdir -p "$OUTDIR"
+
+# Prefer binary without extension, then .exe, then any matching name
+BIN_PATH=""
+if [ -f backup-manager-gui ]; then
+    BIN_PATH="backup-manager-gui"
+elif [ -f backup-manager-gui.exe ]; then
+    BIN_PATH="backup-manager-gui.exe"
+elif compgen -G "backup-manager-gui*" >/dev/null 2>&1; then
+    BIN_PATH=$(compgen -G "backup-manager-gui*" | head -n1)
+elif compgen -G "build/*/backup-manager-gui*" >/dev/null 2>&1; then
+    BIN_PATH=$(compgen -G "build/*/backup-manager-gui*" | head -n1)
+fi
+
+    if [ -n "$BIN_PATH" ] && [ -f "$BIN_PATH" ]; then
+    echo "Found binary: $BIN_PATH"
+    # Ensure executable
+    chmod +x "$BIN_PATH" || true
+    # Print file type and ldd for debugging
+    FILE_DESC=$(file "$BIN_PATH" || true)
+    echo "$FILE_DESC" || true
+    if command -v ldd >/dev/null 2>&1; then
+        ldd "$BIN_PATH" || true
+    fi
+    # Verify binary architecture matches the build arch
+    FILE_DESC_LOWER=$(echo "$FILE_DESC" | tr '[:upper:]' '[:lower:]')
+    case "$ARCH" in
+        x86_64)
+            expected_pat='x86-64|x86_64' ;;
+        aarch64|arm64)
+            expected_pat='aarch64|arm64' ;;
+        *)
+            expected_pat="$ARCH" ;;
+    esac
+    if ! echo "$FILE_DESC_LOWER" | grep -E "$expected_pat" >/dev/null 2>&1; then
+        echo "::error::Binary architecture mismatch for $BIN_PATH. Expected: $ARCH; file reports: $FILE_DESC" && exit 1
+    fi
+    # Strip binary to reduce size if strip present (and if it's ELF)
+    if command -v strip >/dev/null 2>&1 && echo "$FILE_DESC_LOWER" | grep -qi 'elf'; then
+        strip --strip-all "$BIN_PATH" || true
+    fi
+    cp "$BIN_PATH" "$OUTDIR/" || true
+    # Record artifact path
+    echo "$OUTDIR/$(basename $BIN_PATH)" >> "$OUTDIR/artifacts.txt" || true
+    echo "Copied $BIN_PATH to $OUTDIR/"
+else
+    echo "Warning: No backup-manager-gui binary found to package into $OUTDIR" >&2
+fi
+
 
 # Copy Qt platform plugins for local testing (optional but helpful)
 case "$UNAME_OUT" in
