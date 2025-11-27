@@ -162,6 +162,22 @@ The workflow uses these environment variables:
 - `QT_MOC_NATIVE`: Path to Qt's moc tool
 - `PKG_CONFIG_PATH`: For finding Qt6 packages
 
+### Release permissions and PAT (optional)
+
+If your organization or repository restricts `GITHUB_TOKEN` from creating releases, you can create a Personal Access Token (PAT) and store it as a repository secret named `RELEASE_PAT`.
+
+Required scopes for the PAT:
+- `repo` for private repositories (full access to create releases and upload assets)
+- `public_repo` for public repositories (lighter access may be sufficient)
+
+How to create the PAT:
+1. Go to https://github.com/settings/tokens
+2. Click "Generate new token" (classic or fine-grained depending on your org policies)
+3. Select the `repo` or `public_repo` scope as needed
+4. Copy the token, then in your repository go to Settings → Secrets → Actions, and add a new secret named `RELEASE_PAT` with the token value
+
+When `RELEASE_PAT` is set, the workflow will use it for creating and uploading releases; otherwise it will fallback to `GITHUB_TOKEN`. The workflow will print a message indicating which token type is used for the publish step.
+
 ## Next Steps
 
 1. ✅ Workflow created and documented
