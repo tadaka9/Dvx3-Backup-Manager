@@ -538,8 +538,7 @@ jobs:
               echo "Found binary at $BP" && file "$BP" || true
               ldd "$BP" || true
               cp "$BP" "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64" || true
-            fi
-          else
+            else
             echo "Warning: backup-manager-gui binary not found in workspace. Trying fallback to build/Releases..."
             if [ -d build/Releases ] && [ -n "$(ls -A build/Releases 2>/dev/null)" ]; then
               echo "Found build/Releases contents; copying to release dir"
