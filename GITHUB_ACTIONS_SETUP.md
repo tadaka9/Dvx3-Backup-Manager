@@ -198,6 +198,10 @@ Example:
 ./scripts/verify-release-token.sh --token "<RELEASE_PAT>" --repo tadaka9/Dvx3-Backup-Manager --create-test
 ```
 
+CI Token preflight
+------------------
+A CI preflight job titled `verify-release-token` now runs automatically for releases and checks that the secret token (either `RELEASE_PAT` or `GITHUB_TOKEN`) has the necessary permissions to create releases and tags. If the token validation fails, the publish step will be blocked and helpful logs will appear in the Action run.
+
 ### Verify token scopes locally
 
 If you created a `RELEASE_PAT`, you can verify the token's scopes locally with curl:
