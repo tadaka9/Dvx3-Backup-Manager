@@ -242,7 +242,19 @@ jobs:
             echo "Created zip: $RELEASE_DIR/$ZIP_NAME"
             ls -la "$RELEASE_DIR/$ZIP_NAME" || true
           else
-            echo "ERROR: Expected zip not found at $RELEASE_DIR/$ZIP_NAME" && ls -la "$RELEASE_DIR" || true && exit 1
+            # Fallback: try to build a zip from build/Releases or Releases/windows/<arch>
+            if [ -d build/Releases ]; then
+              echo "Fallback: Creating zip from build/Releases"
+              zip -r "$RELEASE_DIR/$ZIP_NAME" build/Releases/* || true
+            elif [ -d "$RELEASE_DIR/windows/${{ matrix.arch }}" ]; then
+              echo "Fallback: Creating zip from $RELEASE_DIR/windows/${{ matrix.arch }}"
+              (cd "$RELEASE_DIR/windows/${{ matrix.arch }}" && zip -r "../../$ZIP_NAME" .) || true
+            fi
+            if [ -f "$RELEASE_DIR/$ZIP_NAME" ]; then
+              echo "Created fallback zip: $RELEASE_DIR/$ZIP_NAME" && ls -la "$RELEASE_DIR/$ZIP_NAME" || true
+            else
+              echo "ERROR: Expected zip not found at $RELEASE_DIR/$ZIP_NAME" && ls -la "$RELEASE_DIR" || true && exit 1
+            fi
           fi
 
       - name: Verify Windows artifact contents
