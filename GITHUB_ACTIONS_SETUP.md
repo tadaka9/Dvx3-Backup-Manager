@@ -245,6 +245,52 @@ Notes:
 - If the release tag doesn't exist and you want the workflow to create it, set `create_tag_if_missing=true` and provide a `RELEASE_PAT` secret with `repo` scope. Otherwise, ensure the tag exists before running the workflow.
 - The `publish-only` job verifies checksums and validates the tag before uploading artifacts to the release. If verification fails, the publish step will be blocked.
 
+### Quick UI-friendly example (GitHub CLI)
+Use the GitHub CLI (`gh`) to dispatch the publish-only workflow in a single command:
+
+```bash
+# Replace <RUN_ID> (the build run ID that produced the artifacts) and vX.Y.Z with your tag
+gh workflow run 'Build, Package & Release' --ref clean-version \
+   --field publish_only=true \
+   --field publish_artifacts_run_id=<RUN_ID> \
+   --field release_tag=vX.Y.Z \
+   --field create_tag_if_missing=true \
+   --field strict_artifact_checks=true
+```
+
+Notes:
+- Use `gh run list --workflow 'Build, Package & Release' --limit 20` to find runs that uploaded artifacts.
+- Validate artifacts after running using `gh run view <NEW_RUN_ID> --log`.
+
+### Common issues and fixes
+- No runs appear after dispatching:
+   - Ensure you used the correct workflow name (`Build, Package & Release`) or file name (`build.yml`) in `gh run list`.
+   - You can also list runs for the workflow file name directly:
+      ```bash
+      gh run list --workflow build.yml --limit 20
+      ```
+
+- Tag creation & push failures ("refusing to allow an OAuth App to create or update workflow ... without `workflow` scope"):
+   - When pushing tags or changes that update `.github/workflows/*`, GitHub may reject OAuth token push requests that don't have the `workflow` scope.
+   - To push tags reliably, either:
+      - Use SSH remote: `git remote set-url origin git@github.com:<owner>/<repo>.git` and `git push origin vX.Y.Z`, or
+      - Create a PAT with `repo` and `workflow` scopes and use it (or `gh auth login` with the PAT) to authenticate.
+   - Avoid typos in tag names (e.g., `v0.0.3-alpha112725` vs `v0.0.0.3-alpha112725`).
+   - To avoid needing a workflow-scoped token to push, prefer using SSH: see `scripts/push-via-ssh.sh` that converts your origin to SSH and pushes the provided refs.
+   - If you prefer HTTPS / PAT, make sure the token includes the `workflow` scope and re-authenticate via `gh auth login --with-token` or update your credential helper for git.
+
+- Token scope & 403 errors when creating releases:
+   - Use `scripts/verify-release-token.sh --token <PAT> --repo <owner/repo> --verbose --create-test` to verify the token's scopes and validate that it can create tags/releases.
+
+### Alternative: Create release directly using `gh`
+If you have the built artifacts locally (or zipped), you can create a release directly with `gh` instead of dispatching the workflow:
+
+```bash
+gh release create vX.Y.Z ./Releases/* --title "vX.Y.Z" --notes "Release notes..."
+```
+
+This avoids workflow restrictions during tag pushes (requires PAT or authenticated `gh` with correct scopes).
+
 ## Support
 
 If you encounter issues:
