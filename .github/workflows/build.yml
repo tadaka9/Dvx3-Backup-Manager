@@ -233,6 +233,8 @@ jobs:
         shell: bash -l {0}
         run: |
           set -ex
+          # Ensure Releases top-level exists, even if empty
+          mkdir -p "$RELEASE_DIR" || true
           echo "Contents of $RELEASE_DIR/windows/${{ matrix.arch }} before creating zip:"
           ls -la $RELEASE_DIR/windows/${{ matrix.arch }} || true
           cd $RELEASE_DIR/windows/${{ matrix.arch }} || true
@@ -241,10 +243,11 @@ jobs:
             zip -r ../../${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip . || true
           else
             echo "zip not found; attempting PowerShell Compress-Archive fallback"
-            # Use PowerShell from bash to compress: convert path to Windows style
+            # Use PowerShell from bash to compress: convert path to Windows style for both source and destination
             WINPATH=$(cygpath -w "$PWD")
-            PSZIP="$RELEASE_DIR/${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip"
-            powershell -Command "Compress-Archive -Path '${WINPATH}\*' -DestinationPath '${PSZIP}' -Force" || true
+            PSZIP_UNIX="$RELEASE_DIR/${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip"
+            WINPSZIP=$(cygpath -w "$PSZIP_UNIX")
+            powershell -Command "Compress-Archive -Path '${WINPATH}\*' -DestinationPath '${WINPSZIP}' -Force" || true
           fi
           cd -
           cd -
@@ -261,7 +264,9 @@ jobs:
                 zip -r "$RELEASE_DIR/$ZIP_NAME" build/Releases/* || true
               else
                 # Use PowerShell to zip on Windows
-                powershell -Command "Compress-Archive -Path 'build/Releases/*' -DestinationPath '$RELEASE_DIR/$ZIP_NAME' -Force" || true
+                WINSRC=$(cygpath -w "build/Releases/*")
+                WINDEST=$(cygpath -w "$RELEASE_DIR/$ZIP_NAME")
+                powershell -Command "Compress-Archive -Path '${WINSRC}' -DestinationPath '${WINDEST}' -Force" || true
               fi
             elif [ -d "$RELEASE_DIR/windows/${{ matrix.arch }}" ]; then
               echo "Fallback: Creating zip from $RELEASE_DIR/windows/${{ matrix.arch }}"
@@ -269,7 +274,8 @@ jobs:
                 (cd "$RELEASE_DIR/windows/${{ matrix.arch }}" && zip -r "../../$ZIP_NAME" .) || true
               else
                 WINPATH=$(cygpath -w "$RELEASE_DIR/windows/${{ matrix.arch }}")
-                powershell -Command "Compress-Archive -Path '${WINPATH}\*' -DestinationPath '$RELEASE_DIR/$ZIP_NAME' -Force" || true
+                WINDEST=$(cygpath -w "$RELEASE_DIR/$ZIP_NAME")
+                powershell -Command "Compress-Archive -Path '${WINPATH}\*' -DestinationPath '${WINDEST}' -Force" || true
               fi
             fi
             if [ -f "$RELEASE_DIR/$ZIP_NAME" ]; then
