@@ -28,6 +28,11 @@ chmod +x appimagetool-x86_64.AppImage
 # Install Homebrew, then:
 brew install vala glib json-glib libsodium qt@6 cmake pkg-config
 
+# If Qt isn't being detected correctly on macOS (Homebrew), run this helper to debug:
+#
+#   ./scripts/check-qt.sh --verbose
+#
+
 # Note: On some Homebrew installations the Qt formula may appear as `qt` instead of `qt@6`.
 # If you encounter `No such keg: /opt/homebrew/Cellar/qt@6` or similar warnings, the build logic
 # will try to use `qt` instead. To ensure a consistent prefix, you can set the QT6_PREFIX

@@ -141,6 +141,7 @@ The workflow runs automatically on:
 - Check if Qt6 is properly installed: Look for "Verify Qt6 installation" step
 - Verify moc was found: Check "Setup Qt6 environment" step
 - Check build outputs: Look for "Verify build outputs" step
+ - Use the helper to debug Qt installation on macOS/local dev: `scripts/check-qt.sh --verbose`
 
 ### Windows Build Fails
 - Check MSYS2 setup: Look for "Setup MSYS2" step
