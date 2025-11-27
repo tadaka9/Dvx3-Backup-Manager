@@ -1367,7 +1367,8 @@ jobs:
           curl -sSI -H "Authorization: token ${TOKEN}" https://api.github.com | egrep -i "x-oauth-scopes|x-accepted-oauth-scopes" || true
 
       - name: Create or update GitHub Release and upload assets
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '')
+        # Only run if we're on a tag/ref or workflow_dispatch AND the preflight tag validation succeeded
+        if: (startsWith(github.ref, 'refs/tags/') || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '')) && (github.event_name == 'release' || github.event_name == 'workflow_dispatch' && steps.preflight_tag.outputs.tag_exists == 'true' || startsWith(github.ref, 'refs/tags/'))
         id: release
         uses: ncipollo/release-action@v1
         with:
@@ -1387,6 +1388,11 @@ jobs:
         if: ${{ !( startsWith(github.ref, 'refs/tags/') || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '') ) }}
         run: |
           echo "Skipping Release action: this workflow run is not a tag push or release event and no release_tag was provided via workflow_dispatch"
+
+      - name: Skipping Release - preflight tag missing or invalid
+        if: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'release') && steps.preflight_tag.outputs.tag_exists != 'true' }}
+        run: |
+          echo "Skipping Release action: the computed release tag does not exist and was not created successfully. Check preflight tag validation logs above."
 
   # ------------------------------------------------------------------
   # Smoke test: download artifacts and run a minimal check
