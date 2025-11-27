@@ -113,6 +113,10 @@ jobs:
               cp -r build/backup-manager-gui.app "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" || true
             fi
           fi
+          # Debug: list top-level build artifacts and workspace root to help debug missing files
+          echo "Workspace root (top-level) listing:" && ls -la || true
+          echo "Build directory listing:" && ls -la build || true
+          echo "build/Releases directory listing (if present):" && ls -la build/Releases || true
           # Copy executable artifacts into release folder
           if [ -f backup-manager-gui ]; then
             cp backup-manager-gui "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" || true
@@ -134,6 +138,31 @@ jobs:
               done
             fi
           fi
+          # Copy libdvx3 and other built dylibs (libb2) into the release lib folder if present
+          if [ -f libdvx3.dylib ]; then
+            cp libdvx3.dylib "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib/" || true
+          elif [ -f build/libdvx3.dylib ]; then
+            cp build/libdvx3.dylib "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib/" || true
+          elif ls build/*/libdvx3*.dylib >/dev/null 2>&1; then
+            for s in build/*/libdvx3*.dylib; do cp "$s" "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib/" || true; done
+          fi
+          if ls build/*/libb2*.dylib >/dev/null 2>&1; then
+            for s in build/*/libb2*.dylib; do cp "$s" "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib/" || true; done
+          fi
+          # Run install_name_tool to adjust lib references to @executable_path/../lib for libdvx3, libb2, lib(sodium)
+          for f in "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}"/*; do
+            if file "$f" | grep -qi "Mach-O"; then
+              if [ -f "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib/libdvx3.dylib" ]; then
+                install_name_tool -change "libdvx3.dylib" "@executable_path/../lib/libdvx3.dylib" "$f" || true
+              fi
+              if [ -f "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib/libb2.dylib" ]; then
+                install_name_tool -change "libb2.dylib" "@executable_path/../lib/libb2.dylib" "$f" || true
+              fi
+            fi
+          done
+          echo "Contents of mac release dir after copying libs:"
+          ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}" || true
+          ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib" || true
 
       - name: Show mac release dir and create mac artifact
         run: |
