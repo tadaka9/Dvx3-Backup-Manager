@@ -1450,6 +1450,8 @@ jobs:
       ARTIFACT_PREFIX: Dvx3-Backup-Manager
       STRICT_ARTIFACT_CHECKS: ${{ github.event.inputs.strict_artifact_checks || 'true' }}
       RELEASE_PAT: ${{ secrets.RELEASE_PAT || '' }}
+      # Ensure gh CLI can run non-interactively in Actions: prefer RELEASE_PAT, fallback to GITHUB_TOKEN
+      GH_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -1463,11 +1465,19 @@ jobs:
       - name: Authenticate gh
         run: |
           set -ex
-          # Use job env RELEASE_PAT (passed from secrets) when present; fallback to GITHUB_TOKEN env
-          if [ -n "$RELEASE_PAT" ]; then
-            echo "$RELEASE_PAT" | gh auth login --with-token || true
+          # Prefer GH_TOKEN (set above) for non-interactive CLI usage; this avoids
+          # performing a device login that requires user interaction.
+          if [ -n "$GH_TOKEN" ]; then
+            echo "Using GH_TOKEN (from RELEASE_PAT or GITHUB_TOKEN) - gh is authenticated"
+            # Keep the GH_TOKEN usable by gh CLI if the 'gh' client requires login
+            # Some versions of gh will use GH_TOKEN automatically in the Actions environment
           else
-            echo "Using GITHUB_TOKEN for gh auth" && echo "$GITHUB_TOKEN" | gh auth login --with-token || true
+            echo "No GH_TOKEN set; attempting interactive gh auth (may fail)"
+            if [ -n "$RELEASE_PAT" ]; then
+              echo "$RELEASE_PAT" | gh auth login --with-token || true
+            else
+              echo "Using GITHUB_TOKEN for gh auth" && echo "$GITHUB_TOKEN" | gh auth login --with-token || true
+            fi
           fi
 
       - name: Download artifacts from run id
@@ -1476,7 +1486,17 @@ jobs:
           if [ -z "${{ github.event.inputs.publish_artifacts_run_id }}" ]; then
             echo "publish_artifacts_run_id must be provided when publish_only=true" && exit 1
           fi
-          gh run download ${{ github.event.inputs.publish_artifacts_run_id }} --dir ./downloaded-artifacts || true
+          # Ensure GH_TOKEN is present for gh to download non-interactively
+          if [ -z "$GH_TOKEN" ]; then
+            echo "No GH_TOKEN configured - please set secrets.RELEASE_PAT or rely on GITHUB_TOKEN" && exit 1
+          fi
+          DOWNLOAD_EXIT=0
+          gh run download ${{ github.event.inputs.publish_artifacts_run_id }} --dir ./downloaded-artifacts || DOWNLOAD_EXIT=$?
+          if [ $DOWNLOAD_EXIT -ne 0 ]; then
+            echo "gh run download returned exit $DOWNLOAD_EXIT. Listing artifacts for run id and failing for diagnostics."
+            gh api -H "Accept: application/vnd.github+json" /repos/${GITHUB_REPOSITORY}/actions/runs/${{ github.event.inputs.publish_artifacts_run_id }}/artifacts || true
+            exit $DOWNLOAD_EXIT
+          fi
 
       - name: Verify checksums and prepare SHA
         run: |
