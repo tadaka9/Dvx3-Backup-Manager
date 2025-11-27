@@ -1304,6 +1304,17 @@ jobs:
         run: |
           if [ -n "${{ env.RELEASE_TOKEN }}" ]; then echo "Using RELEASE_PAT secret for creating releases"; else echo "Using default GITHUB_TOKEN for creating releases"; fi
 
+      - name: Check token header and scopes
+        run: |
+          set -ex
+          TOKEN="${{ env.RELEASE_TOKEN }}"
+          if [ -z "$TOKEN" ]; then
+            echo "Using GITHUB_TOKEN to check scopes"; TOKEN="${{ secrets.GITHUB_TOKEN }}"
+          fi
+          echo "Checking token by calling GitHub API..."
+          # Inspect response headers for X-OAuth-Scopes and X-Accepted-Oauth-Scopes
+          curl -sSI -H "Authorization: token ${TOKEN}" https://api.github.com | egrep -i "x-oauth-scopes|x-accepted-oauth-scopes" || true
+
       - name: Create or update GitHub Release and upload assets
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '')
         id: release
