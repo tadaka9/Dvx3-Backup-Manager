@@ -114,6 +114,8 @@ The workflow runs automatically on:
 3. Click "Run workflow" button
 4. Select branch and click "Run workflow"
 
+When using `workflow_dispatch` to run the workflow manually, a new diagnostic job `publish-release-diagnostics` will run and provide further details if the publish-release job is skipped. This job prints event/ref values, lists workspaces and available artifacts, and attempts to download any artifacts for inspection.
+
 ## Build Outputs
 
 ### Linux
