@@ -178,6 +178,10 @@ How to create the PAT:
 
 When `RELEASE_PAT` is set, the workflow will use it for creating and uploading releases; otherwise it will fallback to `GITHUB_TOKEN`. The workflow will print a message indicating which token type is used for the publish step.
 
+Additional troubleshooting steps:
+- Check your repository's Actions permissions: Go to Settings → Actions → General and make sure that GitHub Actions are allowed to create releases in your organization or repository.
+- If the workflow run originates from a fork, `GITHUB_TOKEN` may not have write permissions; use `workflow_dispatch` or an internal job to test.
+
 ## Next Steps
 
 1. ✅ Workflow created and documented
