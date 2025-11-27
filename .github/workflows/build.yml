@@ -1153,7 +1153,9 @@ jobs:
   # This job depends on all builds above
   # ------------------------------------------------------------------
   publish-release:
-    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '')
+    # Allow the job to run for workflow_dispatch so we get diagnostics/logs even when no tag is provided.
+    # The actual release action below is still gated to only run when we have a tag or explicit release_tag.
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     permissions:
       contents: write
     name: Publish Release
@@ -1170,6 +1172,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: ./downloaded-artifacts
+
+      - name: Publish debug info (event and ref)
+        run: |
+          echo "GITHUB_EVENT_NAME: $GITHUB_EVENT_NAME"
+          echo "GITHUB_REF: $GITHUB_REF"
+          echo "Release Tag input: ${{ github.event.inputs.release_tag }}"
 
       - name: List downloaded artifacts
         run: |
@@ -1227,6 +1235,7 @@ jobs:
           rm -rf "$GNUPGHOME" || true
 
       - name: Create or update GitHub Release and upload assets
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '')
         id: release
         uses: ncipollo/release-action@v1
         with:
@@ -1239,6 +1248,11 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ github.event.inputs.release_tag }}
           commit: ${{ github.event.inputs.release_tag && 'main' || '' }}
+
+      - name: Skipping Release - no tag or release_tag provided
+        if: ${{ !( startsWith(github.ref, 'refs/tags/') || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '') ) }}
+        run: |
+          echo "Skipping Release action: this workflow run is not a tag push or release event and no release_tag was provided via workflow_dispatch"
 
   # ------------------------------------------------------------------
   # Smoke test: download artifacts and run a minimal check
