@@ -182,6 +182,22 @@ Additional troubleshooting steps:
 - Check your repository's Actions permissions: Go to Settings → Actions → General and make sure that GitHub Actions are allowed to create releases in your organization or repository.
 - If the workflow run originates from a fork, `GITHUB_TOKEN` may not have write permissions; use `workflow_dispatch` or an internal job to test.
 
+Token verification helper
+-------------------------
+For convenience, `scripts/verify-release-token.sh` checks whether your PAT or `GITHUB_TOKEN` has permission to access the repository and the necessary OAuth scopes. The script prints the `X-OAuth-Scopes` header and verifies the token can access the repository. You can also use `--create-test` to attempt a temporary tag creation (this requires a token with the `repo` scope).
+
+Example:
+```bash
+# Check default token env vars
+./scripts/verify-release-token.sh --repo $(git remote get-url origin | sed -E 's#.*[:/]([^/]+/[^/.]+)(\.git)?$#\1#')
+
+# Explicit PAT and repo
+./scripts/verify-release-token.sh --token "<RELEASE_PAT>" --repo tadaka9/Dvx3-Backup-Manager --verbose
+
+# Attempt to create a test tag (will be deleted) - requires repo write scope
+./scripts/verify-release-token.sh --token "<RELEASE_PAT>" --repo tadaka9/Dvx3-Backup-Manager --create-test
+```
+
 ### Verify token scopes locally
 
 If you created a `RELEASE_PAT`, you can verify the token's scopes locally with curl:
