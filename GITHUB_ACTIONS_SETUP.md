@@ -281,6 +281,12 @@ Notes:
 
 - Token scope & 403 errors when creating releases:
    - Use `scripts/verify-release-token.sh --token <PAT> --repo <owner/repo> --verbose --create-test` to verify the token's scopes and validate that it can create tags/releases.
+   - Steps to create and add a PAT safely:
+     1. Go to https://github.com/settings/tokens and click "Generate new token" (classic or fine-grained token).
+     2. For classic tokens: select 'repo' and 'workflow' scopes (if you need to update workflows). For fine-grained: grant the minimal required repo access.
+     3. When the PAT is generated, copy it. This is the only time you'll see it.
+     4. In your repository: Settings → Secrets and variables → Actions → New repository secret; set the name to `RELEASE_PAT` and the value to the PAT.
+     5. After adding the secret, re-run the workflow or use `--field create_tag_if_missing=true` when dispatching.
 
 ### Alternative: Create release directly using `gh`
 If you have the built artifacts locally (or zipped), you can create a release directly with `gh` instead of dispatching the workflow:

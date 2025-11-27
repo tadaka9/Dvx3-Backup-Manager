@@ -20,6 +20,14 @@ on:
         description: 'Strict artifact checks (true|false)'
         required: false
         default: 'true'
+      publish_only:
+        description: 'Only perform the publish step (download artifacts from another run and upload to release)'
+        required: false
+        default: 'false'
+      publish_artifacts_run_id:
+        description: 'Run ID to download artifacts from when publish_only=true'
+        required: false
+        default: ''
   release:
     types: [published]
 
@@ -769,7 +777,7 @@ jobs:
 
       - name: Build GUI (Linux)
         env:
-          TARGET_ARCH: ${{ matrix.arch }}
+          TARGET_ARCH: x86_64
         run: |
           set -ex
           chmod +x build_gui.sh || true
@@ -953,6 +961,8 @@ jobs:
             qt6-base-dev || true
 
       - name: Build GUI (Linux aarch64)
+        env:
+          TARGET_ARCH: aarch64
         run: |
           set -ex
           chmod +x build_gui.sh || true
@@ -1264,35 +1274,50 @@ jobs:
           # Compute release tag from workflow input, tag-ref or empty
           if [ -n "${{ github.event.inputs.release_tag }}" ]; then
             echo "release_tag=${{ github.event.inputs.release_tag }}" >> $GITHUB_OUTPUT
+            echo "Determined release_tag=${{ github.event.inputs.release_tag }}"
           elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             # Strip leading 'refs/tags/'
             TAG_NAME=${GITHUB_REF#refs/tags/}
             echo "release_tag=${TAG_NAME}" >> $GITHUB_OUTPUT
+            echo "Determined release_tag=${TAG_NAME}"
           else
             echo "release_tag=" >> $GITHUB_OUTPUT
+            echo "Determined release_tag="
           fi
-          echo "Determined release_tag=${{ steps.determine_release_tag.outputs.release_tag }}"
 
       - name: Preflight validate release tag and optionally auto-create
         id: preflight_tag
-        env:
-          TOKEN: ${{ env.RELEASE_TOKEN != '' && env.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           set -ex
+          # Prefer RELEASE_TOKEN (job env), fallback to GITHUB_TOKEN
+          TOKEN=${RELEASE_TOKEN:-$GITHUB_TOKEN}
           TAG=${{ steps.determine_release_tag.outputs.release_tag }}
           if [ -z "$TAG" ]; then
             echo "No release_tag provided; skipping preflight tag validation" && echo "tag_exists=false" >> $GITHUB_OUTPUT && exit 0
           fi
           echo "Checking if tag $TAG exists in ${GITHUB_REPOSITORY}"
-          status=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token $TOKEN" "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG}") || true
+          TMP_BODY=$(mktemp)
+          HTTPOUT=$(curl -sS -w "HTTPSTATUS:%{http_code}" -H "Authorization: token $TOKEN" "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG}" -o "$TMP_BODY" || true)
+          status=$(echo "$HTTPOUT" | sed -e 's/.*HTTPSTATUS://') || true
+          echo "Preflight API HTTP status: $status"
           if [ "$status" -eq 200 ]; then
-            echo "Tag $TAG exists" && echo "tag_exists=true" >> $GITHUB_OUTPUT && exit 0
+            echo "Tag $TAG exists" && echo "tag_exists=true" >> $GITHUB_OUTPUT && rm -f "$TMP_BODY" || true && exit 0
           fi
           echo "Tag $TAG does not exist (HTTP $status)"
+          echo "Preflight response body (for diagnostics):"
+          cat "$TMP_BODY" || true
+          rm -f "$TMP_BODY" || true
           if [ "${{ github.event.inputs.create_tag_if_missing }}" = "true" ]; then
             echo "create_tag_if_missing requested: attempting to create tag $TAG"
             # Create a tag ref pointing to the current commit (github.sha)
-            create_status=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Authorization: token $TOKEN" -H "Content-Type: application/json" "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/refs" -d "{\"ref\": \"refs/tags/${TAG}\", \"sha\": \"${GITHUB_SHA}\"}") || true
+            echo "create_tag_if_missing requested: attempting to create tag $TAG"
+            TMP_CREATE=$(mktemp)
+            HTTPCREATE=$(curl -sS -w "HTTPSTATUS:%{http_code}" -X POST -H "Authorization: token $TOKEN" -H "Content-Type: application/json" "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/refs" -d "{\"ref\": \"refs/tags/${TAG}\", \"sha\": \"${GITHUB_SHA}\"}" -o "$TMP_CREATE" || true)
+            create_status=$(echo "$HTTPCREATE" | sed -e 's/.*HTTPSTATUS://') || true
+            echo "Create tag HTTP status: $create_status"
+            echo "Create response body (for diagnostics):"
+            cat "$TMP_CREATE" || true
+            rm -f "$TMP_CREATE" || true
             if [ "$create_status" -eq 201 ]; then
               echo "Tag $TAG created successfully" && echo "tag_exists=true" >> $GITHUB_OUTPUT && exit 0
             else
@@ -1360,16 +1385,34 @@ jobs:
           set -ex
           TOKEN="${{ env.RELEASE_TOKEN }}"
           if [ -z "$TOKEN" ]; then
-            echo "Using GITHUB_TOKEN to check scopes"; TOKEN="${{ secrets.GITHUB_TOKEN }}"
+            echo "Using GITHUB_TOKEN to check scopes"; TOKEN="$GITHUB_TOKEN"
           fi
           echo "Checking token by calling GitHub API..."
           # Inspect response headers for X-OAuth-Scopes and X-Accepted-Oauth-Scopes
           curl -sSI -H "Authorization: token ${TOKEN}" https://api.github.com | egrep -i "x-oauth-scopes|x-accepted-oauth-scopes" || true
 
+      - name: Check if release step should run
+        id: check_release_ready
+        run: |
+          set -ex
+          # Compute a simple boolean indicating whether we should attempt release creation
+          RELEASE_TAG="${{ steps.determine_release_tag.outputs.release_tag }}"
+          EVENT_NAME="${GITHUB_EVENT_NAME}"
+          IS_TAG_REF=0
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then IS_TAG_REF=1; fi
+          TAG_EXISTS="${{ steps.preflight_tag.outputs.tag_exists }}"
+          SHOULD_RUN=0
+          if [ $IS_TAG_REF -eq 1 ]; then SHOULD_RUN=1; fi
+          if [ "$EVENT_NAME" = "release" ]; then SHOULD_RUN=1; fi
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$RELEASE_TAG" ] && [ "$TAG_EXISTS" = "true" ]; then SHOULD_RUN=1; fi
+          echo "release_ready=$SHOULD_RUN" >> $GITHUB_OUTPUT
+
       - name: Create or update GitHub Release and upload assets
         # Only run if we're on a tag/ref or workflow_dispatch AND the preflight tag validation succeeded
-        if: (startsWith(github.ref, 'refs/tags/') || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '')) && (github.event_name == 'release' || github.event_name == 'workflow_dispatch' && steps.preflight_tag.outputs.tag_exists == 'true' || startsWith(github.ref, 'refs/tags/'))
+        if: steps.check_release_ready.outputs.release_ready == '1'
         id: release
+        env:
+          TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
         uses: ncipollo/release-action@v1
         with:
           artifacts: |
@@ -1378,7 +1421,7 @@ jobs:
             downloaded-artifacts-SHA256SUMS.sig
           draft: false
           prerelease: false
-          token: ${{ env.RELEASE_TOKEN != '' && env.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${{ env.TOKEN }}
           # Use the computed release tag output, or fall back to empty (if running on tag-ref github.ref_name will be used)
           tag: ${{ steps.determine_release_tag.outputs.release_tag }}
           # Use current workflow commit as the target commitish - this avoids invalid branch names like 'main'
@@ -1395,6 +1438,102 @@ jobs:
           echo "Skipping Release action: the computed release tag does not exist and was not created successfully. Check preflight tag validation logs above."
 
   # ------------------------------------------------------------------
+  # Publish-only: download artifacts from another run and publish them to a release
+  # Useful when artifacts were produced by a different run and you just want to upload them to a release
+  # ------------------------------------------------------------------
+  publish-only:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.publish_only == 'true'
+    name: Publish Only - Upload artifacts from existing run
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_DIR: Releases
+      ARTIFACT_PREFIX: Dvx3-Backup-Manager
+      STRICT_ARTIFACT_CHECKS: ${{ github.event.inputs.strict_artifact_checks || 'true' }}
+      RELEASE_PAT: ${{ secrets.RELEASE_PAT || '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup gh CLI
+        run: |
+          set -ex
+          sudo apt-get update || true
+          sudo apt-get install -y gh jq || true
+
+      - name: Authenticate gh
+        run: |
+          set -ex
+          # Use job env RELEASE_PAT (passed from secrets) when present; fallback to GITHUB_TOKEN env
+          if [ -n "$RELEASE_PAT" ]; then
+            echo "$RELEASE_PAT" | gh auth login --with-token || true
+          else
+            echo "Using GITHUB_TOKEN for gh auth" && echo "$GITHUB_TOKEN" | gh auth login --with-token || true
+          fi
+
+      - name: Download artifacts from run id
+        run: |
+          set -ex
+          if [ -z "${{ github.event.inputs.publish_artifacts_run_id }}" ]; then
+            echo "publish_artifacts_run_id must be provided when publish_only=true" && exit 1
+          fi
+          gh run download ${{ github.event.inputs.publish_artifacts_run_id }} --dir ./downloaded-artifacts || true
+
+      - name: Verify checksums and prepare SHA
+        run: |
+          set -ex
+          cd downloaded-artifacts
+          find . -type f -name '*.sha256' -print0 | while IFS= read -r -d '' f; do
+            d=$(dirname "$f")
+            bn=$(basename "$f")
+            pushd "$d"
+            if command -v sha256sum >/dev/null 2>&1; then
+              sha256sum -c "$bn" || (echo "Checksum mismatch for $f" && exit 1)
+            else
+              shasum -a 256 -c "$bn" || (echo "Checksum mismatch for $f" && exit 1)
+            fi
+            popd
+          done
+          find . -type f -name '*.sha256' -exec cat {} \; > ../downloaded-artifacts-SHA256SUMS || true
+
+      - name: Determine effective release tag
+        id: determine_release_tag_publish_only
+        run: |
+          set -ex
+          if [ -n "${{ github.event.inputs.release_tag }}" ]; then
+            echo "release_tag=${{ github.event.inputs.release_tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "release_tag=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Preflight tag validation
+        id: preflight_tag_po
+        run: |
+          set -ex
+          TAG=${{ steps.determine_release_tag_publish_only.outputs.release_tag }}
+          TOKEN=${RELEASE_PAT:-$GITHUB_TOKEN}
+          if [ -z "$TAG" ]; then
+            echo "No release_tag provided; cannot publish release." && exit 1
+          fi
+          status=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token $TOKEN" "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG}" ) || true
+          if [ "$status" -ne 200 ]; then
+            echo "Tag $TAG not found; create it or provide existing tag" && exit 1
+          fi
+
+      - name: Create or update GitHub Release and upload assets (publish-only)
+        env:
+          TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: |
+            downloaded-artifacts/**
+            downloaded-artifacts-SHA256SUMS
+            downloaded-artifacts-SHA256SUMS.sig
+          draft: false
+          prerelease: false
+          token: ${{ env.TOKEN }}
+          tag: ${{ steps.determine_release_tag_publish_only.outputs.release_tag }}
+          commit: ${{ github.sha }}
+
   # Smoke test: download artifacts and run a minimal check
   # ------------------------------------------------------------------
   smoke-test:

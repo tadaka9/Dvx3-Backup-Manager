@@ -60,10 +60,15 @@ if [ -z "$REPO" ]; then
   exit 2
 fi
 
-echo "Verifying token for repo: $REPO"
+MASKED_TOKEN="${TOKEN:0:4}****${TOKEN: -4}"
+echo "Verifying token for repo: $REPO (token masked: $MASKED_TOKEN)"
 
+# Collect headers and body separately for better diagnostics
 HEADERS=$(mktemp)
-STATUS=$(curl -sSI -H "Authorization: token $TOKEN" "https://api.github.com/repos/$REPO" | tee $HEADERS | head -n 1 | awk '{print $2}') || true
+BODY=$(mktemp)
+HTTP_RESPONSE=$(curl -sS -w "HTTPSTATUS:%{http_code}" -H "Authorization: token $TOKEN" "https://api.github.com/repos/$REPO" -o "$BODY" 2>/dev/null) || true
+STATUS=$(echo "$HTTP_RESPONSE" | sed -e 's/.*HTTPSTATUS://')
+curl -sSI -H "Authorization: token $TOKEN" "https://api.github.com/repos/$REPO" | tee "$HEADERS" >/dev/null || true
 if [ -z "$STATUS" ]; then
   echo "Failed to reach GitHub API. Check token or network." >&2
   rm -f $HEADERS
@@ -82,7 +87,13 @@ echo "$XSCOPES"
 echo "$XACCEPTED"
 
 if [ $VERBOSE -eq 1 ]; then
-  echo "Full response headers:" && cat $HEADERS
+  echo "Full response headers (curl -I):" && cat "$HEADERS"
+  echo "Full response body (curl):"
+  if command -v jq >/dev/null 2>&1; then
+    jq '.' "$BODY" || cat "$BODY"
+  else
+    cat "$BODY"
+  fi
 fi
 
 # Check if repo privileges look sufficient
@@ -99,9 +110,17 @@ if [ "$CREATE_TEST" -eq 1 ]; then
   TEST_TAG="temprelease-verify-$(date +%s)"
   # Attempt to create the tag
   payload=$(printf '{"ref":"refs/tags/%s","sha":"%s"}' "$TEST_TAG" "$(git rev-parse HEAD)")
-  CR=$(curl -s -w "%{http_code}" -o /tmp/create.out -X POST -H "Authorization: token $TOKEN" -H "Content-Type: application/json" "https://api.github.com/repos/$REPO/git/refs" -d "$payload") || true
+  # Try to POST and capture body and HTTP status
+  HTTP_CREATE_RESPONSE=$(curl -sS -w "HTTPSTATUS:%{http_code}" -H "Authorization: token $TOKEN" -H "Content-Type: application/json" -X POST "https://api.github.com/repos/$REPO/git/refs" -d "$payload" -o /tmp/create.out) || true
+  CR=$(echo "$HTTP_CREATE_RESPONSE" | sed -e 's/.*HTTPSTATUS://')
   echo "Create tag HTTP status: $CR"
-  echo "Create response: $(cat /tmp/create.out)" && rm -f /tmp/create.out || true
+  echo "Create response body (create test):"
+  if command -v jq >/dev/null 2>&1; then
+    jq '.' /tmp/create.out || cat /tmp/create.out
+  else
+    cat /tmp/create.out
+  fi
+  rm -f /tmp/create.out || true
   if [ "$CR" -eq 201 ]; then
     echo "Tag created: $TEST_TAG (now deleting)"
     # Delete created ref
