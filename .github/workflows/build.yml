@@ -1300,6 +1300,10 @@ jobs:
           shred -u private.key || rm -f private.key || true
           rm -rf "$GNUPGHOME" || true
 
+      - name: Show token usage for release step
+        run: |
+          if [ -n "${{ env.RELEASE_TOKEN }}" ]; then echo "Using RELEASE_PAT secret for creating releases"; else echo "Using default GITHUB_TOKEN for creating releases"; fi
+
       - name: Create or update GitHub Release and upload assets
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '')
         id: release
