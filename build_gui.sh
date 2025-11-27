@@ -255,6 +255,30 @@ esac
 # Find moc and rcc (works on Linux, macOS, Windows/MSYS2)
 # Prioritize Qt6-specific tools to avoid Qt5/Qt6 mismatch
 if [ -z "$MOC" ]; then
+    # On macOS, if QT6_PREFIX is not set but brew is present, try to auto-detect installed Qt prefixes
+    if [ -z "$QT6_PREFIX" ] && command -v brew >/dev/null 2>&1; then
+        if brew ls --versions qt@6 >/dev/null 2>&1; then
+            QT6_PREFIX=$(brew --prefix qt@6)
+        elif brew ls --versions qt >/dev/null 2>&1; then
+            QT6_PREFIX=$(brew --prefix qt)
+        elif brew ls --versions qt6 >/dev/null 2>&1; then
+            QT6_PREFIX=$(brew --prefix qt6)
+        fi
+        if [ -n "$QT6_PREFIX" ]; then
+            export PATH="$QT6_PREFIX/bin:$QT6_PREFIX/libexec:$PATH"
+            echo "Auto-detected QT6_PREFIX and added to PATH: $QT6_PREFIX"
+        fi
+    fi
+    # If user/env set a QT6_PREFIX, prefer to use the tools from that prefix
+    if [ -n "$QT6_PREFIX" ]; then
+        echo "Using provided QT6_PREFIX: $QT6_PREFIX"
+        if [ -x "$QT6_PREFIX/bin/moc" ]; then
+            MOC="$QT6_PREFIX/bin/moc"
+            RCC="$QT6_PREFIX/bin/rcc"
+            export PATH="$QT6_PREFIX/bin:$QT6_PREFIX/libexec:$PATH"
+            echo "  - Using moc/rcc from $QT6_PREFIX"
+        fi
+    fi
     if [ -n "$QT_MOC_NATIVE" ] && [ -x "$QT_MOC_NATIVE" ]; then
         MOC="$QT_MOC_NATIVE"
         RCC_DIR=$(dirname "$QT_MOC_NATIVE")
@@ -362,6 +386,7 @@ if [ -z "$MOC" ]; then
     fi
 fi
 
+echo "Using moc: $MOC"
 $MOC backup-manager-gui.hpp -o backup-manager-gui.moc.cpp
 
 echo "[4b/5] Compiling resources..."

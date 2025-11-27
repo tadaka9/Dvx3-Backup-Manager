@@ -27,6 +27,15 @@ chmod +x appimagetool-x86_64.AppImage
 ```bash
 # Install Homebrew, then:
 brew install vala glib json-glib libsodium qt@6 cmake pkg-config
+
+# Note: On some Homebrew installations the Qt formula may appear as `qt` instead of `qt@6`.
+# If you encounter `No such keg: /opt/homebrew/Cellar/qt@6` or similar warnings, the build logic
+# will try to use `qt` instead. To ensure a consistent prefix, you can set the QT6_PREFIX
+# environment variable before running builds, e.g.:
+#
+#   export QT6_PREFIX=$(brew --prefix qt)
+#
+# This helps CI and local build scripts locate the correct Qt tools like `moc` and `rcc`.
 ```
 
 ### macOS Apple Silicon (ARM64)

@@ -59,6 +59,7 @@ jobs:
           else
             QT_FORMULA=qt
           fi
+          echo "Using Homebrew formula: $QT_FORMULA"
           brew install --build-bottle \
             pkg-config \
             vala \
@@ -82,8 +83,25 @@ jobs:
             fi
           done
           brew install qttools || true
-          brew link --overwrite $QT_FORMULA || true
-          QT6_PREFIX=$(brew --prefix $QT_FORMULA)
+          # Only attempt to link if the formula is actually installed to avoid 'No such keg' errors
+          if brew ls --versions $QT_FORMULA >/dev/null 2>&1; then
+            echo "Linking $QT_FORMULA"
+            brew link --overwrite $QT_FORMULA || true
+            QT6_PREFIX=$(brew --prefix $QT_FORMULA)
+          else
+            echo "Homebrew formula $QT_FORMULA not found; skipping link"
+            # Attempt to find a valid Qt prefix via formulas installed: qt@6, qt, qt6
+            if brew ls --versions qt@6 >/dev/null 2>&1; then
+              QT6_PREFIX=$(brew --prefix qt@6)
+            elif brew ls --versions qt >/dev/null 2>&1; then
+              QT6_PREFIX=$(brew --prefix qt)
+            elif brew ls --versions qt6 >/dev/null 2>&1; then
+              QT6_PREFIX=$(brew --prefix qt6)
+            else
+              QT6_PREFIX=""
+            fi
+          fi
+          echo "QT6_PREFIX: $QT6_PREFIX"
           echo "$QT6_PREFIX/bin" >> $GITHUB_PATH || true
           echo "$QT6_PREFIX/libexec" >> $GITHUB_PATH || true
 

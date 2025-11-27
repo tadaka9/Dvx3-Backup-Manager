@@ -12,6 +12,10 @@ This repository now has a complete GitHub Actions workflow that builds the Dvx3 
 ### macOS Issues (Previously Documented in TODO.md)
 ✅ **Qt6 Installation**: Changed from generic `qt` to explicit `qt@6` package
 ✅ **Path Configuration**: Proper PATH setup using `$(brew --prefix qt@6)/bin`
+⚠️ **Note:** On some Homebrew installs, `qt` may be installed instead of `qt@6`.
+If you encounter `No such keg: /opt/homebrew/Cellar/qt@6` or similar warnings, the workflow
+will try to detect `qt@6`, `qt`, or `qt6` automatically, but for local builds you can export
+`QT6_PREFIX=$(brew --prefix qt)` to make it explicit to the build scripts.
 ✅ **MOC Detection**: Checks for `moc` in both `libexec` and `bin` directories
 ✅ **Environment Variables**: Sets `QT_MOC_NATIVE` and `PKG_CONFIG_PATH` correctly
 ✅ **DMG Creation**: Creates proper `.app` bundle with `Info.plist` and uses `hdiutil` for DMG
