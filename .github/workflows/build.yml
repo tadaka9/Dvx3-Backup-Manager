@@ -844,6 +844,18 @@ jobs:
             else
               cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/" 2>/dev/null || true
             fi
+            if [ -f build/Releases/linux/x86_64/artifacts.txt ]; then
+              while IFS= read -r line || [ -n "$line" ]; do
+                [ -z "$line" ] && continue
+                rel=$(echo "$line" | sed 's|^/||')
+                src="build/Releases/linux/x86_64/$rel"
+                if [ -e "$src" ]; then
+                  destdir="$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/$(dirname "$rel")"
+                  mkdir -p "$destdir" || true
+                  cp -a "$src" "$destdir/" || true
+                fi
+              done < build/Releases/linux/x86_64/artifacts.txt || true
+            fi
           fi
           # Debug: confirm if libdvx3.so is included; if strict, fail when absent
           if [ ! -f "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/lib/libdvx3.so" ]; then
