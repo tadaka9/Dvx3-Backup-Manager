@@ -182,6 +182,16 @@ Additional troubleshooting steps:
 - Check your repository's Actions permissions: Go to Settings → Actions → General and make sure that GitHub Actions are allowed to create releases in your organization or repository.
 - If the workflow run originates from a fork, `GITHUB_TOKEN` may not have write permissions; use `workflow_dispatch` or an internal job to test.
 
+### Verify token scopes locally
+
+If you created a `RELEASE_PAT`, you can verify the token's scopes locally with curl:
+
+```bash
+curl -I -H "Authorization: token <YOUR_PAT>" https://api.github.com | egrep -i "x-oauth-scopes|x-accepted-oauth-scopes"
+```
+
+This prints the scopes that will be accessible to the token; make sure `repo` or `public_repo` is present as appropriate.
+
 ## Next Steps
 
 1. ✅ Workflow created and documented
