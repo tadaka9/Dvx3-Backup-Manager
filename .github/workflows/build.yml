@@ -355,6 +355,9 @@ jobs:
             mkdir -p ps_zip_extracted || true
             powershell -Command "Expand-Archive -Path \"$ART\" -DestinationPath \"ps_zip_extracted\" -Force; Get-ChildItem -Path ps_zip_extracted -Recurse | select -Expand FullName" | sed -n '1,200p' > zip_contents.txt || true
           fi
+          echo "--- zip_contents.txt (first 200 lines) ---"
+          sed -n '1,200p' zip_contents.txt || true
+          fi
             greps='backup-manager-gui.exe|backup-manager-gui|libsodium\.dll|qwindows\.dll|libb2|Qt'
             if ! grep -E "$greps" zip_contents.txt > /dev/null; then
               if [ "${STRICT_ARTIFACT_CHECKS}" = "false" ]; then
@@ -363,9 +366,6 @@ jobs:
                 echo "⚠ Expected files not found in windows artifact: $greps" && exit 1
               fi
             fi
-          else
-            echo "unzip not installed; skipping content verification" && true
-          fi
 
       - name: Compute windows artifact sha256
         id: compute-windows-sha
