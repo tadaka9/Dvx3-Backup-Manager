@@ -1189,6 +1189,16 @@ jobs:
           set -ex
           ls -la diag-artifacts || true
 
+      - name: Print job statuses for current run via the GitHub API
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -ex
+          echo "Fetching job statuses for run $GITHUB_RUN_ID in ${GITHUB_REPOSITORY}"
+          sudo apt-get update || true
+          sudo apt-get install -y jq || true
+          curl -sS -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs" | jq -r '.jobs[] | "\(.name): status=\(.status) conclusion=\(.conclusion)"' || true
+
   publish-release:
     # Allow the job to run for workflow_dispatch so we get diagnostics/logs even when no tag is provided.
     # The actual release action below is still gated to only run when we have a tag or explicit release_tag.
