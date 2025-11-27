@@ -513,32 +513,28 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/lib" || true
           echo "Debug: root working dir contents:" && ls -la || true
           echo "Debug: build/Releases contents (if present):" && ls -la build/Releases || true
-          # If build/Releases contains an artifacts manifest, print it
-          if ls build/Releases/*/artifacts.txt >/dev/null 2>&1; then
-            echo "Found build/Releases artifact manifests:" && for f in build/Releases/*/artifacts.txt; do echo "---- $f ----"; cat "$f" || true; done || true
+          # Print any artifacts manifests if present
+          for f in build/Releases/*/artifacts.txt; do
+            [ -f "$f" ] || continue
+            echo "---- $f ----"
+            cat "$f" || true
+          done
+          # Try to find a generated backup-manager-gui binary (multiple possible locations)
+          FOUND_BIN=""
+          for TRY in backup-manager-gui build/backup-manager-gui build/*/backup-manager-gui; do
+            if [ -f "${TRY}" ]; then
+              FOUND_BIN="$TRY"
+              break
+            fi
+          done
+          if [ -z "$FOUND_BIN" ]; then
+            FOUND_BIN=$(find . -maxdepth 6 -type f -name 'backup-manager-gui' -print -quit || true)
           fi
-          # Verify produced binary exists (search common locations)
-          if [ -f backup-manager-gui ]; then
-            echo "Found backup-manager-gui binary in workspace: $(file backup-manager-gui || true)"
-            ldd backup-manager-gui || true
-            cp backup-manager-gui "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64" || true
-          elif [ -f build/backup-manager-gui ]; then
-            echo "Found build/backup-manager-gui binary: $(file build/backup-manager-gui || true)"
-            ldd build/backup-manager-gui || true
-            cp build/backup-manager-gui "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64" || true
-          elif compgen -G "build/*/backup-manager-gui" > /dev/null; then
-            BPATH=$(compgen -G "build/*/backup-manager-gui" | head -n1)
-            echo "Found binary at $BPATH" && file "$BPATH" || true
-            ldd "$BPATH" || true
-            cp "$BPATH" "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64" || true
+          if [ -n "$FOUND_BIN" ]; then
+            echo "Found binary at $FOUND_BIN" && file "$FOUND_BIN" || true
+            ldd "$FOUND_BIN" || true
+            cp "$FOUND_BIN" "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/" || true
           else
-            echo "Not found in the expected paths; attempting a generic find for backup-manager-gui..."
-            BP=$(find . -maxdepth 6 -type f \( -name 'backup-manager-gui' -o -name 'backup-manager-gui*' \) 2>/dev/null | head -n1 || true)
-            if [ -n "$BP" ]; then
-              echo "Found binary at $BP" && file "$BP" || true
-              ldd "$BP" || true
-              cp "$BP" "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64" || true
-            else
             echo "Warning: backup-manager-gui binary not found in workspace. Trying fallback to build/Releases..."
             if [ -d build/Releases ] && [ -n "$(ls -A build/Releases 2>/dev/null)" ]; then
               echo "Found build/Releases contents; copying to release dir"
@@ -551,35 +547,38 @@ jobs:
               fi
             fi
           fi
-          # Copy libsodium into release lib
-          SODIUM_SO=$(ldconfig -p | grep libsodium | head -n 1 | awk '{print $NF}' || true)
+          # Copy libsodium into release lib (try ldconfig first, fallback to distro path)
+          SODIUM_SO=$(ldconfig -p 2>/dev/null | grep libsodium | head -n 1 | awk '{print $NF}' || true)
           if [ -n "$SODIUM_SO" ] && [ -f "$SODIUM_SO" ]; then
             cp "$SODIUM_SO" "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/lib/" || true
           else
             cp /usr/lib/x86_64-linux-gnu/libsodium.so.* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/lib/" 2>/dev/null || true
           fi
-          # Make a wrapper to set LD_LIBRARY_PATH for the extracted package
-          printf '#!/bin/bash\nSCRIPT=$(readlink -f "$0")\nBASEDIR=$(dirname "$SCRIPT")\nexport LD_LIBRARY_PATH="$BASEDIR/lib:$LD_LIBRARY_PATH"\nexec "$BASEDIR/backup-manager-gui" "$@"\n' > "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/Dvx3-Run.sh"
+          # Create a simple wrapper to set LD_LIBRARY_PATH for the extracted package
+          cat > "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/Dvx3-Run.sh" << 'SH' || true
+          #!/bin/bash
+          SCRIPT=$(readlink -f "$0")
+          BASEDIR=$(dirname "$SCRIPT")
+          export LD_LIBRARY_PATH="$BASEDIR/lib:$LD_LIBRARY_PATH"
+          exec "$BASEDIR/backup-manager-gui" "$@"
+          SH
           chmod +x "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/Dvx3-Run.sh" || true
-          # Use patchelf to set rpath
+          # Use patchelf to set rpath when available
           if command -v patchelf >/dev/null 2>&1; then
-            patchelf --set-rpath '$ORIGIN/lib' "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/backup-manager-gui" || true
-          fi
-          # Create a tar.gz artifact
-          echo "Contents of $RELEASE_DIR/linux/x86_64 before creating tar:"
-          ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64" || true
-          # Fallback: copy everything from build/Releases into Releases/linux/x86_64/
-          if [ -d build/Releases ]; then
-            echo "Copying build/Releases contents to $RELEASE_DIR/linux/x86_64"
-            cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/" 2>/dev/null || true
+            if [ -f "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/backup-manager-gui" ]; then
+              patchelf --set-rpath '$ORIGIN/lib' "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/backup-manager-gui" || true
+            fi
           fi
           # Try to include Qt platform plugins for Linux (XCB platform)
+          mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/plugins/platforms" || true
           if [ -d "/usr/lib/qt6/plugins/platforms" ]; then
-            mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/plugins/platforms" || true
             cp -r /usr/lib/qt6/plugins/platforms/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/plugins/platforms/" 2>/dev/null || true
           elif [ -d "/usr/lib/x86_64-linux-gnu/qt6/plugins/platforms" ]; then
-            mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/plugins/platforms" || true
             cp -r /usr/lib/x86_64-linux-gnu/qt6/plugins/platforms/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/plugins/platforms/" 2>/dev/null || true
+          fi
+          # Copy any build/Releases contents as a fallback
+          if [ -d build/Releases ]; then
+            cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/" 2>/dev/null || true
           fi
           cd "$GITHUB_WORKSPACE/$RELEASE_DIR/linux" || true
           tar -czf ../${ARTIFACT_PREFIX}-linux-x86_64-${{ github.run_id }}.tar.gz x86_64 || true
