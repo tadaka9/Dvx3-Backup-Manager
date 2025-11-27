@@ -238,6 +238,22 @@ jobs:
           echo "Contents of $GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }} before creating zip:"
           ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}" || true
           cd "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}" || true
+          # If the per-arch Releases dir is empty, handle accordingly (skip for optional archs or bail based on STRICT_ARTIFACT_CHECKS)
+          if [ -z "$(ls -A "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}" 2>/dev/null)" ]; then
+            echo "No files found in $GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}"
+            # If there's build/Releases, we'll use that as a fallback. Otherwise decide based on arch and strictness
+            if [ -d build/Releases ] && [ -n "$(ls -A build/Releases 2>/dev/null)" ]; then
+              echo "Found build/Releases; will create zip from build/Releases"
+            else
+              if [ "${{ matrix.arch }}" = "aarch64" ]; then
+                echo "⚠ No files for windows aarch64; skipping packaging for optional arch" && exit 0
+              fi
+              if [ "${STRICT_ARTIFACT_CHECKS}" = "false" ]; then
+                echo "⚠ No files to package for windows-${{ matrix.arch }}; skipping (warn-only)" && exit 0
+              fi
+              echo "No files to package and STRICT_ARTIFACT_CHECKS is set; failing" && exit 1
+            fi
+          fi
           # Try zip first (MSYS2); fallback to PowerShell Compress-Archive if zip not available
           if command -v zip >/dev/null 2>&1; then
             zip -r ../../${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip . || true
