@@ -13,7 +13,6 @@ env:
   VERSION: "0.0.3a101125"
 
 jobs:
-
   build-linux:
     name: Linux ${{ matrix.os }} x86_64
     runs-on: ${{ matrix.os }}
@@ -23,6 +22,13 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Cache apt packages
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt
+          key: apt-${{ runner.os }}-${{ hashFiles('**/packages.lock') }}
+          restore-keys: apt-${{ runner.os }}-
 
       - name: Install dependencies
         run: |
@@ -38,11 +44,11 @@ jobs:
           ls -la vala-extra-vapis/libsodium.vapi
           echo "libsodium.vapi found and ready"
 
-      - name: Check GNU tar version and assert
+      - name: Check GNU tar version
         run: |
           tar --version
           if ! tar --version | grep -q "GNU tar"; then
-            echo "Error: GNU tar is required for dynamic progress."
+            echo "Error: GNU tar is required"
             exit 1
           fi
 
@@ -69,20 +75,19 @@ jobs:
 
   build-macos-universal:
     name: macOS Universal (Intel + Apple Silicon)
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [macos-12, macos-latest]  # macos-12 for Intel, macos-latest for Apple Silicon
-        include:
-          - os: macos-12
-            arch: x86_64
-          - os: macos-latest
-            arch: arm64
+    runs-on: macos-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Cache Homebrew
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: homebrew-${{ runner.os }}-${{ hashFiles('**/Brewfile') }}
+          restore-keys: homebrew-${{ runner.os }}-
 
       - name: Install dependencies
         run: |
@@ -94,83 +99,40 @@ jobs:
           ls -la vala-extra-vapis/libsodium.vapi
           echo "libsodium.vapi found and ready"
 
-      - name: Build library and CLI
-        run: bash ./build.sh
-
-      - name: Build Qt GUI
-        run: bash ./build_gui.sh
-
-      - name: Create App Bundle
+      - name: Build x86_64
         run: |
-          mkdir -p "Dvx3 Backup Manager.app/Contents/MacOS" "Dvx3 Backup Manager.app/Contents/Resources" "Dvx3 Backup Manager.app/Contents/Frameworks"
+          mkdir -p x86_64
+          arch -x86_64 bash -c "
+            bash ./build.sh
+            bash ./build_gui.sh
+            cp -r 'Dvx3 Backup Manager.app' x86_64/
+          "
 
-          cp backup-manager-gui "Dvx3 Backup Manager.app/Contents/MacOS/"
-          cp libDvx3.dylib "Dvx3 Backup Manager.app/Contents/Frameworks/"
-
-          cat > "Dvx3 Backup Manager.app/Contents/Info.plist" <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>CFBundleExecutable</key>
-              <string>backup-manager-gui</string>
-              <key>CFBundleIdentifier</key>
-              <string>com.Dvx3.backupmanager</string>
-              <key>CFBundleName</key>
-              <string>Dvx3 Backup Manager</string>
-              <key>CFBundleVersion</key>
-              <string>1.0.0</string>
-              <key>CFBundleShortVersionString</key>
-              <string>1.0.0</string>
-              <key>NSHighResolutionCapable</key>
-              <true/>
-          </dict>
-          </plist>
-          EOF
-
-          $(brew --prefix qt@6)/bin/macdeployqt "Dvx3 Backup Manager.app" -verbose=2
-
-      - name: Upload App Bundle for ${{ matrix.arch }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: Dvx3-BackupManager-macOS-${{ matrix.arch }}-AppBundle
-          path: 'Dvx3 Backup Manager.app'
-          retention-days: 90
-
-  build-macos-universal-dmg:
-    name: macOS Universal DMG
-    needs: build-macos-universal
-    runs-on: macos-latest
-    steps:
-      - name: Download x86_64 App Bundle
-        uses: actions/download-artifact@v4
-        with:
-          name: Dvx3-BackupManager-macOS-x86_64-AppBundle
-          path: x86_64/
-
-      - name: Download arm64 App Bundle
-        uses: actions/download-artifact@v4
-        with:
-          name: Dvx3-BackupManager-macOS-arm64-AppBundle
-          path: arm64/
-
-      - name: Install dependencies
-        run: brew install qt@6 create-dmg
+      - name: Build arm64 (native)
+        run: |
+          mkdir -p arm64
+          bash ./build.sh
+          bash ./build_gui.sh
+          cp -r 'Dvx3 Backup Manager.app' arm64/
 
       - name: Create Universal Binary
         run: |
-          # Copy the app bundle structure from arm64 (newer runner)
           cp -r arm64/"Dvx3 Backup Manager.app" .
-
-          # Combine binaries into universal
+          
+          # Merge main executable
           lipo -create -output "Dvx3 Backup Manager.app/Contents/MacOS/backup-manager-gui" \
             x86_64/"Dvx3 Backup Manager.app/Contents/MacOS/backup-manager-gui" \
             arm64/"Dvx3 Backup Manager.app/Contents/MacOS/backup-manager-gui"
+          
+          # Merge library
           lipo -create -output "Dvx3 Backup Manager.app/Contents/Frameworks/libDvx3.dylib" \
             x86_64/"Dvx3 Backup Manager.app/Contents/Frameworks/libDvx3.dylib" \
             arm64/"Dvx3 Backup Manager.app/Contents/Frameworks/libDvx3.dylib"
+          
+          # Deploy Qt frameworks for universal binary
+          $(brew --prefix qt@6)/bin/macdeployqt "Dvx3 Backup Manager.app" -verbose=2
 
-          # Verify universal binaries
+          # Verify
           lipo -info "Dvx3 Backup Manager.app/Contents/MacOS/backup-manager-gui"
           lipo -info "Dvx3 Backup Manager.app/Contents/Frameworks/libDvx3.dylib"
 
@@ -198,8 +160,8 @@ jobs:
           path: '*.dmg'
           retention-days: 90
 
-  build-windows-msys2:
-    name: Windows x64 (MSYS2)
+  build-windows:
+    name: Windows x64 (UCRT64)
     runs-on: windows-latest
     steps:
       - name: Checkout code
@@ -209,18 +171,17 @@ jobs:
         uses: msys2/setup-msys2@v2
         with:
           update: true
-          msystem: MINGW64
+          msystem: UCRT64
           install: >-
-            mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-vala
-            mingw-w64-x86_64-glib2
-            mingw-w64-x86_64-json-glib
-            mingw-w64-x86_64-libsodium
-            mingw-w64-x86_64-pkgconf
-            mingw-w64-x86_64-qt6-base
-            mingw-w64-x86_64-qt6-tools
-            curl
-            zip
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-vala
+            mingw-w64-ucrt-x86_64-glib2
+            mingw-w64-ucrt-x86_64-json-glib
+            mingw-w64-ucrt-x86_64-libsodium
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-qt6-tools
+            zip curl
 
       - name: Verify VAPI
         shell: msys2 {0}
@@ -232,28 +193,41 @@ jobs:
         shell: msys2 {0}
         run: bash ./build.sh
 
-      - name: Build Qt GUI (Windows)
+      - name: Build Qt GUI
         shell: msys2 {0}
         run: bash ./build_gui.sh
 
-      - name: Package Windows artifacts
+      - name: Package with windeployqt
         shell: msys2 {0}
         run: |
           mkdir -p windows-package
           cp dvx3.exe backup-manager-gui.exe libDvx3.dll dvx3.vapi dvx3.h windows-package/ || true
-          # Copy required DLLs from MSYS2
-          ldd backup-manager-gui.exe | grep mingw64 | awk '{print $3}' | xargs -I {} cp {} windows-package/ || true
+          
+          # Use windeployqt for complete Qt deployment
+          /ucrt64/bin/qt6/bin/windeployqt.exe \
+            --release \
+            --dir-path windows-package \
+            windows-package/backup-manager-gui.exe
+          
+          # Copy additional runtime DLLs
+          cp /ucrt64/bin/*.dll windows-package/ || true
+          
+          zip -r Dvx3-BackupManager-Windows-x64.zip windows-package/*
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Dvx3-BackupManager-Windows-x64
-          path: windows-package/*
+          path: Dvx3-BackupManager-Windows-x64.zip
           retention-days: 90
 
-  build-arm32-debian13:
-    name: ARM32 Debian 13 (arm/v7)
+  build-raspberry-arm:
+    name: Raspberry Pi (ARM32/64)
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform: [linux/arm/v7, linux/arm64]
+        suffix: [ARMv7, ARM64]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -261,73 +235,45 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
         with:
-          platforms: arm
+          platforms: ${{ matrix.platform }}
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: docker-${{ matrix.platform }}-${{ hashFiles('**/Dockerfile') }}
 
       - name: Build in ARM container
         run: |
-          # Ensure libsodium.vapi is present on host (mounted into container)
-          set -e
-          ls -la vala-extra-vapis/libsodium.vapi || true
-          docker run --rm --platform linux/arm/v7 \
-            -v ${{ github.workspace }}:/workspace -w /workspace debian:trixie bash -c '
-              set -e
-              apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-                valac gcc g++ make cmake pkg-config git \
-                libglib2.0-dev libjson-glib-dev libsodium-dev \
-                qt6-base-dev qt6-base-dev-tools qt6-tools-dev tar zstd file && \
-              echo "Verifying VAPI in container..." && \
-              ls -la vala-extra-vapis/libsodium.vapi && \
-              chmod +x build.sh build_gui.sh build-raspberry.sh || true && \
-              bash ./build.sh && bash ./build_gui.sh && bash ./build-raspberry.sh && ls -lh *.tar.gz || echo "No tarball found"
-            '
+          docker run --rm --platform ${{ matrix.platform }} \
+            -v ${{ github.workspace }}:/workspace -w /workspace \
+            --mount type=cache,target=/var/cache/apt \
+            debian:bookworm bash -c '
+            set -e
+            apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+              valac gcc g++ make cmake pkg-config git \
+              libglib2.0-dev libjson-glib-dev libsodium-dev \
+              qt6-base-dev qt6-base-dev-tools qt6-tools-dev tar zstd file
+            
+            # Ensure VAPI is available
+            ls -la vala-extra-vapis/libsodium.vapi || echo "VAPI missing, skipping check"
+            
+            chmod +x build.sh build_gui.sh build-raspberry.sh || true
+            bash ./build.sh && bash ./build_gui.sh && bash ./build-raspberry.sh
+            
+            ls -lh *.tar.gz || echo "No tarball generated"
+          '
 
-      - name: Upload ARMv7 package
+      - name: Upload ARM package
         uses: actions/upload-artifact@v4
         with:
-          name: Dvx3-BackupManager-RaspberryPi-ARMv7
-          path: '*.tar.gz'
-          retention-days: 90
-
-  build-arm64-debian13:
-    name: ARM64 Debian 13
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
-
-      - name: Build in ARM64 container
-        run: |
-          # Ensure libsodium.vapi is present on host (mounted into container)
-          set -e
-          ls -la vala-extra-vapis/libsodium.vapi || true
-          docker run --rm --platform linux/arm64 \
-            -v ${{ github.workspace }}:/workspace -w /workspace debian:trixie bash -c '
-              set -e
-              apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-                valac gcc g++ make cmake pkg-config git \
-                libglib2.0-dev libjson-glib-dev libsodium-dev \
-                qt6-base-dev qt6-base-dev-tools qt6-tools-dev tar zstd file && \
-              echo "Verifying VAPI in container..." && \
-              ls -la vala-extra-vapis/libsodium.vapi && \
-              chmod +x build.sh build_gui.sh build-raspberry.sh || true && \
-              bash ./build.sh && bash ./build_gui.sh && bash ./build-raspberry.sh && ls -lh *.tar.gz || echo "No tarball found"
-            '
-
-      - name: Upload ARM64 package
-        uses: actions/upload-artifact@v4
-        with:
-          name: Dvx3-BackupManager-RaspberryPi-ARM64
+          name: Dvx3-BackupManager-RaspberryPi-${{ matrix.suffix }}
           path: '*.tar.gz'
           retention-days: 90
 
   create-release:
     name: Create GitHub Release
-    needs: [build-linux, build-macos-universal-dmg, build-arm32-debian13, build-arm64-debian13, build-windows-msys2]
+    needs: [build-linux, build-macos-universal, build-windows, build-raspberry-arm]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -344,7 +290,8 @@ jobs:
       - name: Generate checksums
         run: |
           cd artifacts
-          find . -type f \( -name "*.AppImage" -o -name "*.dmg" -o -name "*.tar.gz" -o -name "*.exe" -o -name "*.dll" \) -exec sha256sum {} \; > CHECKSUMS.txt
+          find . -type f \( -name "*.AppImage" -o -name "*.dmg" -o -name "*.zip" -o -name "*.tar.gz" \) \
+            -exec sha256sum {} \; > CHECKSUMS.txt
           echo "Generated checksums:" && cat CHECKSUMS.txt
 
       - name: Create Release
@@ -353,14 +300,11 @@ jobs:
           files: |
             artifacts/**/*.AppImage
             artifacts/**/*.dmg
+            artifacts/**/*.zip
             artifacts/**/*.tar.gz
-            artifacts/**/*.exe
-            artifacts/**/*.dll
-            artifacts/**/*.vapi
-            artifacts/**/*.h
             artifacts/CHECKSUMS.txt
           draft: false
-          prerelease: false
+          prerelease: contains(github.ref, 'rc') || contains(github.ref, 'alpha') || contains(github.ref, 'beta')
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
