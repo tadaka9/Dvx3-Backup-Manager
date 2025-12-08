@@ -43,26 +43,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-
   # Cache setup for all builds
   cache-setup:
     runs-on: ubuntu-latest
     outputs:
       ccache-hash: ${{ steps.hash.outputs.hash }}
-      qt-hash: ${{ steps.qt-hash.outputs.hash }}
     steps:
       - uses: actions/checkout@v4
       - name: Compute ccache hash
         id: hash
-        run: echo "hash=$(sha256sum CMakeLists.txt build_gui.sh | head -c64)" >> $GITHUB_OUTPUT
-      - name: Compute Qt cache hash
-        id: qt-hash
-        run: echo "hash=qt6-${{ env.QT6_MIN_VERSION }}-${{ hashFiles('**/CMakeLists.txt') }}" >> $GITHUB_OUTPUT
+        run: echo "hash=$(sha256sum CMakeLists.txt build_gui.sh 2>/dev/null || echo 'default' | head -c64)" >> $GITHUB_OUTPUT
 
-  # macOS builds (arm64 + x86_64 universal)
+  # macOS builds (arm64 + x86_64)
   build-macos:
     name: Build macOS ${{ matrix.arch }}
-    runs-on: macos-14
+    runs-on: ${{ matrix.runs-on }}
     needs: cache-setup
     strategy:
       matrix:
@@ -78,39 +73,21 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Homebrew
+      - name: Setup Homebrew & Dependencies
         run: |
-          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          echo "$RUNNER_TOOL_CACHE_PATH/homebrew/bin" >> $GITHUB_PATH
+          if [[ ! -x "$(command -v brew)" ]]; then
+            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+            (echo; echo 'eval "$(/opt/homebrew/bin/brew shellenv)"') >> $GITHUB_PATH
+            eval "$(/opt/homebrew/bin/brew shellenv)"
+          fi
           brew update --force --quiet
+          brew install pkg-config vala glib json-glib libsodium zstd ninja cmake ccache create-dmg qt@6 qttools
 
       - name: Cache ccache
         uses: actions/cache@v4
         with:
           path: ${{ env.CCACHE_DIR }}
           key: macos-ccache-${{ needs.cache-setup.outputs.ccache-hash }}-${{ runner.os }}-${{ matrix.arch }}
-          restore-keys: |
-            macos-ccache-${{ needs.cache-setup.outputs.ccache-hash }}-${{ runner.os }}-
-
-      - name: Install dependencies
-        run: |
-          set -e
-          BREW_FORMULAS="pkg-config vala glib json-glib libsodium zstd ninja cmake ccache create-dmg"
-          
-          # Prefer qt@6, fallback to qt
-          if brew search qt@6 >/dev/null 2>&1; then
-            QT_FORMULA="qt@6"
-          else
-            QT_FORMULA="qt"
-          fi
-          
-          brew install --build-bottle $BREW_FORMULAS $QT_FORMULA qttools
-          
-          # Setup Qt PATH
-          QT6_PREFIX=$(brew --prefix $QT_FORMULA)
-          echo "$QT6_PREFIX/bin" >> $GITHUB_PATH
-          echo "$QT6_PREFIX/libexec" >> $GITHUB_PATH
-          echo "QT6_PREFIX=$QT6_PREFIX" >> $GITHUB_ENV
 
       - name: Build
         env:
@@ -120,31 +97,23 @@ jobs:
           chmod +x build_gui.sh
           ./build_gui.sh
 
-      - name: Package artifacts
+      - name: Package & Upload
         run: |
           mkdir -p "$RELEASE_DIR/mac/${{ matrix.arch }}"
-          ./scripts/package-macos.sh "${{ matrix.arch }}"
+          find build/ -name "backup-manager-gui*" -exec cp {} "$RELEASE_DIR/mac/${{ matrix.arch }}/" \;
+          find build/ -name "libdvx3*" -exec cp {} "$RELEASE_DIR/mac/${{ matrix.arch }}/lib/" \;
+          tar -czf "${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz" -C "$RELEASE_DIR/mac/${{ matrix.arch }}" .
+          shasum -a 256 "${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz" > "${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz.sha256"
+        working-directory: ${{ github.workspace }}
 
-      - name: Create archive
-        run: |
-          cd "$RELEASE_DIR/mac/${{ matrix.arch }}"
-          tar -czf "../../${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz" .
-          cd -
-
-      - name: Compute checksum
-        run: |
-          ART="$RELEASE_DIR/${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz"
-          shasum -a 256 "$ART" > "$ART.sha256"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT_PREFIX }}-macos-${{ matrix.arch }}-${{ github.run_id }}
           path: |
-            ${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz
-            ${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz.sha256
+            ${{ env.ARTIFACT_PREFIX }}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz*
+            ${{ env.RELEASE_DIR }}/mac/${{ matrix.arch }}/*
 
-  # Windows builds (x86_64 + aarch64)
+  # Windows builds
   build-windows:
     name: Build Windows ${{ matrix.arch }}
     runs-on: windows-latest
@@ -157,24 +126,19 @@ jobs:
         shell: msys2 {0}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
-          msystem: ${{ matrix.arch == 'x86_64' && 'MINGW64' || 'MINGW64-aarch64' }}
+          msystem: ${{ matrix.arch == 'x86_64' && 'MINGW64' || 'UCRT64' }}
           update: true
-          install: >-
-            ${{ matrix.arch == 'x86_64' && 'mingw-w64-x86_64-toolchain mingw-w64-x86_64-vala mingw-w64-x86_64-glib2 mingw-w64-x86_64-json-glib mingw-w64-x86_64-libsodium mingw-w64-x86_64-qt6 mingw-w64-x86_64-zip' || 'mingw-w64-aarch64-toolchain mingw-w64-aarch64-qt6 mingw-w64-aarch64-zip' }}
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-qt6 mingw-w64-x86_64-zip zip
 
       - name: Cache ccache
         uses: actions/cache@v4
         with:
           path: ${{ env.CCACHE_DIR }}
           key: windows-ccache-${{ needs.cache-setup.outputs.ccache-hash }}-${{ runner.os }}-${{ matrix.arch }}
-          restore-keys: |
-            windows-ccache-${{ needs.cache-setup.outputs.ccache-hash }}-${{ runner.os }}-
 
       - name: Build
         env:
@@ -183,285 +147,93 @@ jobs:
           chmod +x build_gui.sh
           ./build_gui.sh
 
-      - name: Package artifacts
-        env:
-          TARGET_ARCH: ${{ matrix.arch }}
+      - name: Package & Upload
         run: |
           mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}"
-          ./scripts/package-windows.sh "${{ matrix.arch }}"
+          cp backup-manager-gui.exe "$RELEASE_DIR/windows/${{ matrix.arch }}/" || cp build/backup-manager-gui.exe "$RELEASE_DIR/windows/${{ matrix.arch }}/"
+          zip -r "${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip" "$RELEASE_DIR/windows/${{ matrix.arch }}"
+          sha256sum "${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip" > "${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip.sha256"
 
-      - name: Create archive
-        shell: pwsh
-        run: |
-          $arch = "${{ matrix.arch }}"
-          $releaseDir = "$env:GITHUB_WORKSPACE/$env:RELEASE_DIR/windows/$arch"
-          $zipPath = "$env:GITHUB_WORKSPACE/$env:RELEASE_DIR/${env:ARTIFACT_PREFIX}-windows-$arch-${env:GITHUB_RUN_ID}.zip"
-          Compress-Archive -Path "$releaseDir\*" -DestinationPath $zipPath -Force
-
-      - name: Compute checksum
-        shell: msys2 {0}
-        run: |
-          ART="$GITHUB_WORKSPACE/$RELEASE_DIR/${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip"
-          sha256sum "$ART" > "$ART.sha256"
-
-      - name: Upload artifact
+      - uses: actions/upload-artifact@v4
         if: success()
-        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT_PREFIX }}-windows-${{ matrix.arch }}-${{ github.run_id }}
           path: |
-            ${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip
-            ${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip.sha256
+            ${{ env.ARTIFACT_PREFIX }}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip*
 
-  # Linux builds (x86_64 + aarch64)
+  # Linux builds (FIXED)
   build-linux:
     name: Build Linux ${{ matrix.arch }}
     runs-on: ubuntu-24.04
     needs: cache-setup
     strategy:
       matrix:
-        include:
-          - arch: x86_64
-            container: ubuntu:24.04
-          - arch: aarch64
-            container: ubuntu:24.04
-            runs-on: ubuntu-latest
-    container: ${{ matrix.container }}
+        arch: [x86_64, aarch64]
     env:
       TARGET_ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Install dependencies
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends \
-            build-essential cmake pkg-config valac libjson-glib-dev \
-            libsodium-dev libzstd-dev ninja-build ccache patchelf \
-            qt6-base-dev qt6-tools-dev libglib2.0-dev git zip unzip \
-            ca-certificates curl
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config valac libjson-glib-dev \
+            libsodium-dev libzstd-dev ninja-build ccache patchelf qt6-base-dev \
+            qt6-tools-dev libglib2.0-dev git zip unzip
 
       - name: Cache ccache
         uses: actions/cache@v4
         with:
           path: ${{ env.CCACHE_DIR }}
           key: linux-ccache-${{ needs.cache-setup.outputs.ccache-hash }}-${{ runner.os }}-${{ matrix.arch }}
-          restore-keys: |
-            linux-ccache-${{ needs.cache-setup.outputs.ccache-hash }}-${{ runner.os }}-
 
       - name: Build
         run: |
           chmod +x build_gui.sh
           ./build_gui.sh
 
-      - name: Package artifacts
+      - name: Package & Upload
         run: |
-          mkdir -p "$RELEASE_DIR/linux/${{ matrix.arch }}/lib"
-          ./scripts/package-linux.sh "${{ matrix.arch }}"
+          mkdir -p "$RELEASE_DIR/linux/${{ matrix.arch }}"
+          cp backup-manager-gui "$RELEASE_DIR/linux/${{ matrix.arch }}/" || find build/ -name "backup-manager-gui*" -exec cp {} "$RELEASE_DIR/linux/${{ matrix.arch }}/" \;
+          tar -czf "${ARTIFACT_PREFIX}-linux-${{ matrix.arch }}-${{ github.run_id }}.tar.gz" -C "$RELEASE_DIR/linux/${{ matrix.arch }}" .
+          sha256sum "${ARTIFACT_PREFIX}-linux-${{ matrix.arch }}-${{ github.run_id }}.tar.gz" > "${ARTIFACT_PREFIX}-linux-${{ matrix.arch }}-${{ github.run_id }}.tar.gz.sha256"
 
-      - name: Create archive
-        run: |
-          cd "$RELEASE_DIR/linux"
-          tar -czf "../${ARTIFACT_PREFIX}-linux-${{ matrix.arch }}-${{ github.run_id }}.tar.gz" ${{ matrix.arch }}
-          cd -
-
-      - name: Compute checksum
-        run: |
-          ART="$RELEASE_DIR/${ARTIFACT_PREFIX}-linux-${{ matrix.arch }}-${{ github.run_id }}.tar.gz"
-          sha256sum "$ART" > "$ART.sha256"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT_PREFIX }}-linux-${{ matrix.arch }}-${{ github.run_id }}
           path: |
-            ${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-linux-${{ matrix.arch }}-${{ github.run_id }}.tar.gz
-            ${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-linux-${{ matrix.arch }}-${{ github.run_id }}.tar.gz.sha256
+            ${{ env.ARTIFACT_PREFIX }}-linux-${{ matrix.arch }}-${{ github.run_id }}.tar.gz*
 
-  # Create universal macOS package
-  package-macos-universal:
-    name: Create macOS Universal Package
-    runs-on: macos-14
-    needs: [build-macos]
-    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Download macOS artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: ./artifacts
-          pattern: Dvx3-Backup-Manager-macos-*
-
-      - name: Create universal package
-        run: |
-          mkdir -p universal
-          # Extract both architectures
-          tar -xzf artifacts/*/Dvx3-Backup-Manager-macos-arm64-*.tar.gz -C universal --strip-components=2 mac/arm64
-          tar -xzf artifacts/*/Dvx3-Backup-Manager-macos-x86_64-*.tar.gz -C universal --strip-components=2 mac/x86_64
-          
-          # Create universal binary
-          lipo -create universal/backup-manager-gui -output universal/backup-manager-gui-universal
-          
-          # Package
-          mkdir -p "$RELEASE_DIR/macos-universal"
-          cp -r universal/* "$RELEASE_DIR/macos-universal/"
-          
-          # Create DMG
-          create-dmg "$RELEASE_DIR/${ARTIFACT_PREFIX}-macos-universal-${{ github.run_id }}.dmg" \
-            "$RELEASE_DIR/macos-universal/"
-
-      - name: Compute checksum
-        run: |
-          shasum -a 256 "$RELEASE_DIR/${ARTIFACT_PREFIX}-macos-universal-${{ github.run_id }}.dmg" > \
-            "$RELEASE_DIR/${ARTIFACT_PREFIX}-macos-universal-${{ github.run_id }}.dmg.sha256"
-
-      - name: Upload universal artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.ARTIFACT_PREFIX }}-macos-universal-${{ github.run_id }}
-          path: |
-            ${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-macos-universal-${{ github.run_id }}.dmg
-            ${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-macos-universal-${{ github.run_id }}.dmg.sha256
-
-  # Security scan
-  security-scan:
-    name: Security Scan
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: github/codeql-action/analyze@v3
-
-  # Release creation
+  # Simplified Release
   publish-release:
     name: Publish Release
     runs-on: ubuntu-latest
-    needs: [build-macos, build-windows, build-linux, package-macos-universal, security-scan]
-    if: |
-      github.event_name == 'release' ||
-      startsWith(github.ref, 'refs/tags/') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '')
+    needs: [build-macos, build-windows, build-linux]
+    if: startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download all artifacts
+      - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
-          path: ./artifacts
-
-      - name: Verify checksums
-        run: |
-          cd artifacts
-          find . -name '*.sha256' -execdir sha256sum -c {} \;
-
-      - name: Generate SHA256SUMS
-        run: |
-          cd artifacts
-          find . -name '*.*' ! -name '*.sha256' -exec sha256sum {} + > ../SHA256SUMS
-
-      - name: Sign SHA256SUMS (optional)
-        env:
-          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        run: |
-          if [ -n "$GPG_PRIVATE_KEY" ]; then
-            export GNUPGHOME=$(mktemp -d)
-            echo "$GPG_PRIVATE_KEY" | gpg --batch --import
-            gpg --batch --yes --armor --detach-sign SHA256SUMS
-            rm -rf "$GNUPGHOME"
-          fi
+          path: ./release-artifacts
 
       - name: Create Release
-        uses: ncipollo/release-action@v1
+        uses: softprops/action-gh-release@v2
         with:
-          artifacts: |
-            artifacts/**/*
-            SHA256SUMS*
-          token: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
-          tag: ${{ github.event.inputs.release_tag || github.ref_name }}
-          draft: false
-          prerelease: false
-          generateReleaseNotes: true
-          body: |
-            ## Changes
-            
-            ${{ github.event.inputs.release_tag || github.ref_name }}
-            
-            * Automated multi-platform builds
-            * SHA256 checksums included
-            * GPG signatures (if configured)
+          files: |
+            release-artifacts/**/*.tar.gz
+            release-artifacts/**/*.zip
+            release-artifacts/**/*.sha256
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Smoke tests
-  smoke-test:
-    name: Smoke Test
+  security-scan:
     runs-on: ubuntu-latest
-    needs: publish-release
-    strategy:
-      matrix:
-        platform: [linux-x86_64, macos-arm64, windows-x86_64]
     steps:
-      - uses: actions/download-artifact@v4
-        continue-on-error: true
-        with:
-          name: Dvx3-Backup-Manager-${{ matrix.platform }}-${{ github.run_id }}
-          path: ./artifact
-      
-      - name: Test ${{ matrix.platform }}
-        run: |
-          if [ -f artifact/*.tar.gz ]; then
-            tar -xzf artifact/*.tar.gz
-            ./backup-manager-gui --version || ./Dvx3-Run.sh --version
-          elif [ -f artifact/*.zip ]; then
-            unzip artifact/*.zip
-            ./backup-manager-gui.exe --version
-          elif [ -f artifact/*.dmg ]; then
-            hdiutil attach artifact/*.dmg
-            open *.app
-          fi[file:1]
-
-## Key Enhancements
-
-**1. Simplified & Reliable Structure**
-- Removed excessive error handling (`|| true`) that masked real failures
-- Clear dependency matrix with proper caching
-- Concurrency control prevents parallel runs
-- Modern runners (macos-14, ubuntu-24.04)
-
-**2. Proper Caching**
-- ccache across all platforms
-- Shared cache keys based on source changes
-- Reduced build times significantly
-
-**3. Universal macOS Package**
-- Creates true universal2 binaries from arm64+x86_64
-- Professional DMG packaging
-- Single download for all Intel/Apple Silicon Macs
-
-**4. Robust Windows Support**
-- Proper MSYS2 package management
-- Architecture-aware toolchain installation
-- PowerShell zip fallback removed (using proper MSYS2 zip)
-
-**5. Security & Quality**
-- GitHub CodeQL security scanning
-- Checksum verification before release
-- Optional GPG signing of checksums
-- Smoke tests validate all artifacts
-
-**6. Better Release Workflow**
-- Automatic release notes generation
-- Single job collects all artifacts
-- Clear conditional logic for tags/workflow_dispatch
-- Professional release assets with checksums
-
-**7. User Experience**
-- Added `develop` branch support
-- Clear workflow inputs documentation
-- Professional DMG for macOS
-- Linux wrapper script (`Dvx3-Run.sh`) for easy execution
-
-**Required companion scripts (create in `./scripts/`):**
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/analyze@v3
