@@ -14,7 +14,6 @@ env:
   CCACHE_DIR: ${{ github.workspace }}/.ccache
 
 jobs:
-  # Test trigger - runs FIRST
   test-trigger:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/clean-version'
@@ -28,28 +27,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Compute cache key # ← FIXED
+      - name: Compute cache key
         id: hash
         run: |
-          # Create stable hash from source files
-          HASH_FILES="CMakeLists.txt build_gui.sh"
           HASH_VALUE=""
-          
-          for file in $HASH_FILES; do
-            if [ -f "$file" ]; then
-              HASH_VALUE="$HASH_VALUE$(sha256sum "$file" | cut -d' ' -f1)"
-            fi
+          for file in CMakeLists.txt build_gui.sh; do
+            [ -f "$file" ] && HASH_VALUE="$HASH_VALUE$(sha256sum "$file" | cut -d' ' -f1)"
           done
-          
-          # Fallback if no files found
-          if [ -z "$HASH_VALUE" ]; then
-            HASH_VALUE="default"
-          fi
-          
-          # Truncate to 64 chars
+          [ -z "$HASH_VALUE" ] && HASH_VALUE="default"
           HASH_VALUE=$(echo -n "$HASH_VALUE" | head -c64)
           echo "hash=$HASH_VALUE" >> $GITHUB_OUTPUT
-          echo "Computed hash: $HASH_VALUE"
 
   build-linux:
     name: Build Linux ${{ matrix.arch }}
@@ -63,7 +50,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install Linux dependencies
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq build-essential cmake pkg-config valac \
@@ -76,43 +63,24 @@ jobs:
           path: ${{ env.CCACHE_DIR }}
           key: linux-ccache-${{ needs.cache-setup.outputs.ccache-hash }}-${{ matrix.arch }}
 
-      - name: Build
+      - name: Build & Package Linux
         run: |
-          echo "Building for ${{ matrix.arch }}"
-          chmod +x build_gui.sh || echo "No build_gui.sh found"
-          
+          chmod +x build_gui.sh || true
           if [ -f build_gui.sh ]; then
-            ./build_gui.sh || echo "Build script failed, checking for artifacts anyway"
-          else
-            echo "No build_gui.sh - looking for pre-built artifacts"
+            TARGET_ARCH=${{ matrix.arch }} ./build_gui.sh || echo "Build failed, packaging anyway"
           fi
-
-      - name: Package artifacts
-        run: |
+          
           mkdir -p "$RELEASE_DIR/linux/${{ matrix.arch }}"
-          
-          # Find binary anywhere in repo
-          if find . -name "*backup-manager-gui*" -type f | head -1 | grep -q .; then
-            find . -name "*backup-manager-gui*" -type f -exec cp {} "$RELEASE_DIR/linux/${{ matrix.arch }}/" \;
-            echo "✅ Found backup-manager-gui binary"
-          else
-            echo "⚠ No backup-manager-gui found"
-          fi
-          
-          # Copy any libraries
+          find . -name "*backup-manager-gui*" -type f -exec cp {} "$RELEASE_DIR/linux/${{ matrix.arch }}/" \; || true
           mkdir -p "$RELEASE_DIR/linux/${{ matrix.arch }}/lib"
-          find . -name "*dvx3*" -o -name "*libsodium*" -o -name "*libb2*" | head -5 | \
-            xargs -I {} cp {} "$RELEASE_DIR/linux/${{ matrix.arch }}/lib/" 2>/dev/null || true
+          find . -name "*dvx3*" -o -name "*libsodium*" -o -name "*libb2*" | head -5 | xargs -I {} cp {} "$RELEASE_DIR/linux/${{ matrix.arch }}/lib/" 2>/dev/null || true
           
-          # Create archive
-          cd "$RELEASE_DIR/linux/${{ matrix.arch }}" || exit 1
+          cd "$RELEASE_DIR/linux/${{ matrix.arch }}"
           tar -czf "../../../${ARTIFACT_PREFIX}-linux-${{ matrix.arch }}-${{ github.run_id }}.tar.gz" .
           cd -
-          
-          echo "✅ Created Linux ${{ matrix.arch }} artifact"
+          echo "✅ Linux ${{ matrix.arch }} artifact created"
 
-      - name: Upload Linux artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: ${{ env.ARTIFACT_PREFIX }}-linux-${{ matrix.arch }}
@@ -120,16 +88,39 @@ jobs:
             ${{ env.ARTIFACT_PREFIX }}-linux-${{ matrix.arch }}*.tar.gz
 
   build-macos:
-    name: Build macOS
+    name: Build macOS (FIXED Qt)
     runs-on: macos-latest
     needs: cache-setup
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install Homebrew & Qt6 (FIXED)
         run: |
-          brew update || true
-          brew install pkg-config vala glib json-glib libsodium zstd ninja cmake ccache qt@6 || true
+          # Install Homebrew if missing
+          if ! command -v brew >/dev/null 2>&1; then
+            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+            echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> $GITHUB_PATH
+            eval "$(/opt/homebrew/bin/brew shellenv)"
+          fi
+          
+          brew update --force --quiet
+          
+          # Install Qt6 + tools FIRST
+          brew install qt@6 qt6-tools pkg-config vala glib json-glib libsodium zstd ninja cmake ccache
+          
+          # Find Qt6 paths (Apple Silicon first, Intel fallback)
+          QT6_PATH=$(brew --prefix qt@6)
+          echo "QT6_PATH: $QT6_PATH"
+          echo "$QT6_PATH/bin" >> $GITHUB_PATH
+          echo "$QT6_PATH/libexec" >> $GITHUB_PATH
+          
+          # Verify moc is found
+          echo "=== Qt tools ==="
+          which moc || echo "moc not found"
+          moc --version || echo "moc version check failed"
+          ls -la $QT6_PATH/bin/moc* || echo "No moc in bin"
+          
+          echo "PATH includes: $(echo $PATH | tr ':' '\n' | head -5)"
 
       - name: Cache ccache
         uses: actions/cache@v4
@@ -137,28 +128,55 @@ jobs:
           path: ${{ env.CCACHE_DIR }}
           key: macos-ccache-${{ needs.cache-setup.outputs.ccache-hash }}
 
-      - name: Build & Package
+      - name: Build macOS
+        env:
+          CC: clang
+          CXX: clang++
+          QT6_PREFIX: ${{ steps.setup.outputs.qt6_prefix || '/opt/homebrew/opt/qt@6' }}
         run: |
+          echo "QT6_PREFIX: $QT6_PREFIX"
+          echo "PATH: $PATH"
+          
           chmod +x build_gui.sh || true
           if [ -f build_gui.sh ]; then
-            ./build_gui.sh || echo "Build failed but continuing"
+            ./build_gui.sh
+          else
+            echo "No build_gui.sh found"
+          fi
+
+      - name: Package macOS artifacts
+        run: |
+          mkdir -p "$RELEASE_DIR/mac"
+          
+          # Find binary
+          if find . -name "*backup-manager-gui*" -type f 2>/dev/null | head -1; then
+            find . -name "*backup-manager-gui*" -type f -exec cp {} "$RELEASE_DIR/mac/" \;
+            echo "✅ Found macOS binary"
+          else
+            echo "⚠ No backup-manager-gui binary found"
           fi
           
-          mkdir -p "$RELEASE_DIR/mac"
-          find . -name "*backup-manager-gui*" -type f -exec cp {} "$RELEASE_DIR/mac/" \; || true
+          # Copy libraries
+          mkdir -p "$RELEASE_DIR/mac/lib"
+          find . -name "*dvx3*" -o -name "*libsodium*" -o -name "*libb2*" 2>/dev/null | head -5 | \
+            xargs -I {} cp {} "$RELEASE_DIR/mac/lib/" 2>/dev/null || true
           
+          # Create archive
           cd "$RELEASE_DIR/mac"
           tar -czf "../../${ARTIFACT_PREFIX}-macos-${{ github.run_id }}.tar.gz" .
           cd -
+          echo "✅ macOS artifact: ${ARTIFACT_PREFIX}-macos-${{ github.run_id }}.tar.gz"
 
-      - name: Upload macOS artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: ${{ env.ARTIFACT_PREFIX }}-macos
+          path: |
+            ${{ env.ARTIFACT_PREFIX }}-macos*.tar.gz
+            ${{ env.RELEASE_DIR }}/mac/**/*
 
   publish-release:
-    name: Create Release (Tags Only)
+    name: Create Release
     runs-on: ubuntu-latest
     needs: [build-linux, build-macos]
     if: startsWith(github.ref, 'refs/tags/')
