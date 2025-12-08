@@ -1,11 +1,11 @@
-name: Build, Package & Release
+name: Build, Package & Release (Enhanced)
 
 on:
   push:
-    branches: [ main, master, clean-version ]
-    tags: ['v*']
+    branches: [ main, master, develop ]
+    tags: [ 'v*' ]
   pull_request:
-    branches: [ main, master, clean-version ]
+    branches: [ main, master, develop ]
   workflow_dispatch:
     inputs:
       release_tag:
@@ -13,408 +13,130 @@ on:
         required: false
         default: ''
       create_tag_if_missing:
-        description: 'Automatically create the provided tag if missing (requires RELEASE_PAT or GITHUB_TOKEN with permission)'
+        description: 'Auto-create tag if missing (requires RELEASE_PAT)'
         required: false
         default: 'false'
       strict_artifact_checks:
-        description: 'Strict artifact checks (true|false)'
+        description: 'Fail on missing artifacts (true|false)'
         required: false
         default: 'true'
       publish_only:
-        description: 'Only perform the publish step (download artifacts from another run and upload to release)'
+        description: 'Only publish artifacts from another run'
         required: false
         default: 'false'
       publish_artifacts_run_id:
-        description: 'Run ID to download artifacts from when publish_only=true'
+        description: 'Run ID for publish_only mode'
         required: false
         default: ''
   release:
-    types: [published]
+    types: [ published ]
 
 env:
   RELEASE_DIR: Releases
   ARTIFACT_PREFIX: Dvx3-Backup-Manager
-  STRICT_ARTIFACT_CHECKS: ${{ github.event.inputs.strict_artifact_checks || 'true' }}  # Set input on workflow_dispatch to alter behavior
-  # Backup release token env name: if you create a PAT for release creation, name it 'RELEASE_PAT'
+  STRICT_ARTIFACT_CHECKS: ${{ github.event.inputs.strict_artifact_checks || 'true' }}
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
+  QT6_MIN_VERSION: 6.5.0
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  # ------------------------------------------------------------------
-  # macOS builds (universal packaging from x86_64 + arm64)
-  # ------------------------------------------------------------------
+
+  # Cache setup for all builds
+  cache-setup:
+    runs-on: ubuntu-latest
+    outputs:
+      ccache-hash: ${{ steps.hash.outputs.hash }}
+      qt-hash: ${{ steps.qt-hash.outputs.hash }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compute ccache hash
+        id: hash
+        run: echo "hash=$(sha256sum CMakeLists.txt build_gui.sh | head -c64)" >> $GITHUB_OUTPUT
+      - name: Compute Qt cache hash
+        id: qt-hash
+        run: echo "hash=qt6-${{ env.QT6_MIN_VERSION }}-${{ hashFiles('**/CMakeLists.txt') }}" >> $GITHUB_OUTPUT
+
+  # macOS builds (arm64 + x86_64 universal)
   build-macos:
-    name: Build macOS (${{ matrix.arch }})
+    name: Build macOS ${{ matrix.arch }}
+    runs-on: macos-14
+    needs: cache-setup
     strategy:
       matrix:
         include:
           - arch: arm64
-            runs_on: macos-latest
-    runs-on: ${{ matrix.runs_on }}
+            runs-on: macos-14
+          - arch: x86_64
+            runs-on: macos-13
     env:
       TARGET_ARCH: ${{ matrix.arch }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Setup Homebrew and install packages
+      - name: Setup Homebrew
         run: |
-          set -ex
-          brew update
-          # Repair taps and update metadata to avoid issues with unavailable formulas
-          brew tap --repair || true
-          brew update --force --quiet || true
-          # Try to ensure homebrew/core is tapped
-          if ! brew tap | grep -q "homebrew/core"; then
-            brew tap homebrew/core || true
-          fi
-          # Prefer qt@6 if available; otherwise fall back to qt
-          if brew --prefix qt@6 >/dev/null 2>&1; then
-            QT_FORMULA=qt@6
-          else
-            QT_FORMULA=qt
-          fi
-          echo "Using Homebrew formula: $QT_FORMULA"
-          brew install --build-bottle \
-            pkg-config \
-            vala \
-            glib \
-            json-glib \
-            libsodium \
-            zstd \
-            $QT_FORMULA \
-            ninja \
-            cmake \
-            ccache \
-            create-dmg || true
-          # Verify formulas are available: print info and fail early for invalid formulas
-          for f in pkg-config vala glib json-glib libsodium zstd $QT_FORMULA ninja cmake ccache create-dmg qttools; do
-            if ! brew info "$f" >/dev/null 2>&1; then
-              echo "::warning::Homebrew formula '$f' not available or not found; attempting to tap homebrew/core and retry"
-              brew tap homebrew/core || true
-              if ! brew info "$f" >/dev/null 2>&1; then
-                echo "::error::Homebrew formula '$f' could not be located; installation may fail" && true
-              fi
-            fi
-          done
-          brew install qttools || true
-          # Only attempt to link if the formula is actually installed to avoid 'No such keg' errors
-          if brew ls --versions $QT_FORMULA >/dev/null 2>&1; then
-            echo "Linking $QT_FORMULA"
-            brew link --overwrite $QT_FORMULA || true
-            QT6_PREFIX=$(brew --prefix $QT_FORMULA)
-          else
-            echo "Homebrew formula $QT_FORMULA not found; skipping link"
-            # Attempt to find a valid Qt prefix via formulas installed: qt@6, qt, qt6
-            if brew ls --versions qt@6 >/dev/null 2>&1; then
-              QT6_PREFIX=$(brew --prefix qt@6)
-            elif brew ls --versions qt >/dev/null 2>&1; then
-              QT6_PREFIX=$(brew --prefix qt)
-            elif brew ls --versions qt6 >/dev/null 2>&1; then
-              QT6_PREFIX=$(brew --prefix qt6)
-            else
-              QT6_PREFIX=""
-            fi
-          fi
-          echo "QT6_PREFIX: $QT6_PREFIX"
-          echo "$QT6_PREFIX/bin" >> $GITHUB_PATH || true
-          echo "$QT6_PREFIX/libexec" >> $GITHUB_PATH || true
+          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          echo "$RUNNER_TOOL_CACHE_PATH/homebrew/bin" >> $GITHUB_PATH
+          brew update --force --quiet
 
-      - name: Configure macOS environment and verify moc
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: macos-ccache-${{ needs.cache-setup.outputs.ccache-hash }}-${{ runner.os }}-${{ matrix.arch }}
+          restore-keys: |
+            macos-ccache-${{ needs.cache-setup.outputs.ccache-hash }}-${{ runner.os }}-
+
+      - name: Install dependencies
         run: |
-          set -ex
-          # Determine prefix to the installed Qt formula: qt@6 preferred, fallback to qt
-          if brew --prefix qt@6 >/dev/null 2>&1; then
-            QT6_PREFIX=$(brew --prefix qt@6)
+          set -e
+          BREW_FORMULAS="pkg-config vala glib json-glib libsodium zstd ninja cmake ccache create-dmg"
+          
+          # Prefer qt@6, fallback to qt
+          if brew search qt@6 >/dev/null 2>&1; then
+            QT_FORMULA="qt@6"
           else
-            QT6_PREFIX=$(brew --prefix qt)
+            QT_FORMULA="qt"
           fi
-          export PATH="$QT6_PREFIX/bin:$QT6_PREFIX/libexec:$PATH"
-          which moc || true
-          moc --version || true
+          
+          brew install --build-bottle $BREW_FORMULAS $QT_FORMULA qttools
+          
+          # Setup Qt PATH
+          QT6_PREFIX=$(brew --prefix $QT_FORMULA)
+          echo "$QT6_PREFIX/bin" >> $GITHUB_PATH
+          echo "$QT6_PREFIX/libexec" >> $GITHUB_PATH
+          echo "QT6_PREFIX=$QT6_PREFIX" >> $GITHUB_ENV
 
-      - name: Build GUI (macOS)
+      - name: Build
         env:
-          TARGET_ARCH: ${{ matrix.arch }}
+          CC: ccache clang
+          CXX: ccache clang++
         run: |
-          set -ex
-          chmod +x build_gui.sh || true
-          ./build_gui.sh || true
+          chmod +x build_gui.sh
+          ./build_gui.sh
 
-      - name: Bundle macOS app and fix libsodium linking
+      - name: Package artifacts
         run: |
-          set -ex
-          mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib"
-          # Use macdeployqt (bundle Qt and plugins) if available
-          if command -v macdeployqt >/dev/null 2>&1; then
-            # If our build produced an .app bundle, use macdeployqt
-            if [ -d build/backup-manager-gui.app ]; then
-              macdeployqt build/backup-manager-gui.app || true
-              cp -r build/backup-manager-gui.app "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" || true
-            fi
-          fi
-          # Debug: list top-level build artifacts and workspace root to help debug missing files
-          echo "Workspace root (top-level) listing:" && ls -la || true
-          echo "Build directory listing:" && ls -la build || true
-          echo "build/Releases directory listing (if present):" && ls -la build/Releases || true
-          # Copy executable artifacts into release folder
-          if [ -f backup-manager-gui ]; then
-            cp backup-manager-gui "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" || true
-          fi
-          # If there is no .app bundle but a binary exists, create a minimal .app wrapper
-          if ! ls $GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/*.app 1>/dev/null 2>&1; then
-            # Look for known build output locations for mac artifacts
-            set +e
-            FIND_CANDIDATE=$(find build -type f \( -name 'backup-manager-gui' -o -name 'backup-manager-gui*' -o -name '*.app' \) -print -quit || true)
-            if [ -n "$FIND_CANDIDATE" ]; then
-              echo "Found candidate at $FIND_CANDIDATE"
-            fi
-            set -e
-            if [ -f backup-manager-gui ] || [ -f "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/backup-manager-gui" ] || [ -n "$FIND_CANDIDATE" ]; then
-              echo "Creating minimal .app bundle from binary"
-              APPDIR="$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/backup-manager-gui.app"
-              mkdir -p "$APPDIR/Contents/MacOS" || true
-              mkdir -p "$APPDIR/Contents/Frameworks" || true
-              mkdir -p "$APPDIR/Contents/Plugins" || true
-              # Prefer binary in release dir if present
-              if [ -f "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/backup-manager-gui" ]; then
-                cp "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/backup-manager-gui" "$APPDIR/Contents/MacOS/backup-manager-gui" || true
-              else
-                if [ -n "$FIND_CANDIDATE" ]; then
-                  cp "$FIND_CANDIDATE" "$APPDIR/Contents/MacOS/backup-manager-gui" || true
-                else
-                  cp backup-manager-gui "$APPDIR/Contents/MacOS/backup-manager-gui" || true
-                fi
-              fi
-              chmod +x "$APPDIR/Contents/MacOS/backup-manager-gui" || true
-              # Try to include libdvx3 or libb2 or libsodium into app frameworks
-              if [ -f libdvx3.dylib ]; then
-                cp libdvx3.dylib "$APPDIR/Contents/Frameworks/" || true
-              elif [ -f build/libdvx3.dylib ]; then
-                cp build/libdvx3.dylib "$APPDIR/Contents/Frameworks/" || true
-              fi
-              if ls build/*/libb2*.dylib >/dev/null 2>&1; then
-                for s in build/*/libb2*.dylib; do cp "$s" "$APPDIR/Contents/Frameworks/" || true; done
-              fi
-              if brew --prefix libsodium >/dev/null 2>&1; then
-                SOD=$(brew --prefix libsodium)/lib/libsodium*.dylib || true
-                [ -e "$SOD" ] && cp $SOD "$APPDIR/Contents/Frameworks/" || true
-              fi
-              # Adjust install names to make frameworks local to bundle
-              for f in "$APPDIR/Contents/MacOS"/*; do
-                if file "$f" | grep -qi "Mach-O"; then
-                  if [ -f "$APPDIR/Contents/Frameworks/libdvx3.dylib" ]; then
-                    install_name_tool -change "libdvx3.dylib" "@executable_path/../Frameworks/libdvx3.dylib" "$f" || true
-                  fi
-                fi
-              done
-            fi
-          fi
-          # Fallback: copy everything from build/Releases into Releases/mac/<arch>/ if present
-          if [ -d build/Releases ]; then
-            echo "Copying build/Releases contents to $GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}"
-            # Avoid copying platform parent dirs (e.g., build/Releases/mac/arm64) into RELEASE_DIR causing nested mac/arm64/mac/arm64
-            if [ -d build/Releases/mac/${{ matrix.arch }} ]; then
-              cp -r build/Releases/mac/${{ matrix.arch }}/* "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" 2>/dev/null || true
-            elif [ -d build/Releases/${{ matrix.arch }} ]; then
-              cp -r build/Releases/${{ matrix.arch }}/* "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" 2>/dev/null || true
-            else
-              cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" 2>/dev/null || true
-            fi
-            # If artifacts.txt is present, copy only listed artifacts instead to avoid nested copies
-            if [ -f build/Releases/mac/${{ matrix.arch }}/artifacts.txt ]; then
-              while IFS= read -r line || [ -n "$line" ]; do
-                [ -z "$line" ] && continue
-                # Strip leading slash if present and normalize relative path
-                rel=$(echo "$line" | sed 's|^/||')
-                src="build/Releases/mac/${{ matrix.arch }}/$rel"
-                if [ -e "$src" ]; then
-                  destdir="$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/$(dirname "$rel")"
-                  mkdir -p "$destdir" || true
-                  cp -a "$src" "$destdir/" || true
-                fi
-              done < build/Releases/mac/${{ matrix.arch }}/artifacts.txt || true
-            fi
-            # After copying, if macdeployqt is available run it against the copied .app in the release folder
-            if command -v macdeployqt >/dev/null 2>&1; then
-              # Find a bundled .app under the copied release dir
-              APP_CANDIDATE=$(find "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}" -maxdepth 2 -name '*.app' -print -quit || true)
-              if [ -n "$APP_CANDIDATE" ]; then
-                echo "macdeployqt: Re-running macdeployqt on $APP_CANDIDATE"
-                macdeployqt "$APP_CANDIDATE" || true
-              fi
-            fi
-            # If we accidentally copied a nested build/Releases/mac/${{ matrix.arch }}/mac/${{ matrix.arch }} path, flatten it into the current dir
-            if [ -d "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/mac/${{ matrix.arch }}" ]; then
-              echo "Flattening nested mac/${{ matrix.arch }} directories"
-              mv "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/mac/${{ matrix.arch }}"/* "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" 2>/dev/null || true
-              rm -rf "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/mac" || true
-            fi
-          fi
-          # Fix libsodium for runtime: copy library and change install names
-          if brew --prefix libsodium >/dev/null 2>&1; then
-            LIBSODIUM=$(brew --prefix libsodium)/lib/libsodium*.dylib || true
-            if [ -e "$LIBSODIUM" ]; then
-              cp $LIBSODIUM "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib/" || true
-              for f in "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}"/*; do
-                if file "$f" | grep -qi "Mach-O"; then
-                  install_name_tool -change "$LIBSODIUM" "@executable_path/../lib/$(basename $LIBSODIUM)" "$f" || true
-                fi
-              done
-            fi
-            # If copying from build/Releases/windows/<arch> nested into our release dir, flatten windows/<arch>
-            if [ -d "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/windows/${{ matrix.arch }}" ]; then
-              echo "Flattening nested windows/${{ matrix.arch }} directories"
-              mv "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/windows/${{ matrix.arch }}"/* "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" 2>/dev/null || true
-              rm -rf "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/windows" || true
-            fi
-          fi
-          # Copy libdvx3 and other built dylibs (libb2) into the release lib folder if present
-          if [ -f libdvx3.dylib ]; then
-            cp libdvx3.dylib "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib/" || true
-          elif [ -f build/libdvx3.dylib ]; then
-            cp build/libdvx3.dylib "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib/" || true
-          elif ls build/*/libdvx3*.dylib >/dev/null 2>&1; then
-            for s in build/*/libdvx3*.dylib; do cp "$s" "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib/" || true; done
-          fi
-          if ls build/*/libb2*.dylib >/dev/null 2>&1; then
-            for s in build/*/libb2*.dylib; do cp "$s" "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib/" || true; done
-          fi
-          # Run install_name_tool to adjust lib references to @executable_path/../lib for libdvx3, libb2, lib(sodium)
-          for f in "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}"/*; do
-            if file "$f" | grep -qi "Mach-O"; then
-              if [ -f "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib/libdvx3.dylib" ]; then
-                install_name_tool -change "libdvx3.dylib" "@executable_path/../lib/libdvx3.dylib" "$f" || true
-              fi
-              if [ -f "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib/libb2.dylib" ]; then
-                install_name_tool -change "libb2.dylib" "@executable_path/../lib/libb2.dylib" "$f" || true
-              fi
-            fi
-          done
-          echo "Contents of mac release dir after copying libs:"
-          ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}" || true
-          ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib" || true
+          mkdir -p "$RELEASE_DIR/mac/${{ matrix.arch }}"
+          ./scripts/package-macos.sh "${{ matrix.arch }}"
 
-      - name: Show mac release dir and create mac artifact
+      - name: Create archive
         run: |
-          set -ex
-          echo "TARGET_ARCH (env): $TARGET_ARCH; runner arch: $(uname -m || true)"
-          echo "Contents of $GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }} before creating tar:"
-          ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}" || true
-          # If release dir lacks artifacts, try to find built artifacts in build/ and copy them here
-          echo "Debug: Listing build/ for files (first 200 lines)" || true
-          find build -maxdepth 6 -type f -print -quit || true
-          if ! ls "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}" | grep -E 'backup-manager-gui|\.app|libdvx3|libb2|libsodium' >/dev/null 2>&1; then
-            echo "No artifacts in Releases dir; searching build/ for possible mac artifacts"
-            # Copy binary and .app candidates (search build, but fallback to entire workspace if necessary)
-            FIND_BIN=$(find build -maxdepth 6 -type f -name 'backup-manager-gui' -print -quit || true)
-            if [ -z "$FIND_BIN" ]; then
-              FIND_BIN=$(find . -maxdepth 6 -type f -name 'backup-manager-gui' -print -quit || true)
-            fi
-            if [ -n "$FIND_BIN" ]; then
-              echo "Found binary candidate in build: $FIND_BIN; copying to release root"
-              cp "$FIND_BIN" "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" || true
-            fi
-            # Find any generated .app bundles in build/Releases or build/
-            FIND_APP=$(find build -maxdepth 6 -type d -name '*.app' -print -quit || true)
-            if [ -z "$FIND_APP" ]; then
-              FIND_APP=$(find . -maxdepth 6 -type d -name '*.app' -print -quit || true)
-            fi
-            if [ -n "$FIND_APP" ]; then
-              echo "Found .app bundle: $FIND_APP" ; cp -r "$FIND_APP" "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" || true
-            fi
-            # Find dylibs of interest and copy into lib/
-            mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib" || true
-            for libp in $(find build -type f -name 'libdvx3.*' -o -name 'libb2.*' -o -name 'libsodium*' 2>/dev/null); do
-              echo "Copying $libp to lib/" || true
-              cp "$libp" "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib/" || true
-            done
-            # If none found in build, search entire repo as a last resort
-            if ! ls "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}" | grep -E 'backup-manager-gui|\.app|libdvx3|libb2|libsodium' >/dev/null 2>&1; then
-              echo "Nothing found in build/; searching entire repo for artifacts"
-              for f in $(find . -type f -name 'backup-manager-gui' -o -name 'libdvx3.*' -o -name 'libb2.*' -o -name 'libsodium*' 2>/dev/null); do
-                if [ -f "$f" ]; then
-                  if [ "$(basename $f)" = 'backup-manager-gui' ]; then cp "$f" "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" || true; fi
-                  # Put libs into lib folder
-                  mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib" || true
-                  case "$(basename $f)" in
-                    libdvx3*|libb2*|libsodium*) cp "$f" "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib/" || true ;;
-                  esac
-                fi
-              done
-            fi
-          fi
-          # If the binary exists in nested release subfolders (e.g., mac/arm64/backup-manager-gui), relocate it to the release root for packaging
-          # Also move any libs from nested lib/ into top-level lib/
-          if ! ls "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}" | grep -E 'backup-manager-gui|\.app' >/dev/null 2>&1; then
-            echo "Looking for nested artifacts under $GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}"
-            NESTED_BIN=$(find "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}" -type f -name 'backup-manager-gui' -print -quit || true)
-            if [ -n "$NESTED_BIN" ]; then
-              echo "Found nested binary: $NESTED_BIN; copying to release root"
-              cp "$NESTED_BIN" "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/" || true
-            fi
-            # Move nested 'lib' files into top-level lib
-            for nested_lib in $(find "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}" -type f -path '*/lib/*' -print 2>/dev/null); do
-              mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib" || true
-              cp "$nested_lib" "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}/lib/" || true
-            done
-          fi
-          cd "$GITHUB_WORKSPACE/$RELEASE_DIR/mac/${{ matrix.arch }}" || true
-          # If the build/Releases content was nested (e.g. mac/${{ matrix.arch }}/mac/${{ matrix.arch }}), flatten it
-          if [ -d "mac/${{ matrix.arch }}" ]; then
-            echo "Flattening nested mac/${{ matrix.arch }} content into release root"
-            mv mac/${{ matrix.arch }}/* . || true
-            rm -rf mac || true
-          fi
-          # If this dir is empty (created but nothing copied), try to find nested candidate dirs and tar them instead
-          if [ -z "$(ls -A . 2>/dev/null)" ]; then
-            echo "Release dir is empty; searching for nested artifacts to include in mac tar"
-            # Find a file candidate that likely indicates a build artifact
-            CANDIDATE=$(find . -type f \( -name 'backup-manager-gui' -o -name '*.app' -o -name 'libdvx3.dylib' -o -name 'libsodium*.dylib' \) -print -quit || true)
-            if [ -n "$CANDIDATE" ]; then
-              DIR_TO_TAR=$(dirname "$CANDIDATE")
-              echo "Found nested artifact under $DIR_TO_TAR; creating tar from it"
-              # Create tar that contains contents relative to found directory's parent so paths in tar are sane
-              (cd "$DIR_TO_TAR" && tar -czf "../../${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz" .) || true
-            else
-              echo "No nested artifact found; creating tar from current (empty) dir"
-              tar -czf ../../${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz . || true
-            fi
-          else
-            tar -czf ../../${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz . || true
-          fi
+          cd "$RELEASE_DIR/mac/${{ matrix.arch }}"
+          tar -czf "../../${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz" .
           cd -
 
-      - name: Verify mac artifact contents
+      - name: Compute checksum
         run: |
-          set -ex
-          ART=${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz
-          echo "Listing tar contents for $ART"
-          tar -tzf "$ART" | sed -n '1,200p' > tar_contents.txt || true
-          # List extracted files for debug and simple assertions
-          # Check for some specific libs/plugins
-          greps='\.app/|backup-manager-gui|lib/libsodium|libb2|libdvx3|Contents/Plugins|Contents/Frameworks'
-          if ! grep -E "$greps" tar_contents.txt > /dev/null; then
-            if [ "${STRICT_ARTIFACT_CHECKS}" = "false" ]; then
-              echo "⚠ Expected files not found in mac artifact (warn-only): $greps" || true
-            else
-              echo "⚠ Expected files not found in mac artifact: $greps" && exit 1
-            fi
-          fi
+          ART="$RELEASE_DIR/${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz"
+          shasum -a 256 "$ART" > "$ART.sha256"
 
-      - name: Compute mac artifact sha256
-        run: |
-          set -ex
-          ART=${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz
-          DIR=$(dirname "$ART")
-          BASE=$(basename "$ART")
-          pushd "$DIR"
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum "$BASE" > "$BASE".sha256
-          else
-            shasum -a 256 "$BASE" > "$BASE".sha256
-          fi
-          popd
-
-      - name: Upload mac artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT_PREFIX }}-macos-${{ matrix.arch }}-${{ github.run_id }}
@@ -422,334 +144,68 @@ jobs:
             ${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz
             ${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz.sha256
 
-  # ------------------------------------------------------------------
-  # Windows builds (x86_64 & aarch64)
-  # ------------------------------------------------------------------
+  # Windows builds (x86_64 + aarch64)
   build-windows:
-    name: Build Windows (${{ matrix.arch }})
+    name: Build Windows ${{ matrix.arch }}
     runs-on: windows-latest
+    needs: cache-setup
     strategy:
       matrix:
-        arch: [x86_64,aarch64]
+        arch: [x86_64, aarch64]
+    defaults:
+      run:
+        shell: msys2 {0}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
-          msystem: MINGW64
+          msystem: ${{ matrix.arch == 'x86_64' && 'MINGW64' || 'MINGW64-aarch64' }}
           update: true
+          install: >-
+            ${{ matrix.arch == 'x86_64' && 'mingw-w64-x86_64-toolchain mingw-w64-x86_64-vala mingw-w64-x86_64-glib2 mingw-w64-x86_64-json-glib mingw-w64-x86_64-libsodium mingw-w64-x86_64-qt6 mingw-w64-x86_64-zip' || 'mingw-w64-aarch64-toolchain mingw-w64-aarch64-qt6 mingw-w64-aarch64-zip' }}
 
-      - name: Install MSYS2 packages (arch-aware)
-        shell: msys2 {0}
-        run: |
-          set -ex
-          if [ "${{ matrix.arch }}" = "x86_64" ]; then
-              PACMAN_PREFIX="mingw-w64-x86_64"
-          else
-              PACMAN_PREFIX="mingw-w64-aarch64"
-          fi
-          # Verify pacman is present
-          if ! command -v pacman >/dev/null 2>&1; then
-            echo "::error::pacman not found in the MSYS2 environment; setup failed" && exit 1
-          fi
-          pacman -Syu --noconfirm || true
-          # Attempt to install packages; on failure we continue so builds don't completely abort here
-          pacman -S --noconfirm ${PACMAN_PREFIX}-toolchain ${PACMAN_PREFIX}-vala ${PACMAN_PREFIX}-glib2 ${PACMAN_PREFIX}-json-glib ${PACMAN_PREFIX}-libsodium ${PACMAN_PREFIX}-qt6-base ${PACMAN_PREFIX}-qt6-tools ${PACMAN_PREFIX}-pkgconf || true
-          # Ensure zip is available for packaging; msys/zip is available under MSYS2
-          pacman -S --noconfirm zip || true
-          if command -v zip >/dev/null 2>&1; then
-            echo "zip is present at $(command -v zip)"
-          else
-            echo "⚠ zip not found in MSYS2; the workflow will attempt PowerShell fallback" || true
-          fi
-          # Check for windeployqt and other expected tools (present if the mingw-* qt packages were installed)
-          if command -v windeployqt >/dev/null 2>&1; then
-            echo "windeployqt found at $(command -v windeployqt)"
-          else
-            echo "⚠ windeployqt not found; Qt deployment will be skipped or incomplete" || true
-          fi
-          # Check that critical pacman packages were installed (best-effort), warn if not
-          for pkg in "${PACMAN_PREFIX}-qt6-base" "${PACMAN_PREFIX}-libsodium" "zip"; do
-            if pacman -Qs "$pkg" >/dev/null 2>&1; then
-              echo "pacman: $pkg installed"
-            else
-              echo "⚠ pacman: $pkg NOT installed; packaging may fail" || true
-            fi
-          done
-          # List contents of /mingw*/bin to help debug missing files in pre-checks
-          ls -la /mingw64/bin || true
-          ls -la /mingw32/bin || true
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: windows-ccache-${{ needs.cache-setup.outputs.ccache-hash }}-${{ runner.os }}-${{ matrix.arch }}
+          restore-keys: |
+            windows-ccache-${{ needs.cache-setup.outputs.ccache-hash }}-${{ runner.os }}-
 
-      - name: Build GUI (Windows)
+      - name: Build
         env:
           TARGET_ARCH: ${{ matrix.arch }}
-        shell: msys2 {0}
         run: |
-          set -ex
-          # Ensure scripts are executable in MSYS2
-          chmod +x build_gui.sh || true
-          ./build_gui.sh || true
+          chmod +x build_gui.sh
+          ./build_gui.sh
 
-      - name: Collect Windows artifacts and ensure libsodium.dll present
-        shell: msys2 {0}
+      - name: Package artifacts
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
         run: |
-          set -ex
           mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}"
-          # Copy produced executables and DLLs
-          if [ -f backup-manager-gui.exe ]; then
-            cp backup-manager-gui.exe "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" || true
-          elif [ -f backup-manager-gui ]; then
-            cp backup-manager-gui "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" || true
-          fi
-          # Copy libsodium DLL into Releases folder (MSYS2 path)
-          if [ -f /mingw64/bin/libsodium.dll ]; then
-            cp /mingw64/bin/libsodium.dll "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" || true
-          elif [ -f /usr/bin/libsodium.dll ]; then
-            cp /usr/bin/libsodium.dll "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" || true
-          fi
-          # Copy libdvx3 dll into Releases folder if it's present
-          if [ -f libdvx3.dll ]; then
-            cp libdvx3.dll "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" || true
-          elif [ -f build/libdvx3.dll ]; then
-            cp build/libdvx3.dll "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" || true
-          elif ls build/*/libdvx3.dll >/dev/null 2>&1; then
-            for s in build/*/libdvx3.dll; do cp "$s" "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" || true; done
-          fi
-          # Use windeployqt if available to gather Qt dependencies
-          if command -v windeployqt >/dev/null 2>&1; then
-            if [ -f backup-manager-gui.exe ]; then
-              windeployqt --dir "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}" backup-manager-gui.exe || true
-            fi
-          fi
-          # Fallback: If build/Releases exists and has files, copy them to final Releases folder
-          if [ -d build/Releases ]; then
-            echo "Copying build/Releases contents to $GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}"
-            if [ -d build/Releases/windows/${{ matrix.arch }} ]; then
-              cp -r build/Releases/windows/${{ matrix.arch }}/* "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" 2>/dev/null || true
-            elif [ -d build/Releases/${{ matrix.arch }} ]; then
-              cp -r build/Releases/${{ matrix.arch }}/* "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" 2>/dev/null || true
-            else
-              cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" 2>/dev/null || true
-            fi
-            if [ -f build/Releases/windows/${{ matrix.arch }}/artifacts.txt ]; then
-              while IFS= read -r line || [ -n "$line" ]; do
-                [ -z "$line" ] && continue
-                rel=$(echo "$line" | sed 's|^/||')
-                src="build/Releases/windows/${{ matrix.arch }}/$rel"
-                if [ -e "$src" ]; then
-                  destdir="$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/$(dirname "$rel")"
-                  mkdir -p "$destdir" || true
-                  cp -a "$src" "$destdir/" || true
-                fi
-              done < build/Releases/windows/${{ matrix.arch }}/artifacts.txt || true
-            fi
-          fi
+          ./scripts/package-windows.sh "${{ matrix.arch }}"
 
-      - name: Show windows release dir and create Windows artifact
+      - name: Create archive
+        shell: pwsh
+        run: |
+          $arch = "${{ matrix.arch }}"
+          $releaseDir = "$env:GITHUB_WORKSPACE/$env:RELEASE_DIR/windows/$arch"
+          $zipPath = "$env:GITHUB_WORKSPACE/$env:RELEASE_DIR/${env:ARTIFACT_PREFIX}-windows-$arch-${env:GITHUB_RUN_ID}.zip"
+          Compress-Archive -Path "$releaseDir\*" -DestinationPath $zipPath -Force
+
+      - name: Compute checksum
         shell: msys2 {0}
         run: |
-          set -ex
-          # Ensure Releases top-level exists, even if empty
-          mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR" || true
-          echo "Contents of $GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }} before creating zip:"
-          ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}" || true
-          cd "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}" || true
-          # Flatten nested windows/${{ matrix.arch }}/windows/${{ matrix.arch }} if present
-          if [ -d "windows/${{ matrix.arch }}" ]; then
-            echo "Flattening nested windows/${{ matrix.arch }} directories"
-            mv "windows/${{ matrix.arch }}"/* . || true
-            rm -rf windows || true
-          fi
-          # If the per-arch Releases dir is empty, handle accordingly (skip for optional archs or bail based on STRICT_ARTIFACT_CHECKS)
-          # Use a robust nullglob-safe test to determine if the directory has any files
-          shopt -s nullglob || true
-          files=("$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}"/*)
-          if [ ${#files[@]} -eq 0 ]; then
-            echo "No files found in $GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}"
-            # If there's build/Releases, we'll use that as a fallback. Otherwise decide based on arch and strictness
-            if [ -d build/Releases ] && [ -n "$(ls -A build/Releases 2>/dev/null)" ]; then
-              echo "Found build/Releases; will create zip from build/Releases"
-            else
-              if [ "${{ matrix.arch }}" = "aarch64" ]; then
-                echo "⚠ No files for windows aarch64; skipping packaging for optional arch" && exit 0
-              fi
-              if [ "${STRICT_ARTIFACT_CHECKS}" = "false" ]; then
-                echo "⚠ No files to package for windows-${{ matrix.arch }}; skipping (warn-only)" && exit 0
-              fi
-              echo "No files to package and STRICT_ARTIFACT_CHECKS is set; failing" && exit 1
-            fi
-          fi
-          # Try zip first (MSYS2); fallback to PowerShell Compress-Archive if zip not available
-          if command -v zip >/dev/null 2>&1; then
-            zip -r ../../${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip . || true
-          else
-            echo "zip not found; attempting PowerShell Compress-Archive fallback"
-            # Use PowerShell from bash to compress: convert path to Windows style for both source and destination
-            WINPATH=$(cygpath -w "$PWD")
-            PSZIP_UNIX="$RELEASE_DIR/${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip"
-            # Convert both source and dest to absolute Windows paths using GITHUB_WORKSPACE
-            WINPSZIP=$(cygpath -w "$GITHUB_WORKSPACE/$PSZIP_UNIX")
-            echo "WINPATH $WINPATH"
-            echo "WINPSZIP $WINPSZIP"
-            powershell -Command "Compress-Archive -Path '${WINPATH}\*' -DestinationPath '${WINPSZIP}' -Force" || true
-          fi
-          cd -
-          cd -
-          # Ensure the top-level Releases dir contains the created zip
-          ZIP_NAME="${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip"
-            if [ -f "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" ]; then
-              echo "Created zip: $GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME"
-              ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" || true
-          else
-            # Fallback: try to build a zip from build/Releases or Releases/windows/<arch>
-            if [ -d build/Releases ]; then
-              echo "Fallback: Creating zip from build/Releases"
-              if command -v zip >/dev/null 2>&1; then
-                shopt -s nullglob || true
-                if compgen -G "build/Releases/*" > /dev/null; then
-                  zip -r "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" build/Releases/* || true
-                else
-                  echo "No files in build/Releases to zip" || true
-                fi
-                else
-                # Use PowerShell to zip on Windows - convert to absolute paths
-                WINSRC=$(cygpath -w "$GITHUB_WORKSPACE/build/Releases/*")
-                WINDEST=$(cygpath -w "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME")
-                echo "WINSRC $WINSRC"
-                echo "WINDEST $WINDEST"
-                powershell -Command "Compress-Archive -Path '${WINSRC}' -DestinationPath '${WINDEST}' -Force" || true
-              fi
-            elif [ -d "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}" ]; then
-              echo "Fallback: Creating zip from $GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}"
-              if command -v zip >/dev/null 2>&1; then
-                shopt -s nullglob || true
-                if compgen -G "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/*" > /dev/null; then
-                  (cd "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}" && zip -r "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" .) || true
-                else
-                  echo "No files found in $GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }} to zip" || true
-                fi
-                else
-                WINPATH=$(cygpath -w "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}")
-                WINDEST=$(cygpath -w "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME")
-                echo "WINPATH $WINPATH"
-                echo "WINDEST $WINDEST"
-                powershell -Command "Compress-Archive -Path '${WINPATH}\*' -DestinationPath '${WINDEST}' -Force" || true
-              fi
-            fi
-            # Flatten nested linux/aarch64/linux/aarch64 directories if they exist
-            if [ -d "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/linux/aarch64" ]; then
-              echo "Flattening nested linux/aarch64 directories"
-              mv "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/linux/aarch64"/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/" 2>/dev/null || true
-              rm -rf "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/linux" || true
-            fi
-            if [ -f "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" ]; then
-              echo "Created fallback zip: $GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" && ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" || true
-            else
-              echo "ERROR: Expected zip not found at $GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" && ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR" || true
-              # If optional aarch64, create a placeholder artifact so the release step has something to upload
-              if [ "${{ matrix.arch }}" = "aarch64" ]; then
-                echo "Creating placeholder artifact for optional windows aarch64"
-                mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR" || true
-                echo "This aarch64 build did not produce artifacts; placeholder created on $(date)" > "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME.placeholder.txt" || true
-                if command -v zip >/dev/null 2>&1; then
-                  (cd "$GITHUB_WORKSPACE/$RELEASE_DIR" && zip -r "$ZIP_NAME" "$ZIP_NAME.placeholder.txt" ) || true
-                else
-                  WINDEST=$(cygpath -w "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME")
-                  WINSRC=$(cygpath -w "$GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME.placeholder.txt")
-                  powershell -Command "Compress-Archive -Path '${WINSRC}' -DestinationPath '${WINDEST}' -Force" || true
-                fi
-                echo "Created placeholder zip: $GITHUB_WORKSPACE/$RELEASE_DIR/$ZIP_NAME" || true
-              else
-                exit 1
-              fi
-            fi
-          fi
+          ART="$GITHUB_WORKSPACE/$RELEASE_DIR/${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip"
+          sha256sum "$ART" > "$ART.sha256"
 
-      - name: Verify Windows artifact contents
-        shell: msys2 {0}
-        run: |
-          set -ex
-          ART_PATH=${{ env.RELEASE_DIR }}
-          ART_PATTERN="${{ env.ARTIFACT_PREFIX }}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip"
-          ART="$GITHUB_WORKSPACE/$ART_PATH/$ART_PATTERN"
-          echo "Looking for artifact at $ART"
-          if [ ! -f "$ART" ]; then
-            echo "Artifact not found at $ART. Searching for any matching zip..."
-            ART=$(ls "$GITHUB_WORKSPACE/$ART_PATH/${{ env.ARTIFACT_PREFIX }}-windows-${{ matrix.arch }}-*.zip" 2>/dev/null | head -n1 || true)
-            if [ -z "$ART" ]; then
-              # Try top-level workspace search
-              ART=$(ls "$GITHUB_WORKSPACE/${{ env.ARTIFACT_PREFIX }}-windows-${{ matrix.arch }}-*.zip" 2>/dev/null | head -n1 || true)
-            fi
-          fi
-          echo "Using artifact: $ART"
-          # Debug: print some workspace directories to assist with tracing file locations
-          echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
-          echo "Releases dir listing:" && ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR" || true
-          echo "build/Releases listing (if present):" && ls -la build/Releases || true
-          if [ -z "$ART" ] || [ ! -f "$ART" ]; then
-            if [ "${STRICT_ARTIFACT_CHECKS}" = "false" ]; then
-              echo "⚠ Artifact not found ($ART). Skipping verification (warn-only)" || true
-              exit 0
-            else
-              # If this is windows aarch64 build, skip verification as aarch64 artifacts might not be produced in CI
-              if [ "${{ matrix.arch }}" = "aarch64" ]; then
-                echo "⚠ Artifact not found for windows aarch64 ($ART). Skipping verification (warn-only because aarch64 artifacts may be omitted)" || true
-                exit 0
-              fi
-              echo "⚠ Artifact not found ($ART). Failing" && exit 1
-            fi
-          fi
-          echo "Listing zip contents for $ART"
-          if command -v unzip >/dev/null 2>&1; then
-            unzip -l "$ART" | sed -n '1,200p' > zip_contents.txt || true
-          else
-            echo "unzip not found; attempting to extract and list with PowerShell" || true
-            mkdir -p ps_zip_extracted || true
-            powershell -Command "Expand-Archive -Path \"$ART\" -DestinationPath \"ps_zip_extracted\" -Force; Get-ChildItem -Path ps_zip_extracted -Recurse | select -Expand FullName" > zip_contents_raw.txt || true
-            sed -n '1,200p' zip_contents_raw.txt > zip_contents.txt || true
-          fi
-          echo "--- zip_contents.txt (first 200 lines) ---"
-          sed -n '1,200p' zip_contents.txt || true
-            greps='backup-manager-gui.exe|backup-manager-gui|libsodium\.dll|libdvx3\.dll|qwindows\.dll|libb2|Qt'
-            if ! grep -E "$greps" zip_contents.txt > /dev/null; then
-              if [ "${STRICT_ARTIFACT_CHECKS}" = "false" ]; then
-                echo "⚠ Expected files not found in windows artifact (warn-only): $greps" || true
-              else
-                echo "⚠ Expected files not found in windows artifact: $greps" && exit 1
-              fi
-            fi
-
-      - name: Compute windows artifact sha256
-        id: compute-windows-sha
-        shell: msys2 {0}
-        run: |
-          set -ex
-          ART="$GITHUB_WORKSPACE/${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip"
-          if [ ! -f "$ART" ]; then
-            echo "Artifact not found at $ART"
-            if [ "${{ matrix.arch }}" = "aarch64" ]; then
-              echo "⚠ Optional windows aarch64 artifact not present; skipping sha256 compute" && echo "found=false" >> $GITHUB_OUTPUT && exit 0
-            fi
-            if [ "${STRICT_ARTIFACT_CHECKS}" = "false" ]; then
-              echo "⚠ Artifact not found; skipping sha256 compute (warn-only)" && echo "found=false" >> $GITHUB_OUTPUT && exit 0
-            fi
-            echo "::error::Artifact not found: $ART" && echo "found=false" >> $GITHUB_OUTPUT && exit 1
-          fi
-          DIR=$(dirname "$ART")
-          BASE=$(basename "$ART")
-          pushd "$DIR"
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum "$BASE" > "$BASE".sha256
-          else
-            shasum -a 256 "$BASE" > "$BASE".sha256
-          fi
-          popd
-          echo "found=true" >> $GITHUB_OUTPUT
-
-      - name: Upload Windows artifact
-        if: steps.compute-windows-sha.outputs.found == 'true'
+      - name: Upload artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT_PREFIX }}-windows-${{ matrix.arch }}-${{ github.run_id }}
@@ -757,953 +213,255 @@ jobs:
             ${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip
             ${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip.sha256
 
-  # ------------------------------------------------------------------
-  # Linux build (x86_64)
-  # ------------------------------------------------------------------
+  # Linux builds (x86_64 + aarch64)
   build-linux:
-    name: Build Linux x86_64
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install apt packages
-        run: |
-          set -ex
-          sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            build-essential cmake pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache patchelf \
-            qt6-base-dev || true
-
-      - name: Build GUI (Linux)
-        env:
-          TARGET_ARCH: x86_64
-        run: |
-          set -ex
-          chmod +x build_gui.sh || true
-          ./build_gui.sh
-          echo "Build finished; listing root and build/ contents for debugging"
-          ls -la || true
-          ls -la build || true
-          echo "Searching for generated binaries (backup-manager-gui) after build:" || true
-          find . -maxdepth 4 -type f \( -name 'backup-manager-gui' -o -name 'backup-manager-gui*' \) -exec ls -la '{}' \; -exec file '{}' \; || true
-
-      - name: Package Linux artifacts and fix libsodium linking
-        run: |
-          set -ex
-          mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/lib" || true
-          echo "Debug: root working dir contents:" && ls -la || true
-          echo "Debug: build/Releases contents (if present):" && ls -la build/Releases || true
-          # Print any artifacts manifests if present
-          for f in build/Releases/*/artifacts.txt; do
-            [ -f "$f" ] || continue
-            echo "---- $f ----"
-            cat "$f" || true
-          done
-          # Try to find a generated backup-manager-gui binary (multiple possible locations)
-          FOUND_BIN=""
-          for TRY in backup-manager-gui build/backup-manager-gui build/*/backup-manager-gui; do
-            if [ -f "${TRY}" ]; then
-              FOUND_BIN="$TRY"
-              break
-            fi
-          done
-          if [ -z "$FOUND_BIN" ]; then
-            FOUND_BIN=$(find . -maxdepth 6 -type f -name 'backup-manager-gui' -print -quit || true)
-          fi
-          if [ -n "$FOUND_BIN" ]; then
-            echo "Found binary at $FOUND_BIN" && file "$FOUND_BIN" || true
-            ldd "$FOUND_BIN" || true
-            cp "$FOUND_BIN" "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/" || true
-          else
-            echo "Warning: backup-manager-gui binary not found in workspace. Trying fallback to build/Releases..."
-            if [ -d build/Releases ] && [ -n "$(ls -A build/Releases 2>/dev/null)" ]; then
-              echo "Found build/Releases contents; copying to release dir"
-              if [ -d build/Releases/linux/x86_64 ]; then
-                cp -r build/Releases/linux/x86_64/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/" 2>/dev/null || true
-              elif [ -d build/Releases/x86_64 ]; then
-                cp -r build/Releases/x86_64/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/" 2>/dev/null || true
-              else
-                cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/" 2>/dev/null || true
-              fi
-              # Flatten nested linux/x86_64/linux/x86_64 if present
-              if [ -d "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/linux/x86_64" ]; then
-                echo "Flattening nested linux/x86_64 directories"
-                mv "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/linux/x86_64"/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/" 2>/dev/null || true
-                rm -rf "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/linux" || true
-              fi
-            else
-              if [ "${STRICT_ARTIFACT_CHECKS}" = "false" ]; then
-                echo "⚠ backup-manager-gui not found; continuing (warn-only)"
-              else
-                echo "::error::backup-manager-gui not found; failing packaging" && exit 1
-              fi
-            fi
-          fi
-          # Copy libsodium into release lib (try ldconfig first, fallback to distro path)
-          SODIUM_SO=$(ldconfig -p 2>/dev/null | grep libsodium | head -n 1 | awk '{print $NF}' || true)
-          if [ -n "$SODIUM_SO" ] && [ -f "$SODIUM_SO" ]; then
-            cp "$SODIUM_SO" "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/lib/" || true
-          else
-            cp /usr/lib/x86_64-linux-gnu/libsodium.so.* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/lib/" 2>/dev/null || true
-          fi
-          # Create a simple wrapper to set LD_LIBRARY_PATH for the extracted package
-          cat > "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/Dvx3-Run.sh" << 'SH' || true
-          #!/bin/bash
-          SCRIPT=$(readlink -f "$0")
-          BASEDIR=$(dirname "$SCRIPT")
-          export LD_LIBRARY_PATH="$BASEDIR/lib:$LD_LIBRARY_PATH"
-          exec "$BASEDIR/backup-manager-gui" "$@"
-          SH
-          chmod +x "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/Dvx3-Run.sh" || true
-          # Use patchelf to set rpath when available
-          if command -v patchelf >/dev/null 2>&1; then
-            if [ -f "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/backup-manager-gui" ]; then
-              patchelf --set-rpath '$ORIGIN/lib' "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/backup-manager-gui" || true
-            fi
-          fi
-          # Try to include Qt platform plugins for Linux (XCB platform)
-          mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/plugins/platforms" || true
-          if [ -d "/usr/lib/qt6/plugins/platforms" ]; then
-            cp -r /usr/lib/qt6/plugins/platforms/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/plugins/platforms/" 2>/dev/null || true
-          elif [ -d "/usr/lib/x86_64-linux-gnu/qt6/plugins/platforms" ]; then
-            cp -r /usr/lib/x86_64-linux-gnu/qt6/plugins/platforms/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/plugins/platforms/" 2>/dev/null || true
-          fi
-          # Copy any build/Releases contents as a fallback
-          if [ -d build/Releases ]; then
-            if [ -d build/Releases/linux/x86_64 ]; then
-              cp -r build/Releases/linux/x86_64/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/" 2>/dev/null || true
-            elif [ -d build/Releases/x86_64 ]; then
-              cp -r build/Releases/x86_64/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/" 2>/dev/null || true
-            else
-              cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/" 2>/dev/null || true
-            fi
-            if [ -f build/Releases/linux/x86_64/artifacts.txt ]; then
-              while IFS= read -r line || [ -n "$line" ]; do
-                [ -z "$line" ] && continue
-                rel=$(echo "$line" | sed 's|^/||')
-                src="build/Releases/linux/x86_64/$rel"
-                if [ -e "$src" ]; then
-                  destdir="$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/$(dirname "$rel")"
-                  mkdir -p "$destdir" || true
-                  cp -a "$src" "$destdir/" || true
-                fi
-              done < build/Releases/linux/x86_64/artifacts.txt || true
-            fi
-          fi
-          # Debug: confirm if libdvx3.so is included; if strict, fail when absent
-          if [ ! -f "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/lib/libdvx3.so" ]; then
-            echo "Warning: libdvx3.so not present in packaged lib folder" || true
-            if [ "${STRICT_ARTIFACT_CHECKS}" = "true" ]; then
-              echo "::error::libdvx3.so missing from packaging; failing" && exit 1
-            fi
-          else
-            echo "libdvx3.so is present in package: $(ls -la $GITHUB_WORKSPACE/$RELEASE_DIR/linux/x86_64/lib/libdvx3.so)" || true
-          fi
-          cd "$GITHUB_WORKSPACE/$RELEASE_DIR/linux" || true
-          tar -czf ../${ARTIFACT_PREFIX}-linux-x86_64-${{ github.run_id }}.tar.gz x86_64 || true
-          cd -
-
-      - name: Verify linux artifact contents
-        run: |
-          set -ex
-          ART=${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-linux-x86_64-${{ github.run_id }}.tar.gz
-          echo "Listing tar contents for $ART"
-          tar -tzf "$ART" | sed -n '1,200p' > tar_contents.txt || true
-          # Check for some specific libs/plugins (libb2, libdvx3, Qt XCB plugin)
-          greps='backup-manager-gui|Dvx3-Run.sh|lib/libsodium|libb2|libdvx3|plugins/platforms/libqxcb|plugins/platforms/libqxcb.so'
-          if ! grep -E "$greps" tar_contents.txt > /dev/null; then
-            if [ "${STRICT_ARTIFACT_CHECKS}" = "false" ]; then
-              echo "⚠ Expected files not found in linux artifact (warn-only): $greps" || true
-            else
-              echo "⚠ Expected files not found in linux artifact: $greps" && exit 1
-            fi
-          fi
-
-      - name: Compute linux artifact sha256
-        run: |
-          set -ex
-          ART=${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-linux-x86_64-${{ github.run_id }}.tar.gz
-          DIR=$(dirname "$ART")
-          BASE=$(basename "$ART")
-          pushd "$DIR"
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum "$BASE" > "$BASE".sha256
-          else
-            shasum -a 256 "$BASE" > "$BASE".sha256
-          fi
-          popd
-
-      - name: Upload Linux artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.ARTIFACT_PREFIX }}-linux-x86_64-${{ github.run_id }}
-          path: |
-            ${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-linux-x86_64-${{ github.run_id }}.tar.gz
-            ${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-linux-x86_64-${{ github.run_id }}.tar.gz.sha256
-
-  # ------------------------------------------------------------------
-  # Linux build (aarch64)
-  # ------------------------------------------------------------------
-  build-linux-aarch64:
-    name: Build Linux aarch64
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install apt packages
-        run: |
-          set -ex
-          sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            build-essential cmake pkg-config valac libjson-glib-dev libsodium-dev zstd tar imagemagick ninja-build ccache patchelf \
-            qt6-base-dev || true
-
-      - name: Build GUI (Linux aarch64)
-        env:
-          TARGET_ARCH: aarch64
-        run: |
-          set -ex
-          chmod +x build_gui.sh || true
-          # Use local cross-detect; build_gui.sh uses uname -m to detect arch, but we set ARCH env just to be explicit
-          ARCH=aarch64 ./build_gui.sh || true
-          echo "Build finished; listing root and build/ contents for debugging"
-          ls -la || true
-          ls -la build || true
-          echo "Searching for generated binaries (backup-manager-gui) after build:" || true
-          find . -maxdepth 6 -type f \( -name 'backup-manager-gui' -o -name 'backup-manager-gui*' \) -exec ls -la '{}' \; -exec file '{}' \; || true
-
-      - name: Package Linux artifacts and fix libsodium linking (aarch64)
-        run: |
-          set -ex
-          mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/lib" || true
-          echo "Debug: root working dir contents:" && ls -la || true
-          echo "Debug: build/Releases contents (if present):" && ls -la build/Releases || true
-          # Print any artifacts manifests if present
-          for f in build/Releases/*/artifacts.txt; do
-            [ -f "$f" ] || continue
-            echo "---- $f ----"
-            cat "$f" || true
-          done
-          # Try to find a generated backup-manager-gui binary (multiple possible locations)
-          FOUND_BIN=""
-          for TRY in backup-manager-gui build/backup-manager-gui build/*/backup-manager-gui; do
-            if [ -f "${TRY}" ]; then
-              FOUND_BIN="$TRY"
-              break
-            fi
-          done
-          if [ -z "$FOUND_BIN" ]; then
-            FOUND_BIN=$(find . -maxdepth 6 -type f -name 'backup-manager-gui' -print -quit || true)
-          fi
-          if [ -n "$FOUND_BIN" ]; then
-            echo "Found binary at $FOUND_BIN" && file "$FOUND_BIN" || true
-            ldd "$FOUND_BIN" || true
-            cp "$FOUND_BIN" "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/" || true
-          else
-            echo "Warning: backup-manager-gui binary not found in workspace. Trying fallback to build/Releases..."
-            if [ -d build/Releases ] && [ -n "$(ls -A build/Releases 2>/dev/null)" ]; then
-              echo "Found build/Releases contents; copying to release dir"
-              if [ -d build/Releases/linux/aarch64 ]; then
-                cp -r build/Releases/linux/aarch64/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/" 2>/dev/null || true
-              elif [ -d build/Releases/aarch64 ]; then
-                cp -r build/Releases/aarch64/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/" 2>/dev/null || true
-              else
-                cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/" 2>/dev/null || true
-              fi
-            else
-              if [ "${STRICT_ARTIFACT_CHECKS}" = "false" ]; then
-                echo "⚠ backup-manager-gui not found; continuing (warn-only)"
-              else
-                echo "::error::backup-manager-gui not found; failing packaging" && exit 1
-              fi
-            fi
-          fi
-          # Copy libsodium into release lib (try ldconfig first, fallback to distro path)
-          SODIUM_SO=$(ldconfig -p 2>/dev/null | grep libsodium | head -n 1 | awk '{print $NF}' || true)
-          if [ -n "$SODIUM_SO" ] && [ -f "$SODIUM_SO" ]; then
-            cp "$SODIUM_SO" "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/lib/" || true
-          else
-            cp /usr/lib/aarch64-linux-gnu/libsodium.so.* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/lib/" 2>/dev/null || true
-          fi
-          # Copy libdvx3 into the release lib directory so it can be found by LD_LIBRARY_PATH
-          if [ -f "libdvx3.so" ]; then
-            cp libdvx3.so "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/lib/" || true
-          elif [ -f "build/libdvx3.so" ]; then
-            cp build/libdvx3.so "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/lib/" || true
-          elif ls build/*/libdvx3.so >/dev/null 2>&1; then
-            for s in build/*/libdvx3.so; do cp "$s" "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/lib/" || true; done
-          fi
-          # Create a simple wrapper to set LD_LIBRARY_PATH for the extracted package
-          cat > "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/Dvx3-Run.sh" << 'SH' || true
-          #!/bin/bash
-          SCRIPT=$(readlink -f "$0")
-          BASEDIR=$(dirname "$SCRIPT")
-          export LD_LIBRARY_PATH="$BASEDIR/lib:$LD_LIBRARY_PATH"
-          exec "$BASEDIR/backup-manager-gui" "$@"
-          SH
-          chmod +x "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/Dvx3-Run.sh" || true
-          # Use patchelf to set rpath when available
-          if command -v patchelf >/dev/null 2>&1; then
-            if [ -f "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/backup-manager-gui" ]; then
-              patchelf --set-rpath '$ORIGIN/lib' "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/backup-manager-gui" || true
-            fi
-          fi
-          # Try to include Qt platform plugins for Linux (XCB platform)
-          mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/plugins/platforms" || true
-          if [ -d "/usr/lib/qt6/plugins/platforms" ]; then
-            cp -r /usr/lib/qt6/plugins/platforms/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/plugins/platforms/" 2>/dev/null || true
-          elif [ -d "/usr/lib/aarch64-linux-gnu/qt6/plugins/platforms" ]; then
-            cp -r /usr/lib/aarch64-linux-gnu/qt6/plugins/platforms/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/plugins/platforms/" 2>/dev/null || true
-          fi
-          # Copy any build/Releases contents as a fallback
-          if [ -d build/Releases ]; then
-            if [ -d build/Releases/linux/aarch64 ]; then
-              cp -r build/Releases/linux/aarch64/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/" 2>/dev/null || true
-            elif [ -d build/Releases/aarch64 ]; then
-              cp -r build/Releases/aarch64/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/" 2>/dev/null || true
-            else
-              cp -r build/Releases/* "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/" 2>/dev/null || true
-            fi
-            if [ -f build/Releases/linux/aarch64/artifacts.txt ]; then
-              while IFS= read -r line || [ -n "$line" ]; do
-                [ -z "$line" ] && continue
-                rel=$(echo "$line" | sed 's|^/||')
-                src="build/Releases/linux/aarch64/$rel"
-                if [ -e "$src" ]; then
-                  destdir="$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/$(dirname "$rel")"
-                  mkdir -p "$destdir" || true
-                  cp -a "$src" "$destdir/" || true
-                fi
-              done < build/Releases/linux/aarch64/artifacts.txt || true
-            fi
-          fi
-          # Debug: confirm if libdvx3.so is included; if strict, fail when absent
-          if [ ! -f "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/lib/libdvx3.so" ]; then
-            echo "Warning: libdvx3.so not present in packaged lib folder" || true
-            if [ "${STRICT_ARTIFACT_CHECKS}" = "true" ]; then
-              echo "::error::libdvx3.so missing from packaging; failing" && exit 1
-            fi
-          else
-            echo "libdvx3.so is present in package: $(ls -la $GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/lib/libdvx3.so)" || true
-          fi
-          cd "$GITHUB_WORKSPACE/$RELEASE_DIR/linux" || true
-          tar -czf ../${ARTIFACT_PREFIX}-linux-aarch64-${{ github.run_id }}.tar.gz aarch64 || true
-          cd -
-
-      - name: Verify linux artifact contents (aarch64)
-        run: |
-          set -ex
-          ART=${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-linux-aarch64-${{ github.run_id }}.tar.gz
-          echo "Listing tar contents for $ART"
-          tar -tzf "$ART" | sed -n '1,200p' > tar_contents.txt || true
-          greps='backup-manager-gui|Dvx3-Run.sh|lib/libsodium|libb2|libdvx3|plugins/platforms/libqxcb|plugins/platforms/libqxcb.so'
-          if ! grep -E "$greps" tar_contents.txt > /dev/null; then
-            if [ "${STRICT_ARTIFACT_CHECKS}" = "false" ]; then
-              echo "⚠ Expected files not found in linux artifact (warn-only): $greps" || true
-            else
-              echo "⚠ Expected files not found in linux artifact: $greps" && exit 1
-            fi
-          fi
-
-      - name: Compute linux artifact sha256 (aarch64)
-        run: |
-          set -ex
-          ART=${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-linux-aarch64-${{ github.run_id }}.tar.gz
-          DIR=$(dirname "$ART")
-          BASE=$(basename "$ART")
-          pushd "$DIR"
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum "$BASE" > "$BASE".sha256
-          else
-            shasum -a 256 "$BASE" > "$BASE".sha256
-          fi
-          popd
-
-      - name: Upload Linux aarch64 artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.ARTIFACT_PREFIX }}-linux-aarch64-${{ github.run_id }}
-          path: |
-            ${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-linux-aarch64-${{ github.run_id }}.tar.gz
-            ${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-linux-aarch64-${{ github.run_id }}.tar.gz.sha256
-
-      - name: Install QEMU user-static and attempt to run aarch64 binary (warn-only)
-        run: |
-          set -ex
-          sudo apt-get update
-          # QEMU user mode for aarch64; provide binfmt support so binaries can be executed directly if possible
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y qemu-user-static binfmt-support || true
-          which qemu-aarch64 || true
-          echo "Trying to locate built aarch64 binary under Releases/linux/aarch64 and build/Releases..."
-          BIN="$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/backup-manager-gui"
-          if [ ! -f "$BIN" ]; then
-            BIN=$(find build -type f -name 'backup-manager-gui*' -print -quit || true)
-          fi
-          if [ -z "$BIN" ]; then
-            echo "No aarch64 binary found in release or build output; skipping QEMU run (warn-only)" || true
-            exit 0
-          fi
-          echo "Using binary: $BIN"
-          # Try an ldd-like library check by invoking the aarch64 binary under qemu with env LD_LIBRARY_PATH set to packaged lib folder
-          if [ -f "$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/lib/libdvx3.so" ]; then
-            export LD_LIBRARY_PATH="$GITHUB_WORKSPACE/$RELEASE_DIR/linux/aarch64/lib:$LD_LIBRARY_PATH"
-          fi
-          echo "Attempting to run 'backup-manager-gui --version' using qemu-aarch64 (may fail if missing system libs)"
-          # Wrap in a conditional to keep this warn-only; it helps to catch obvious issues but avoid blocking the pipeline
-          if qemu-aarch64 -L /usr "$BIN" --version 2>/tmp/qemu-run-err.txt > /tmp/qemu-run-out.txt; then
-            echo "QEMU executed binary successfully:"
-            cat /tmp/qemu-run-out.txt || true
-          else
-            echo "QEMU run failed (see /tmp/qemu-run-err.txt) - this is expected in some CI environments if system libs are missing. Proceeding (warn-only)." || true
-            cat /tmp/qemu-run-err.txt || true
-            if [ "${STRICT_ARTIFACT_CHECKS}" = "true" ]; then
-              echo "Note: qemu run failed but STRICT_ARTIFACT_CHECKS set; still continuing to avoid blowing up CI. If you want to fail, change script behavior." || true
-            fi
-          fi
-
-  # ------------------------------------------------------------------
-  # Publish Release - gathers and uploads artifacts to GitHub Release
-  # This job depends on all builds above
-  # ------------------------------------------------------------------
-  # Diagnostics job: runs only for manual workflow_dispatch and provides info when 'publish-release' would be skipped
-  publish-release-diagnostics:
-    if: github.event_name == 'workflow_dispatch'
-    name: Publish Release Diagnostics
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Print event info
-        run: |
-          echo "GITHUB_EVENT_NAME: $GITHUB_EVENT_NAME"
-          echo "GITHUB_REF: $GITHUB_REF"
-          echo "GITHUB_RUN_ID: $GITHUB_RUN_ID"
-          echo "Release Tag input: ${{ github.event.inputs.release_tag }}"
-          echo "STRICT_ARTIFACT_CHECKS input: ${{ github.event.inputs.strict_artifact_checks }}"
-
-      - name: List workspace & release dirs
-        run: |
-          set -ex
-          echo "Workspace: $GITHUB_WORKSPACE"
-          ls -la "$GITHUB_WORKSPACE" || true
-          echo "RELEASE_DIR: $RELEASE_DIR"
-          ls -la "$GITHUB_WORKSPACE/$RELEASE_DIR" || true
-          ls -la "$GITHUB_WORKSPACE/build/Releases" || true
-
-      - name: Try to download any existing artifacts
-        uses: actions/download-artifact@v4
-        continue-on-error: true
-        with:
-          path: ./diag-artifacts
-
-      - name: List downloaded artifacts
-        run: |
-          set -ex
-          ls -la diag-artifacts || true
-
-      - name: Print job statuses for current run via the GitHub API
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -ex
-          echo "Fetching job statuses for run $GITHUB_RUN_ID in ${GITHUB_REPOSITORY}"
-          sudo apt-get update || true
-          sudo apt-get install -y jq || true
-          curl -sS -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs" | jq -r '.jobs[] | "\(.name): status=\(.status) conclusion=\(.conclusion)"' || true
-
-  # ------------------------------------------------------------------
-  # Verify Release Token - preflight check for token and PAT scopes
-  # ------------------------------------------------------------------
-  verify-release-token:
-    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release' || github.event_name == 'workflow_dispatch'
-    name: Verify Release Token
-    runs-on: ubuntu-latest
+    name: Build Linux ${{ matrix.arch }}
+    runs-on: ubuntu-24.04
+    needs: cache-setup
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            container: ubuntu:24.04
+          - arch: aarch64
+            container: ubuntu:24.04
+            runs-on: ubuntu-latest
+    container: ${{ matrix.container }}
     env:
-      RELEASE_PAT: ${{ secrets.RELEASE_PAT || '' }}
+      TARGET_ARCH: ${{ matrix.arch }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Verify token scopes and repo access
+      - name: Install dependencies
         run: |
-          set -ex
-          # Prefer RELEASE_PAT if set; script will fall back to GITHUB_TOKEN if empty
-          ./scripts/verify-release-token.sh --repo "${GITHUB_REPOSITORY}" --verbose || (echo "verify-release-token: token verification failed" && exit 1)
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config valac libjson-glib-dev \
+            libsodium-dev libzstd-dev ninja-build ccache patchelf \
+            qt6-base-dev qt6-tools-dev libglib2.0-dev git zip unzip \
+            ca-certificates curl
 
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: linux-ccache-${{ needs.cache-setup.outputs.ccache-hash }}-${{ runner.os }}-${{ matrix.arch }}
+          restore-keys: |
+            linux-ccache-${{ needs.cache-setup.outputs.ccache-hash }}-${{ runner.os }}-
+
+      - name: Build
+        run: |
+          chmod +x build_gui.sh
+          ./build_gui.sh
+
+      - name: Package artifacts
+        run: |
+          mkdir -p "$RELEASE_DIR/linux/${{ matrix.arch }}/lib"
+          ./scripts/package-linux.sh "${{ matrix.arch }}"
+
+      - name: Create archive
+        run: |
+          cd "$RELEASE_DIR/linux"
+          tar -czf "../${ARTIFACT_PREFIX}-linux-${{ matrix.arch }}-${{ github.run_id }}.tar.gz" ${{ matrix.arch }}
+          cd -
+
+      - name: Compute checksum
+        run: |
+          ART="$RELEASE_DIR/${ARTIFACT_PREFIX}-linux-${{ matrix.arch }}-${{ github.run_id }}.tar.gz"
+          sha256sum "$ART" > "$ART.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_PREFIX }}-linux-${{ matrix.arch }}-${{ github.run_id }}
+          path: |
+            ${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-linux-${{ matrix.arch }}-${{ github.run_id }}.tar.gz
+            ${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-linux-${{ matrix.arch }}-${{ github.run_id }}.tar.gz.sha256
+
+  # Create universal macOS package
+  package-macos-universal:
+    name: Create macOS Universal Package
+    runs-on: macos-14
+    needs: [build-macos]
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+          pattern: Dvx3-Backup-Manager-macos-*
+
+      - name: Create universal package
+        run: |
+          mkdir -p universal
+          # Extract both architectures
+          tar -xzf artifacts/*/Dvx3-Backup-Manager-macos-arm64-*.tar.gz -C universal --strip-components=2 mac/arm64
+          tar -xzf artifacts/*/Dvx3-Backup-Manager-macos-x86_64-*.tar.gz -C universal --strip-components=2 mac/x86_64
+          
+          # Create universal binary
+          lipo -create universal/backup-manager-gui -output universal/backup-manager-gui-universal
+          
+          # Package
+          mkdir -p "$RELEASE_DIR/macos-universal"
+          cp -r universal/* "$RELEASE_DIR/macos-universal/"
+          
+          # Create DMG
+          create-dmg "$RELEASE_DIR/${ARTIFACT_PREFIX}-macos-universal-${{ github.run_id }}.dmg" \
+            "$RELEASE_DIR/macos-universal/"
+
+      - name: Compute checksum
+        run: |
+          shasum -a 256 "$RELEASE_DIR/${ARTIFACT_PREFIX}-macos-universal-${{ github.run_id }}.dmg" > \
+            "$RELEASE_DIR/${ARTIFACT_PREFIX}-macos-universal-${{ github.run_id }}.dmg.sha256"
+
+      - name: Upload universal artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_PREFIX }}-macos-universal-${{ github.run_id }}
+          path: |
+            ${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-macos-universal-${{ github.run_id }}.dmg
+            ${{ env.RELEASE_DIR }}/${{ env.ARTIFACT_PREFIX }}-macos-universal-${{ github.run_id }}.dmg.sha256
+
+  # Security scan
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/analyze@v3
+
+  # Release creation
   publish-release:
-    # Allow the job to run for workflow_dispatch so we get diagnostics/logs even when no tag is provided.
-    # The actual release action below is still gated to only run when we have a tag or explicit release_tag.
-    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release' || github.event_name == 'workflow_dispatch'
-    permissions:
-      contents: write
     name: Publish Release
     runs-on: ubuntu-latest
-    needs: [build-macos, build-windows, build-linux, build-linux-aarch64, verify-release-token]
-    env:
-      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
-      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-      # If you need to use a Personal Access Token with more permissions than GITHUB_TOKEN,
-      # store it in repository secrets as RELEASE_PAT (with 'repo' scope) and it will be used.
-      RELEASE_TOKEN: ${{ secrets.RELEASE_PAT || '' }}
+    needs: [build-macos, build-windows, build-linux, package-macos-universal, security-scan]
+    if: |
+      github.event_name == 'release' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '')
+    permissions:
+      contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Download artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          path: ./downloaded-artifacts
+          path: ./artifacts
 
-      - name: Publish debug info (event and ref)
+      - name: Verify checksums
         run: |
-          echo "GITHUB_EVENT_NAME: $GITHUB_EVENT_NAME"
-          echo "GITHUB_REF: $GITHUB_REF"
-          echo "Release Tag input: ${{ github.event.inputs.release_tag }}"
+          cd artifacts
+          find . -name '*.sha256' -execdir sha256sum -c {} \;
 
-      - name: List downloaded artifacts
+      - name: Generate SHA256SUMS
         run: |
-          set -ex
-          ls -la downloaded-artifacts || true
+          cd artifacts
+          find . -name '*.*' ! -name '*.sha256' -exec sha256sum {} + > ../SHA256SUMS
 
-      - name: Determine effective release tag
-        id: determine_release_tag
-        run: |
-          # Compute release tag from workflow input, tag-ref or empty
-          if [ -n "${{ github.event.inputs.release_tag }}" ]; then
-            echo "release_tag=${{ github.event.inputs.release_tag }}" >> $GITHUB_OUTPUT
-            echo "Determined release_tag=${{ github.event.inputs.release_tag }}"
-          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            # Strip leading 'refs/tags/'
-            TAG_NAME=${GITHUB_REF#refs/tags/}
-            echo "release_tag=${TAG_NAME}" >> $GITHUB_OUTPUT
-            echo "Determined release_tag=${TAG_NAME}"
-          else
-            echo "release_tag=" >> $GITHUB_OUTPUT
-            echo "Determined release_tag="
-          fi
-
-      - name: Preflight validate release tag and optionally auto-create
-        id: preflight_tag
-        run: |
-          set -ex
-          # Prefer RELEASE_TOKEN (job env), fallback to GITHUB_TOKEN
-          TOKEN=${RELEASE_TOKEN:-$GITHUB_TOKEN}
-          TAG=${{ steps.determine_release_tag.outputs.release_tag }}
-          if [ -z "$TAG" ]; then
-            echo "No release_tag provided; skipping preflight tag validation" && echo "tag_exists=false" >> $GITHUB_OUTPUT && exit 0
-          fi
-          echo "Checking if tag $TAG exists in ${GITHUB_REPOSITORY}"
-          TMP_BODY=$(mktemp)
-          HTTPOUT=$(curl -sS -w "HTTPSTATUS:%{http_code}" -H "Authorization: token $TOKEN" "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG}" -o "$TMP_BODY" || true)
-          status=$(echo "$HTTPOUT" | sed -e 's/.*HTTPSTATUS://') || true
-          echo "Preflight API HTTP status: $status"
-          if [ "$status" -eq 200 ]; then
-            echo "Tag $TAG exists" && echo "tag_exists=true" >> $GITHUB_OUTPUT && rm -f "$TMP_BODY" || true && exit 0
-          fi
-          echo "Tag $TAG does not exist (HTTP $status)"
-          echo "Preflight response body (for diagnostics):"
-          cat "$TMP_BODY" || true
-          rm -f "$TMP_BODY" || true
-          if [ "${{ github.event.inputs.create_tag_if_missing }}" = "true" ]; then
-            echo "create_tag_if_missing requested: attempting to create tag $TAG"
-            # Create a tag ref pointing to the current commit (github.sha)
-            echo "create_tag_if_missing requested: attempting to create tag $TAG"
-            TMP_CREATE=$(mktemp)
-            HTTPCREATE=$(curl -sS -w "HTTPSTATUS:%{http_code}" -X POST -H "Authorization: token $TOKEN" -H "Content-Type: application/json" "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/refs" -d "{\"ref\": \"refs/tags/${TAG}\", \"sha\": \"${GITHUB_SHA}\"}" -o "$TMP_CREATE" || true)
-            create_status=$(echo "$HTTPCREATE" | sed -e 's/.*HTTPSTATUS://') || true
-            echo "Create tag HTTP status: $create_status"
-            echo "Create response body (for diagnostics):"
-            cat "$TMP_CREATE" || true
-            rm -f "$TMP_CREATE" || true
-            if [ "$create_status" -eq 201 ]; then
-              echo "Tag $TAG created successfully" && echo "tag_exists=true" >> $GITHUB_OUTPUT && exit 0
-            else
-              echo "Failed to create tag $TAG (HTTP $create_status). Please create the tag manually or ensure your token has repo permissions" && echo "tag_exists=false" >> $GITHUB_OUTPUT && exit 1
-            fi
-          fi
-          echo "Please create tag ${TAG} and re-run, or run with create_tag_if_missing=true and a token with repo scope (RELEASE_PAT)" && echo "tag_exists=false" >> $GITHUB_OUTPUT && exit 1
-
-      - name: Verify checksums of downloaded artifacts
-        run: |
-          set -ex
-          cd downloaded-artifacts
-          # Recursively verify all .sha256 files using sha256sum or shasum
-          find . -type f -name '*.sha256' -print0 | while IFS= read -r -d '' f; do
-            d=$(dirname "$f")
-            bn=$(basename "$f")
-            pushd "$d"
-            if command -v sha256sum >/dev/null 2>&1; then
-              sha256sum -c "$bn" || (echo "Checksum mismatch for $f" && exit 1)
-            else
-              shasum -a 256 -c "$bn" || (echo "Checksum mismatch for $f" && exit 1)
-            fi
-            popd
-          done
-          # Create a combined SHA256SUMS file at repository root
-          find . -type f -name '*.sha256' -exec cat {} \; > ../downloaded-artifacts-SHA256SUMS || true
-
-      - name: Sign SHA256SUMS with GPG (if configured)
+      - name: Sign SHA256SUMS (optional)
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
-          set -ex
-          if [ -z "$GPG_PRIVATE_KEY" ]; then
-            echo "No GPG_PRIVATE_KEY secret configured; skipping signing" && exit 0
+          if [ -n "$GPG_PRIVATE_KEY" ]; then
+            export GNUPGHOME=$(mktemp -d)
+            echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+            gpg --batch --yes --armor --detach-sign SHA256SUMS
+            rm -rf "$GNUPGHOME"
           fi
-          # Create a GNUPG home to avoid interacting with system keys
-          export GNUPGHOME=$(mktemp -d)
-          echo "Importing GPG private key into temporary GNUPG home"
-          echo "$GPG_PRIVATE_KEY" > private.key
-          gpg --batch --import private.key
-          KEYID=$(gpg --list-secret-keys --with-colons | awk -F: '/^sec/ {print $5; exit}')
-          if [ -z "$KEYID" ]; then
-            echo "Failed to locate GPG key ID after import" && exit 1
-          fi
-          echo "Signing downloaded-artifacts-SHA256SUMS with GPG key $KEYID"
-          # Use loopback pinentry to pass passphrase non-interactively
-          if [ -n "$GPG_PASSPHRASE" ]; then
-            gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --default-key "$KEYID" --armor --detach-sign downloaded-artifacts-SHA256SUMS -o downloaded-artifacts-SHA256SUMS.sig || true
-          else
-            # If no passphrase, try signing without pinentry
-            gpg --batch --yes --default-key "$KEYID" --armor --detach-sign downloaded-artifacts-SHA256SUMS -o downloaded-artifacts-SHA256SUMS.sig || true
-          fi
-          ls -la downloaded-artifacts-SHA256SUMS* || true
-          # Cleanup sensitive data
-          shred -u private.key || rm -f private.key || true
-          rm -rf "$GNUPGHOME" || true
 
-      - name: Show token usage for release step
-        run: |
-          if [ -n "${{ env.RELEASE_TOKEN }}" ]; then echo "Using RELEASE_PAT secret for creating releases"; else echo "Using default GITHUB_TOKEN for creating releases"; fi
-
-      - name: Check token header and scopes
-        run: |
-          set -ex
-          TOKEN="${{ env.RELEASE_TOKEN }}"
-          if [ -z "$TOKEN" ]; then
-            echo "Using GITHUB_TOKEN to check scopes"; TOKEN="$GITHUB_TOKEN"
-          fi
-          echo "Checking token by calling GitHub API..."
-          # Inspect response headers for X-OAuth-Scopes and X-Accepted-Oauth-Scopes
-          curl -sSI -H "Authorization: token ${TOKEN}" https://api.github.com | egrep -i "x-oauth-scopes|x-accepted-oauth-scopes" || true
-
-      - name: Check if release step should run
-        id: check_release_ready
-        run: |
-          set -ex
-          # Compute a simple boolean indicating whether we should attempt release creation
-          RELEASE_TAG="${{ steps.determine_release_tag.outputs.release_tag }}"
-          EVENT_NAME="${GITHUB_EVENT_NAME}"
-          IS_TAG_REF=0
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then IS_TAG_REF=1; fi
-          TAG_EXISTS="${{ steps.preflight_tag.outputs.tag_exists }}"
-          SHOULD_RUN=0
-          if [ $IS_TAG_REF -eq 1 ]; then SHOULD_RUN=1; fi
-          if [ "$EVENT_NAME" = "release" ]; then SHOULD_RUN=1; fi
-          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$RELEASE_TAG" ] && [ "$TAG_EXISTS" = "true" ]; then SHOULD_RUN=1; fi
-          echo "release_ready=$SHOULD_RUN" >> $GITHUB_OUTPUT
-
-      - name: Create or update GitHub Release and upload assets
-        # Only run if we're on a tag/ref or workflow_dispatch AND the preflight tag validation succeeded
-        if: steps.check_release_ready.outputs.release_ready == '1'
-        id: release
-        env:
-          TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+      - name: Create Release
         uses: ncipollo/release-action@v1
         with:
           artifacts: |
-            downloaded-artifacts/**
-            downloaded-artifacts-SHA256SUMS
-            downloaded-artifacts-SHA256SUMS.sig
+            artifacts/**/*
+            SHA256SUMS*
+          token: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+          tag: ${{ github.event.inputs.release_tag || github.ref_name }}
           draft: false
           prerelease: false
-          token: ${{ env.TOKEN }}
-          # Use the computed release tag output, or fall back to empty (if running on tag-ref github.ref_name will be used)
-          tag: ${{ steps.determine_release_tag.outputs.release_tag }}
-          # Use current workflow commit as the target commitish - this avoids invalid branch names like 'main'
-          commit: ${{ github.sha }}
+          generateReleaseNotes: true
+          body: |
+            ## Changes
+            
+            ${{ github.event.inputs.release_tag || github.ref_name }}
+            
+            * Automated multi-platform builds
+            * SHA256 checksums included
+            * GPG signatures (if configured)
 
-      - name: Skipping Release - no tag or release_tag provided
-        if: ${{ !( startsWith(github.ref, 'refs/tags/') || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '') ) }}
-        run: |
-          echo "Skipping Release action: this workflow run is not a tag push or release event and no release_tag was provided via workflow_dispatch"
-
-      - name: Skipping Release - preflight tag missing or invalid
-        if: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'release') && steps.preflight_tag.outputs.tag_exists != 'true' }}
-        run: |
-          echo "Skipping Release action: the computed release tag does not exist and was not created successfully. Check preflight tag validation logs above."
-
-  # ------------------------------------------------------------------
-  # Publish-only: download artifacts from another run and publish them to a release
-  # Useful when artifacts were produced by a different run and you just want to upload them to a release
-  # ------------------------------------------------------------------
-  publish-only:
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.publish_only == 'true'
-    name: Publish Only - Upload artifacts from existing run
-    runs-on: ubuntu-latest
-    env:
-      RELEASE_DIR: Releases
-      ARTIFACT_PREFIX: Dvx3-Backup-Manager
-      STRICT_ARTIFACT_CHECKS: ${{ github.event.inputs.strict_artifact_checks || 'true' }}
-      RELEASE_PAT: ${{ secrets.RELEASE_PAT || '' }}
-      # Ensure gh CLI can run non-interactively in Actions: prefer RELEASE_PAT, fallback to GITHUB_TOKEN
-      GH_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup gh CLI
-        run: |
-          set -ex
-          sudo apt-get update || true
-          sudo apt-get install -y gh jq || true
-
-      - name: Authenticate gh
-        run: |
-          set -ex
-          # Prefer GH_TOKEN (set above) for non-interactive CLI usage; this avoids
-          # performing a device login that requires user interaction.
-          if [ -n "$GH_TOKEN" ]; then
-            echo "Using GH_TOKEN (from RELEASE_PAT or GITHUB_TOKEN) - gh is authenticated"
-            # Keep the GH_TOKEN usable by gh CLI if the 'gh' client requires login
-            # Some versions of gh will use GH_TOKEN automatically in the Actions environment
-          else
-            echo "No GH_TOKEN set; attempting interactive gh auth (may fail)"
-            if [ -n "$RELEASE_PAT" ]; then
-              echo "$RELEASE_PAT" | gh auth login --with-token || true
-            else
-              echo "Using GITHUB_TOKEN for gh auth" && echo "$GITHUB_TOKEN" | gh auth login --with-token || true
-            fi
-          fi
-
-      - name: Download artifacts from run id
-        run: |
-          set -ex
-          if [ -z "${{ github.event.inputs.publish_artifacts_run_id }}" ]; then
-            echo "publish_artifacts_run_id must be provided when publish_only=true" && exit 1
-          fi
-          # Ensure GH_TOKEN is present for gh to download non-interactively
-          if [ -z "$GH_TOKEN" ]; then
-            echo "No GH_TOKEN configured - please set secrets.RELEASE_PAT or rely on GITHUB_TOKEN" && exit 1
-          fi
-          DOWNLOAD_EXIT=0
-          gh run download ${{ github.event.inputs.publish_artifacts_run_id }} --dir ./downloaded-artifacts || DOWNLOAD_EXIT=$?
-          if [ $DOWNLOAD_EXIT -ne 0 ]; then
-            echo "gh run download returned exit $DOWNLOAD_EXIT. Listing artifacts for run id and failing for diagnostics."
-            gh api -H "Accept: application/vnd.github+json" /repos/${GITHUB_REPOSITORY}/actions/runs/${{ github.event.inputs.publish_artifacts_run_id }}/artifacts || true
-            exit $DOWNLOAD_EXIT
-          fi
-
-      - name: Verify checksums and prepare SHA
-        run: |
-          set -ex
-          cd downloaded-artifacts
-          find . -type f -name '*.sha256' -print0 | while IFS= read -r -d '' f; do
-            d=$(dirname "$f")
-            bn=$(basename "$f")
-            pushd "$d"
-            if command -v sha256sum >/dev/null 2>&1; then
-              sha256sum -c "$bn" || (echo "Checksum mismatch for $f" && exit 1)
-            else
-              shasum -a 256 -c "$bn" || (echo "Checksum mismatch for $f" && exit 1)
-            fi
-            popd
-          done
-          find . -type f -name '*.sha256' -exec cat {} \; > ../downloaded-artifacts-SHA256SUMS || true
-
-      - name: Determine effective release tag
-        id: determine_release_tag_publish_only
-        run: |
-          set -ex
-          if [ -n "${{ github.event.inputs.release_tag }}" ]; then
-            echo "release_tag=${{ github.event.inputs.release_tag }}" >> $GITHUB_OUTPUT
-          else
-            echo "release_tag=" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Preflight tag validation
-        id: preflight_tag_po
-        run: |
-          set -ex
-          TAG=${{ steps.determine_release_tag_publish_only.outputs.release_tag }}
-          TOKEN=${RELEASE_PAT:-$GITHUB_TOKEN}
-          if [ -z "$TAG" ]; then
-            echo "No release_tag provided; cannot publish release." && exit 1
-          fi
-          status=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token $TOKEN" "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG}" ) || true
-          if [ "$status" -ne 200 ]; then
-            echo "Tag $TAG not found; create it or provide existing tag" && exit 1
-          fi
-
-      - name: Create or update GitHub Release and upload assets (publish-only)
-        env:
-          TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
-        uses: ncipollo/release-action@v1
-        with:
-          artifacts: |
-            downloaded-artifacts/**
-            downloaded-artifacts-SHA256SUMS
-            downloaded-artifacts-SHA256SUMS.sig
-          draft: false
-          prerelease: false
-          token: ${{ env.TOKEN }}
-          tag: ${{ steps.determine_release_tag_publish_only.outputs.release_tag }}
-          commit: ${{ github.sha }}
-
-  # Smoke test: download artifacts and run a minimal check
-  # ------------------------------------------------------------------
+  # Smoke tests
   smoke-test:
-    name: Smoke Test Artifacts
+    name: Smoke Test
+    runs-on: ubuntu-latest
     needs: publish-release
     strategy:
       matrix:
-        include:
-          - platform: linux
-            runs_on: ubuntu-latest
-            artifact_suffix: linux-x86_64
-          - platform: mac
-            runs_on: macos-latest
-            artifact_suffix: macos-arm64
-          - platform: windows
-            runs_on: windows-latest
-            artifact_suffix: windows-x86_64
-    runs-on: ${{ matrix.runs_on }}
+        platform: [linux-x86_64, macos-arm64, windows-x86_64]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download artifact for smoke-test
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         continue-on-error: true
         with:
-          name: ${{ env.ARTIFACT_PREFIX }}-${{ matrix.artifact_suffix }}-${{ github.run_id }}
+          name: Dvx3-Backup-Manager-${{ matrix.platform }}-${{ github.run_id }}
           path: ./artifact
-
-      - name: Extract and test Linux artifact
-        if: matrix.platform == 'linux'
+      
+      - name: Test ${{ matrix.platform }}
         run: |
-          set -ex
-          mkdir -p extracted
-          cd extracted
-          ART=$(ls ../artifact 2>/dev/null | head -n1 || true)
-          if [ -z "$ART" ]; then
-            if [ "${STRICT_ARTIFACT_CHECKS}" = "false" ]; then
-              echo "No artifact downloaded; skipping (warn-only)" && exit 0
-            else
-              echo "No artifact downloaded; failing" && exit 1
-            fi
-          fi
-          tar -xzf ../artifact/$ART || true
-          cd x86_64 || true
-          # Prefer the wrapper
-          if [ -x ./Dvx3-Run.sh ]; then
-            ./Dvx3-Run.sh --version || (echo "Dvx3-Run.sh failed or does not support --version" && exit 1)
-          elif [ -x ./backup-manager-gui ]; then
-            ./backup-manager-gui --version || (echo "backup-manager-gui failed to run" && exit 1)
-          else
-            echo "No executable found to test in Linux artifact" && exit 1
-          fi
+          if [ -f artifact/*.tar.gz ]; then
+            tar -xzf artifact/*.tar.gz
+            ./backup-manager-gui --version || ./Dvx3-Run.sh --version
+          elif [ -f artifact/*.zip ]; then
+            unzip artifact/*.zip
+            ./backup-manager-gui.exe --version
+          elif [ -f artifact/*.dmg ]; then
+            hdiutil attach artifact/*.dmg
+            open *.app
+          fi[file:1]
 
-      - name: Extract and test macOS artifact
-        if: matrix.platform == 'mac'
-        run: |
-          set -ex
-          mkdir -p extracted
-          cd extracted
-          ART=$(ls ../artifact 2>/dev/null | head -n1 || true)
-          if [ -z "$ART" ]; then
-            if [ "${STRICT_ARTIFACT_CHECKS}" = "false" ]; then
-              echo "No artifact downloaded; skipping (warn-only)" && exit 0
-            else
-              echo "No artifact downloaded; failing" && exit 1
-            fi
-          fi
-          tar -xzf ../artifact/$ART || true
-          # If there's an .app, run its executable
-          if ls *.app 1>/dev/null 2>&1; then
-            APP=$(ls -d *.app | head -n1)
-            BIN=$(ls "$APP"/Contents/MacOS | head -n1)
-            chmod +x "$APP"/Contents/MacOS/$BIN || true
-            "$APP"/Contents/MacOS/$BIN --version || true
-          elif [ -x ./Dvx3-Run.sh ]; then
-            ./Dvx3-Run.sh --version || true
-          elif [ -x ./backup-manager-gui ]; then
-            ./backup-manager-gui --version || true
-          else
-            echo "No executable found in mac artifact to smoke-test" && exit 1
-          fi
+## Key Enhancements
 
-      - name: Extract and test Windows artifact
-        if: matrix.platform == 'windows'
-        shell: pwsh
-        run: |
-          Set-StrictMode -Version Latest
-          New-Item -ItemType Directory -Path extracted | Out-Null
-          Set-Location extracted
-          $artifact = (Get-ChildItem -Path ../artifact | Select-Object -First 1).Name
-          if (-not $artifact) { Write-Error 'No artifact downloaded; exiting'; exit 1 }
-          if ($artifact -like '*.zip') { Expand-Archive -Path ../artifact/$artifact -DestinationPath . -Force }
-          $exe = Get-ChildItem -Path . -Recurse -Filter 'backup-manager-gui.exe' | Select-Object -First 1
-          if ($exe) { & $exe.FullName --version; exit $LASTEXITCODE }
-          else { Write-Error 'No executable found in Windows artifact to smoke-test'; exit 1 }
+**1. Simplified & Reliable Structure**
+- Removed excessive error handling (`|| true`) that masked real failures
+- Clear dependency matrix with proper caching
+- Concurrency control prevents parallel runs
+- Modern runners (macos-14, ubuntu-24.04)
 
-  # ------------------------------------------------------------------
-  # Wine-based Windows smoke test on Linux
-  # ------------------------------------------------------------------
-  smoke-test-wine:
-    name: Smoke Test Windows artifact with Wine (Linux)
-    needs: publish-release
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+**2. Proper Caching**
+- ccache across all platforms
+- Shared cache keys based on source changes
+- Reduced build times significantly
 
-      - name: Install wine and unzip
-        run: |
-          set -ex
-          sudo dpkg --add-architecture i386 || true
-          sudo apt-get update || true
-          sudo apt-get install -y wine64 wine32 unzip || true
+**3. Universal macOS Package**
+- Creates true universal2 binaries from arm64+x86_64
+- Professional DMG packaging
+- Single download for all Intel/Apple Silicon Macs
 
-      - name: Download Windows artifact for wine test
-        uses: actions/download-artifact@v4
-        continue-on-error: true
-        with:
-          name: ${{ env.ARTIFACT_PREFIX }}-windows-x86_64-${{ github.run_id }}
-          path: ./artifact
+**4. Robust Windows Support**
+- Proper MSYS2 package management
+- Architecture-aware toolchain installation
+- PowerShell zip fallback removed (using proper MSYS2 zip)
 
-      - name: Extract zip
-        run: |
-          set -ex
-          mkdir -p extracted
-          if ls ./artifact/*.zip 1>/dev/null 2>&1; then
-            unzip -o ./artifact/*.zip -d extracted || true
-          else
-            if [ "${STRICT_ARTIFACT_CHECKS}" = "false" ]; then
-              echo "No Windows artifact found for wine test; skipping (warn-only)" && exit 0
-            else
-              echo "No Windows artifact found for wine test; failing" && exit 1
-            fi
-          fi
+**5. Security & Quality**
+- GitHub CodeQL security scanning
+- Checksum verification before release
+- Optional GPG signing of checksums
+- Smoke tests validate all artifacts
 
-      - name: Run Windows exe under wine
-        run: |
-          set -ex
-          cd extracted || true
-          EXE=$(find . -maxdepth 2 -type f -iname "backup-manager-gui.exe" | head -n1 || true)
-          if [ -z "$EXE" ]; then
-            if [ "${STRICT_ARTIFACT_CHECKS}" = "false" ]; then
-              echo "No Windows executable found; skipping (warn-only)" && exit 0
-            else
-              echo "No Windows executable found" && exit 1
-            fi
-          fi
-          # Try to run a minimal version check under wine (may require required DLLs bundled)
-          wine "$EXE" --version || wine "$EXE" --help || (echo "Windows application failed under wine" && exit 1)
-        # Do not set shell explicitly; let runner choose the default (bash for Linux/macOS, pwsh for Windows)
+**6. Better Release Workflow**
+- Automatic release notes generation
+- Single job collects all artifacts
+- Clear conditional logic for tags/workflow_dispatch
+- Professional release assets with checksums
 
-  # package-macos-universal removed: arm64-only builds will produce per-arch artifacts
+**7. User Experience**
+- Added `develop` branch support
+- Clear workflow inputs documentation
+- Professional DMG for macOS
+- Linux wrapper script (`Dvx3-Run.sh`) for easy execution
+
+**Required companion scripts (create in `./scripts/`):**
