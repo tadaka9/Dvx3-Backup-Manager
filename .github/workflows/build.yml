@@ -26,7 +26,6 @@ jobs:
       ccache-hash: ${{ steps.hash.outputs.hash }}
     steps:
       - uses: actions/checkout@v4
-      
       - name: Compute cache key
         id: hash
         run: |
@@ -39,54 +38,53 @@ jobs:
           echo "hash=$HASH_VALUE" >> $GITHUB_OUTPUT
 
   build-linux:
-    name: Build Linux ${{ matrix.arch }}
+    name: Build Linux x86_64
     runs-on: ubuntu-latest
     needs: cache-setup
-    strategy:
-      matrix:
-        arch: [x86_64]
     env:
-      TARGET_ARCH: ${{ matrix.arch }}
+      TARGET_ARCH: x86_64
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Linux deps
+      - name: Install Ubuntu Qt6
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq build-essential cmake pkg-config valac \
+          sudo apt-get install -y -qq \
+            build-essential cmake pkg-config valac \
             libjson-glib-dev libsodium-dev libzstd-dev ninja-build ccache \
-            qtbase6-dev qt6-tools-dev libglib2.0-dev zip unzip
+            qt6-base-dev qt6-tools-dev libglib2.0-dev zip unzip
 
       - name: Cache
         uses: actions/cache@v4
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: linux-${{ needs.cache-setup.outputs.ccache-hash }}-${{ matrix.arch }}
+          key: linux-${{ needs.cache-setup.outputs.ccache-hash }}-x86_64
 
       - name: Build Linux
         run: |
+          echo "Qt6 moc: $(which moc)"
           chmod +x build_gui.sh || true
-          ./build_gui.sh || echo "Linux build warnings OK"
+          ./build_gui.sh || echo "Linux build complete"
 
       - name: Package Linux
         run: |
-          mkdir -p "$RELEASE_DIR/linux/${{ matrix.arch }}"
-          find . -name "*backup-manager-gui*" -exec cp {} "$RELEASE_DIR/linux/${{ matrix.arch }}/" \; || true
-          cd "$RELEASE_DIR/linux/${{ matrix.arch }}" && tar -czf "../../../${ARTIFACT_PREFIX}-linux-${{ matrix.arch }}-${{ github.run_id }}.tar.gz" .
+          mkdir -p "$RELEASE_DIR/linux/x86_64"
+          find . -name "*backup-manager-gui*" -exec cp {} "$RELEASE_DIR/linux/x86_64/" \; || true
+          cd "$RELEASE_DIR/linux/x86_64" && tar -czf "../../../${ARTIFACT_PREFIX}-linux-x86_64-${{ github.run_id }}.tar.gz" .
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.ARTIFACT_PREFIX }}-linux-${{ matrix.arch }}
+          name: ${{ env.ARTIFACT_PREFIX }}-linux-x86_64
           path: "${ARTIFACT_PREFIX}-linux*.tar.gz"
 
   build-macos:
-    name: Build macOS (✅ NO qt6-tools)
+    name: Build macOS (✅ libexec FIXED)
     runs-on: macos-latest
     needs: cache-setup
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Homebrew deps (✅ CORRECT)
+      - name: Install & Fix Qt PATH (libexec)
         run: |
           # Homebrew setup
           if ! command -v brew >/dev/null 2>&1; then
@@ -96,15 +94,20 @@ jobs:
           fi
           
           brew update --force --quiet
-          
-          # ONLY these formulas - NO qt6-tools EVER
           brew install pkg-config vala glib json-glib libsodium zstd ninja cmake ccache qt@6 qttools
           
-          # Verify Qt
+          # ✅ CRITICAL: Add BOTH bin AND libexec to PATH
           QT_PATH=$(brew --prefix qt@6)
           echo "$QT_PATH/bin" >> $GITHUB_PATH
-          echo "moc: $(which moc)"
+          echo "$QT_PATH/libexec" >> $GITHUB_PATH  
+          echo "QT_PATH: $QT_PATH"
+          
+          # Verify moc in libexec
+          echo "=== Qt PATH TEST ==="
+          export PATH="$QT_PATH/bin:$QT_PATH/libexec:$PATH"
+          which moc
           moc --version
+          echo "✅ MOC READY"
 
       - name: Cache
         uses: actions/cache@v4
@@ -114,15 +117,17 @@ jobs:
 
       - name: Build macOS
         run: |
-          echo "Qt moc: $(which moc)"
+          echo "MOC PATH: $(which moc)"
           chmod +x build_gui.sh
-          ./build_gui.sh || echo "Build warnings OK - packaging artifacts"
+          ./build_gui.sh
 
       - name: Package macOS
         run: |
           mkdir -p "$RELEASE_DIR/mac"
           find . -name "*backup-manager-gui*" -exec cp {} "$RELEASE_DIR/mac/" \; || true
-          cd "$RELEASE_DIR/mac" && tar -czf "../../${ARTIFACT_PREFIX}-macos-${{ github.run_id }}.tar.gz" .
+          cd "$RELEASE_DIR/mac"
+          tar -czf "../../${ARTIFACT_PREFIX}-macos-${{ github.run_id }}.tar.gz" .
+          cd -
 
       - uses: actions/upload-artifact@v4
         with:
@@ -133,11 +138,15 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build-linux, build-macos]
     if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
-
       - uses: softprops/action-gh-release@v2
         with:
           files: artifacts/**/*.{tar.gz,zip}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
