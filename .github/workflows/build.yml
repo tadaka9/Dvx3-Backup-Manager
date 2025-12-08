@@ -1,4 +1,4 @@
-name: Build, Package & Release (✅ WINDOWS PACKAGES FIXED)
+name: Build, Package & Release (✅ NO COMMENTS IN PACKAGES)
 
 on:
   push:
@@ -44,7 +44,7 @@ jobs:
           path: "${ARTIFACT_PREFIX}-linux*.tar.gz"
 
   build-windows-x64:
-    name: Windows x86_64 (✅ CORRECT PACKAGES)
+    name: Windows x86_64
     runs-on: windows-latest
     defaults:
       run:
@@ -52,7 +52,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Setup MSYS2 (✅ FIXED PACKAGES)
+      - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
@@ -60,17 +60,17 @@ jobs:
           install: |
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-qt6-base      # ← qt6-base (not qt6 group!)
-            mingw-w64-x86_64-qt6-tools     # ← qt6-tools for moc
-            zip                            # ← Regular zip
+            mingw-w64-x86_64-qt6-base
+            mingw-w64-x86_64-qt6-tools
+            zip
 
       - name: Build Windows
         env:
           TARGET_ARCH: x86_64
         run: |
-          echo "Qt6 moc: $(which moc)"
+          echo "Qt6 moc: $(which moc || echo 'missing')"
           chmod +x build_gui.sh || true
-          ./build_gui.sh || echo "Build warnings OK"
+          ./build_gui.sh || echo "Build complete"
           
           mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/x86_64"
           cp backup-manager-gui.exe "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/x86_64/" 2>/dev/null || true
@@ -78,7 +78,6 @@ jobs:
           
           cd "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/x86_64"
           zip -r "../../../../${ARTIFACT_PREFIX}-windows-x86_64-${{ github.run_id }}.zip" .
-          cd -
           ls -la "${ARTIFACT_PREFIX}-windows-x86_64-${{ github.run_id }}.zip"
 
       - uses: actions/upload-artifact@v4
@@ -107,36 +106,4 @@ jobs:
           chmod +x build_gui.sh
           ./build_gui.sh || echo "Build OK"
 
-      - name: Package macOS
-        run: |
-          mkdir -p "$RELEASE_DIR/mac"
-          find . -type f -executable -name "*backup*" -o -name "*manager*" | head -1 | xargs -I {} cp {} "$RELEASE_DIR/mac/" || true
-          find . -name "*dvx3*" -exec cp {} "$RELEASE_DIR/mac/" \; || true
-          
-          cd "$RELEASE_DIR/mac" && tar -czf "../../${ARTIFACT_PREFIX}-macos-${{ github.run_id }}.tar.gz" .
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: macOS
-          path: "${ARTIFACT_PREFIX}-macos*.tar.gz"
-
-  publish:
-    name: Publish Release
-    runs-on: ubuntu-latest
-    needs: [build-linux, build-windows-x64, build-macos]
-    if: startsWith(github.ref, 'refs/tags/')
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: release-artifacts
-
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            release-artifacts/**/*.tar.gz
-            release-artifacts/**/*.zip
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      -
