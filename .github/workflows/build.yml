@@ -21,12 +21,8 @@ jobs:
         include:
           - arch: x86_64
             runner: ubuntu-latest
-            cc: gcc
-            cxx: g++
           - arch: aarch64
             runner: ubuntu-latest
-            cc: gcc
-            cxx: g++
     steps:
       - uses: actions/checkout@v4
       
@@ -35,7 +31,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential cmake pkg-config valac \
             libjson-glib-dev libsodium-dev qt6-base-dev qt6-tools-dev ninja-build zip
-          # Cross-compile tools for aarch64
           if [ "${{ matrix.arch }}" = "aarch64" ]; then
             sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
           fi
@@ -46,17 +41,13 @@ jobs:
             echo "TARGET_ARCH=${{ matrix.arch }}" >> $GITHUB_ENV
             echo "CC=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
             echo "CXX=aarch64-linux-gnu-g++" >> $GITHUB_ENV
-            echo "PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig" >> $GITHUB_ENV
           else
             echo "TARGET_ARCH=${{ matrix.arch }}" >> $GITHUB_ENV
           fi
-          echo "CMAKE_C_COMPILER=${{ env.CC:-gcc }}" >> $GITHUB_ENV
-          echo "CMAKE_CXX_COMPILER=${{ env.CXX:-g++ }}" >> $GITHUB_ENV
 
       - name: Build & Package
         run: |
           chmod +x build_gui.sh || true
-          # Pass architecture explicitly to build script
           TARGET_ARCH="$TARGET_ARCH" ./build_gui.sh || echo "Build warnings OK"
           
           mkdir -p "$RELEASE_DIR/linux/${{ matrix.arch }}"
@@ -72,8 +63,8 @@ jobs:
           fi
 
       - name: Upload Linux artifacts
-        uses: actions/upload-artifact@v4
         if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: Linux-${{ matrix.arch }}
           path: |
@@ -137,7 +128,6 @@ jobs:
           name: Windows-x86_64
           path: |
             ${ARTIFACT_PREFIX}-windows*.zip
-            $RELEASE_DIR/windows/x86_64/*
 
   build-macos:
     name: macOS
@@ -148,11 +138,10 @@ jobs:
       - name: Install deps
         run: |
           brew update
-          brew install pkg-config vala glib json-glib libsodium ninja cmake qt@6 qt6-tools
+          brew install pkg-config vala glib json-glib libsodium ninja cmake qt@6
           
           QT_PATH=$(brew --prefix qt@6)
           echo "$QT_PATH/bin" >> $GITHUB_PATH
-          echo "$QT_PATH/libexec" >> $GITHUB_PATH
 
       - name: Build macOS
         env:
