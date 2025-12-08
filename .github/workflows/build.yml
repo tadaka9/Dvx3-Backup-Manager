@@ -1,4 +1,4 @@
-name: Build, Package & Release (✅ MSYS2 FIXED)
+name: Build, Package & Release (✅ FIXED)
 
 on:
   push:
@@ -15,33 +15,70 @@ env:
 jobs:
   build-linux:
     name: Linux ${{ matrix.arch }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
-        arch: [x86_64, aarch64]
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+            cc: gcc
+            cxx: g++
+          - arch: aarch64
+            runner: ubuntu-latest
+            cc: gcc
+            cxx: g++
     steps:
       - uses: actions/checkout@v4
       
       - name: Install deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake pkg-config valac libjson-glib-dev libsodium-dev qt6-base-dev qt6-tools-dev ninja-build zip
+          sudo apt-get install -y build-essential cmake pkg-config valac \
+            libjson-glib-dev libsodium-dev qt6-base-dev qt6-tools-dev ninja-build zip
+          # Cross-compile tools for aarch64
+          if [ "${{ matrix.arch }}" = "aarch64" ]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          fi
+
+      - name: Set architecture flags
+        run: |
+          if [ "${{ matrix.arch }}" = "aarch64" ]; then
+            echo "TARGET_ARCH=${{ matrix.arch }}" >> $GITHUB_ENV
+            echo "CC=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+            echo "CXX=aarch64-linux-gnu-g++" >> $GITHUB_ENV
+            echo "PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig" >> $GITHUB_ENV
+          else
+            echo "TARGET_ARCH=${{ matrix.arch }}" >> $GITHUB_ENV
+          fi
+          echo "CMAKE_C_COMPILER=${{ env.CC:-gcc }}" >> $GITHUB_ENV
+          echo "CMAKE_CXX_COMPILER=${{ env.CXX:-g++ }}" >> $GITHUB_ENV
 
       - name: Build & Package
-        env:
-          TARGET_ARCH: ${{ matrix.arch }}
         run: |
           chmod +x build_gui.sh || true
-          ./build_gui.sh || echo "Build warnings OK"
+          # Pass architecture explicitly to build script
+          TARGET_ARCH="$TARGET_ARCH" ./build_gui.sh || echo "Build warnings OK"
           
           mkdir -p "$RELEASE_DIR/linux/${{ matrix.arch }}"
-          find . -name "*backup-manager-gui*" -exec cp {} "$RELEASE_DIR/linux/${{ matrix.arch }}/" \; || true
-          cd "$RELEASE_DIR/linux/${{ matrix.arch }}" && tar -czf "../../../${ARTIFACT_PREFIX}-linux-${{ matrix.arch }}-${{ github.run_id }}.tar.gz" .
+          find . -name "*backup-manager-gui*" -type f -executable -exec cp {} "$RELEASE_DIR/linux/${{ matrix.arch }}/" \; || true
+          
+          if [ -d "$RELEASE_DIR/linux/${{ matrix.arch }}" ] && [ "$(ls -A "$RELEASE_DIR/linux/${{ matrix.arch }}")" ]; then
+            cd "$RELEASE_DIR/linux/${{ matrix.arch }}"
+            tar -czf "../../../${ARTIFACT_PREFIX}-linux-${{ matrix.arch }}-${{ github.run_id }}.tar.gz" . || echo "Packaging warnings OK"
+            ls -la "../../../${ARTIFACT_PREFIX}-linux-${{ matrix.arch }}-${{ github.run_id }}.tar.gz"
+          else
+            echo "No binaries found to package"
+            exit 1
+          fi
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: Linux-${{ matrix.arch }}
-          path: "${ARTIFACT_PREFIX}-linux*.tar.gz"
+          path: |
+            ${ARTIFACT_PREFIX}-linux-${{ matrix.arch }}*.tar.gz
+          retention-days: 30
 
   build-windows-x64:
     name: Windows x86_64 (✅ FULL DEPS)
@@ -79,17 +116,20 @@ jobs:
           pkg-config --exists json-glib-1.0 && echo "json-glib OK" || echo "json-glib missing"
           
           chmod +x build_gui.sh || true
-          ./build_gui.sh || echo "Build complete"
+          TARGET_ARCH="$TARGET_ARCH" ./build_gui.sh || echo "Build complete"
           
           mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/x86_64"
-          find . -name "*backup-manager-gui*" -exec cp {} "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/x86_64/" \; 2>/dev/null || true
+          find . -name "*backup-manager-gui*" -type f -executable -exec cp {} "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/x86_64/" \; 2>/dev/null || true
           
           cd "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/x86_64"
           ZIP_FILE="../../../../${ARTIFACT_PREFIX}-windows-x86_64-${{ github.run_id }}.zip"
-          zip -r "$ZIP_FILE" . || echo "Zip warnings OK"
-          
-          echo "Created: $ZIP_FILE"
-          ls -la "$ZIP_FILE" || ls -la .
+          if [ -n "$(ls -A . 2>/dev/null)" ]; then
+            zip -r "$ZIP_FILE" .
+            echo "Created: $ZIP_FILE"
+            ls -la "$ZIP_FILE"
+          else
+            echo "No files to zip"
+          fi
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -108,17 +148,19 @@ jobs:
       - name: Install deps
         run: |
           brew update
-          brew install pkg-config vala glib json-glib libsodium ninja cmake qt qttools
+          brew install pkg-config vala glib json-glib libsodium ninja cmake qt@6 qt6-tools
           
-          QT_PATH=$(brew --prefix qt)
+          QT_PATH=$(brew --prefix qt@6)
           echo "$QT_PATH/bin" >> $GITHUB_PATH
           echo "$QT_PATH/libexec" >> $GITHUB_PATH
 
       - name: Build macOS
+        env:
+          TARGET_ARCH: aarch64
         run: |
           echo "MOC: $(which moc)"
           chmod +x build_gui.sh
-          ./build_gui.sh || echo "Build OK"
+          TARGET_ARCH="$TARGET_ARCH" ./build_gui.sh || echo "Build OK"
 
       - name: Package macOS
         run: |
@@ -126,12 +168,19 @@ jobs:
           find . -type f -executable -name "*backup*" -o -name "*manager*" | head -1 | xargs -I {} cp {} "$RELEASE_DIR/mac/" || true
           find . -name "*dvx3*" -exec cp {} "$RELEASE_DIR/mac/" \; || true
           
-          cd "$RELEASE_DIR/mac" && tar -czf "../../${ARTIFACT_PREFIX}-macos-${{ github.run_id }}.tar.gz" .
+          if [ -d "$RELEASE_DIR/mac" ] && [ "$(ls -A "$RELEASE_DIR/mac")" ]; then
+            cd "$RELEASE_DIR/mac" && tar -czf "../../${ARTIFACT_PREFIX}-macos-${{ github.run_id }}.tar.gz" .
+            ls -la "../../${ARTIFACT_PREFIX}-macos-${{ github.run_id }}.tar.gz"
+          else
+            echo "No macOS binaries found"
+          fi
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: macOS
           path: "${ARTIFACT_PREFIX}-macos*.tar.gz"
+          retention-days: 30
 
   publish:
     name: Publish Release
@@ -144,6 +193,9 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: release-artifacts
+
+      - name: List artifacts
+        run: find release-artifacts -type f -name "*.tar.gz" -o -name "*.zip" | head -20
 
       - uses: softprops/action-gh-release@v2
         with:
