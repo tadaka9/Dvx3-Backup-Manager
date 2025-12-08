@@ -1,4 +1,4 @@
-name: Build, Package & Release (COMPLETE ✅ FIXED WINDOWS)
+name: Build, Package & Release (✅ WINDOWS FIXED)
 
 on:
   push:
@@ -40,11 +40,11 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Linux-${{ matrix.arch }}-Artifact
+          name: Linux-${{ matrix.arch }}
           path: "${ARTIFACT_PREFIX}-linux*.tar.gz"
 
   build-windows:
-    name: Windows ${{ matrix.arch }} (✅ FIXED MSYS2)
+    name: Windows ${{ matrix.arch }} (✅ CORRECT MSYS2)
     runs-on: windows-latest
     strategy:
       matrix:
@@ -53,8 +53,8 @@ jobs:
             msystem: MINGW64
             packages: mingw-w64-x86_64-toolchain mingw-w64-x86_64-cmake mingw-w64-x86_64-qt6 mingw-w64-x86_64-zip zip
           - arch: aarch64
-            msystem: MINGWARM64     # ← CORRECT ARM64 value!
-            packages: mingw-w64-aarch64-toolchain mingw-w64-aarch64-cmake mingw-w64-aarch64-qt6 mingw-w64-aarch64-zip zip
+            msystem: CLANGARM64          # ← CORRECT ARM64!
+            packages: mingw-w64-ucrt-aarch64-toolchain mingw-w64-ucrt-aarch64-cmake mingw-w64-ucrt-aarch64-qt6 mingw-w64-ucrt-aarch64-zip zip
     defaults:
       run:
         shell: msys2 {0}
@@ -86,7 +86,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Windows-${{ matrix.arch }}-Artifact
+          name: Windows-${{ matrix.arch }}
           path: "${ARTIFACT_PREFIX}-windows*.zip"
 
   build-macos:
@@ -130,7 +130,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: macOS-Artifact
+          name: macOS
           path: "${ARTIFACT_PREFIX}-macos*.tar.gz"
 
   publish:
