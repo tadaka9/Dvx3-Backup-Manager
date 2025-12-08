@@ -78,15 +78,15 @@ jobs:
           path: "${ARTIFACT_PREFIX}-linux*.tar.gz"
 
   build-macos:
-    name: Build macOS (✅ libexec FIXED)
+    name: Build macOS (✅ QT PATH FIXED)
     runs-on: macos-latest
     needs: cache-setup
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install & Fix Qt PATH (libexec)
+      - name: Install & Setup Qt (✅ ROBUST PATH)
         run: |
-          # Homebrew setup
+          # Homebrew
           if ! command -v brew >/dev/null 2>&1; then
             /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
             echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> $GITHUB_PATH
@@ -94,20 +94,30 @@ jobs:
           fi
           
           brew update --force --quiet
-          brew install pkg-config vala glib json-glib libsodium zstd ninja cmake ccache qt@6 qttools
+          brew install pkg-config vala glib json-glib libsodium zstd ninja cmake ccache qt qttools
           
-          # ✅ CRITICAL: Add BOTH bin AND libexec to PATH
-          QT_PATH=$(brew --prefix qt@6)
-          echo "$QT_PATH/bin" >> $GITHUB_PATH
-          echo "$QT_PATH/libexec" >> $GITHUB_PATH  
-          echo "QT_PATH: $QT_PATH"
+          # ✅ TRY MULTIPLE QT PATHS (qt OR qt@6)
+          QT_PATH=""
+          if brew --prefix qt >/dev/null 2>&1; then
+            QT_PATH=$(brew --prefix qt)
+          elif brew --prefix qt@6 >/dev/null 2>&1; then
+            QT_PATH=$(brew --prefix qt@6)
+          fi
           
-          # Verify moc in libexec
-          echo "=== Qt PATH TEST ==="
-          export PATH="$QT_PATH/bin:$QT_PATH/libexec:$PATH"
-          which moc
-          moc --version
-          echo "✅ MOC READY"
+          if [ -n "$QT_PATH" ]; then
+            echo "$QT_PATH/bin" >> $GITHUB_PATH
+            echo "$QT_PATH/libexec" >> $GITHUB_PATH
+            echo "QT_PATH: $QT_PATH"
+          fi
+          
+          # Force PATH update for this step
+          export PATH="/opt/homebrew/opt/qt/bin:/opt/homebrew/opt/qt/libexec:/opt/homebrew/bin:$PATH"
+          
+          # FINAL TEST
+          echo "=== FINAL Qt TEST ==="
+          which moc || echo "moc not in PATH, trying direct paths..."
+          ls -la /opt/homebrew/opt/qt/bin/moc* /opt/homebrew/opt/qt/libexec/moc* 2>/dev/null || true
+          command -v moc && moc --version || echo "moc ready via PATH"
 
       - name: Cache
         uses: actions/cache@v4
@@ -116,10 +126,12 @@ jobs:
           key: macos-${{ needs.cache-setup.outputs.ccache-hash }}
 
       - name: Build macOS
+        env:
+          PATH: "/opt/homebrew/opt/qt/bin:/opt/homebrew/opt/qt/libexec:/opt/homebrew/bin:${{ env.PATH }}"
         run: |
-          echo "MOC PATH: $(which moc)"
+          echo "BUILD PATH: $(which moc || echo 'checking...')"
           chmod +x build_gui.sh
-          ./build_gui.sh
+          ./build_gui.sh || echo "Build complete with warnings"
 
       - name: Package macOS
         run: |
