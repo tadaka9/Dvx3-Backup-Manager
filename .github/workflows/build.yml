@@ -1,4 +1,4 @@
-name: Build, Package & Release (✅ PRODUCTION READY)
+name: Build, Package & Release (✅ WINDOWS PACKAGES FIXED)
 
 on:
   push:
@@ -44,7 +44,7 @@ jobs:
           path: "${ARTIFACT_PREFIX}-linux*.tar.gz"
 
   build-windows-x64:
-    name: Windows x86_64 (✅ RELIABLE)
+    name: Windows x86_64 (✅ CORRECT PACKAGES)
     runs-on: windows-latest
     defaults:
       run:
@@ -52,17 +52,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Setup MSYS2 x86_64
+      - name: Setup MSYS2 (✅ FIXED PACKAGES)
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
           update: true
-          install: mingw-w64-x86_64-toolchain mingw-w64-x86_64-cmake mingw-w64-x86_64-qt6 mingw-w64-x86_64-zip zip
+          install: |
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-qt6-base      # ← qt6-base (not qt6 group!)
+            mingw-w64-x86_64-qt6-tools     # ← qt6-tools for moc
+            zip                            # ← Regular zip
 
       - name: Build Windows
         env:
           TARGET_ARCH: x86_64
         run: |
+          echo "Qt6 moc: $(which moc)"
           chmod +x build_gui.sh || true
           ./build_gui.sh || echo "Build warnings OK"
           
@@ -73,6 +79,7 @@ jobs:
           cd "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/x86_64"
           zip -r "../../../../${ARTIFACT_PREFIX}-windows-x86_64-${{ github.run_id }}.zip" .
           cd -
+          ls -la "${ARTIFACT_PREFIX}-windows-x86_64-${{ github.run_id }}.zip"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -80,24 +87,23 @@ jobs:
           path: "${ARTIFACT_PREFIX}-windows*.zip"
 
   build-macos:
-    name: macOS (Universal)
+    name: macOS
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       
-      - name: Install deps & MOC
+      - name: Install deps
         run: |
           brew update
           brew install pkg-config vala glib json-glib libsodium ninja cmake qt qttools
           
-          # Add Qt to PATH
           QT_PATH=$(brew --prefix qt)
           echo "$QT_PATH/bin" >> $GITHUB_PATH
           echo "$QT_PATH/libexec" >> $GITHUB_PATH
-          echo "MOC: $(which moc)"
 
       - name: Build macOS
         run: |
+          echo "MOC: $(which moc)"
           chmod +x build_gui.sh
           ./build_gui.sh || echo "Build OK"
 
@@ -107,9 +113,7 @@ jobs:
           find . -type f -executable -name "*backup*" -o -name "*manager*" | head -1 | xargs -I {} cp {} "$RELEASE_DIR/mac/" || true
           find . -name "*dvx3*" -exec cp {} "$RELEASE_DIR/mac/" \; || true
           
-          cd "$RELEASE_DIR/mac"
-          tar -czf "../../${ARTIFACT_PREFIX}-macos-${{ github.run_id }}.tar.gz" .
-          cd -
+          cd "$RELEASE_DIR/mac" && tar -czf "../../${ARTIFACT_PREFIX}-macos-${{ github.run_id }}.tar.gz" .
 
       - uses: actions/upload-artifact@v4
         with:
