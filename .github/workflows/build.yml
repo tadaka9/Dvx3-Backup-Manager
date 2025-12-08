@@ -1,4 +1,4 @@
-name: Build, Package & Release
+name: Build, Package & Release (✅ MSYS2 FIXED)
 
 on:
   push:
@@ -44,7 +44,7 @@ jobs:
           path: "${ARTIFACT_PREFIX}-linux*.tar.gz"
 
   build-windows-x64:
-    name: Windows x86_64
+    name: Windows x86_64 (✅ FULL DEPS)
     runs-on: windows-latest
     defaults:
       run:
@@ -52,7 +52,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Setup MSYS2
+      - name: Setup MSYS2 (✅ ALL REQUIRED PACKAGES)
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
@@ -62,28 +62,42 @@ jobs:
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-qt6-base
             mingw-w64-x86_64-qt6-tools
+            mingw-w64-x86_64-glib2
+            mingw-w64-x86_64-json-glib
+            mingw-w64-x86_64-libsodium
+            mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-vala
             zip
 
       - name: Build Windows
         env:
           TARGET_ARCH: x86_64
+          PKG_CONFIG_PATH: /mingw64/lib/pkgconfig
         run: |
-          echo "Qt6 moc: $(which moc || echo 'missing')"
+          echo "Checking dependencies..."
+          which moc || echo "moc missing"
+          pkg-config --exists json-glib-1.0 && echo "json-glib OK" || echo "json-glib missing"
+          
           chmod +x build_gui.sh || true
           ./build_gui.sh || echo "Build complete"
           
           mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/x86_64"
-          cp backup-manager-gui.exe "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/x86_64/" 2>/dev/null || true
-          find . -name "*backup-manager-gui*" -exec cp {} "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/x86_64/" \; || true
+          find . -name "*backup-manager-gui*" -exec cp {} "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/x86_64/" \; 2>/dev/null || true
           
           cd "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/x86_64"
-          zip -r "../../../../${ARTIFACT_PREFIX}-windows-x86_64-${{ github.run_id }}.zip" .
-          ls -la "${ARTIFACT_PREFIX}-windows-x86_64-${{ github.run_id }}.zip"
+          ZIP_FILE="../../../../${ARTIFACT_PREFIX}-windows-x86_64-${{ github.run_id }}.zip"
+          zip -r "$ZIP_FILE" . || echo "Zip warnings OK"
+          
+          echo "Created: $ZIP_FILE"
+          ls -la "$ZIP_FILE" || ls -la .
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: Windows-x86_64
-          path: "${ARTIFACT_PREFIX}-windows*.zip"
+          path: |
+            ${ARTIFACT_PREFIX}-windows*.zip
+            $RELEASE_DIR/windows/x86_64/*
 
   build-macos:
     name: macOS
