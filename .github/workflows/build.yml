@@ -1,4 +1,4 @@
-name: Multi-Arch Build & Release (✅ ALL FIXED)
+name: Multi-Arch Build & Release
 
 on:
   push:
@@ -12,6 +12,7 @@ env:
   RELEASE_DIR: Releases
   ARTIFACT_PREFIX: Dvx3-Backup-Manager
 
+# ---------------------- Linux ----------------------
 jobs:
   build-linux:
     name: Linux ${{ matrix.variant }}
@@ -19,18 +20,16 @@ jobs:
     strategy:
       matrix:
         include:
-          # Native x86_64 (amd64)
           - arch: x86_64
             variant: amd64
             runner: ubuntu-latest
-            
-          # Native ARM64 (no cross-compilation)
           - arch: aarch64
             variant: arm64
-            runner: ubuntu-latest  # GitHub auto-selects ARM64 runner when available
+            runner: ubuntu-24.04-arm  # native ARM64 runner if available; else ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Install dependencies
         run: |
           sudo apt-get update -qq
@@ -38,100 +37,104 @@ jobs:
             build-essential cmake pkg-config valac \
             libjson-glib-dev libsodium-dev \
             qt6-base-dev qt6-tools-dev ninja-build zip
-          
-          echo "=== Installed packages for ${{ matrix.variant }} ==="
-          pkg-config --exists glib-2.0 json-glib-1.0 && echo "✓ All deps found" || echo "✗ Some deps missing"
-      
+          pkg-config --exists glib-2.0 json-glib-1.0 && echo "GLib/json-glib OK" || echo "Missing GLib/json-glib"
+
       - name: Set architecture
         run: echo "TARGET_ARCH=${{ matrix.arch }}" >> $GITHUB_ENV
-      
+
       - name: Build & Package
         run: |
           chmod +x build_gui.sh || true
           TARGET_ARCH="$TARGET_ARCH" ./build_gui.sh || echo "Build warnings OK"
-          
+
           mkdir -p "$RELEASE_DIR/linux/${{ matrix.variant }}"
           find . -name "*backup-manager-gui*" -type f -executable -exec cp {} "$RELEASE_DIR/linux/${{ matrix.variant }}/" \; || true
-          
+
           if [ -d "$RELEASE_DIR/linux/${{ matrix.variant }}" ] && [ "$(ls -A "$RELEASE_DIR/linux/${{ matrix.variant }}")" ]; then
             cd "$RELEASE_DIR/linux/${{ matrix.variant }}"
             tar -czf "../../../${ARTIFACT_PREFIX}-linux-${{ matrix.variant }}-${{ github.run_id }}.tar.gz" .
-            echo "✓ Created: ${ARTIFACT_PREFIX}-linux-${{ matrix.variant }}-${{ github.run_id }}.tar.gz"
+            ls -la "../../../${ARTIFACT_PREFIX}-linux-${{ matrix.variant }}-${{ github.run_id }}.tar.gz"
           else
-            echo "✗ No binaries found"
+            echo "No Linux binaries found"
             exit 1
           fi
-      
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: Linux-${{ matrix.variant }}
-          path: |
-            ${ARTIFACT_PREFIX}-linux-${{ matrix.variant }}*.tar.gz
+          path: ${ARTIFACT_PREFIX}-linux-${{ matrix.variant }}*.tar.gz
           retention-days: 30
 
+# ---------------------- Windows ----------------------
   build-windows:
     name: Windows ${{ matrix.arch }}
-    runs-on: ${{ matrix.runner }}
+    runs-on: windows-latest
     strategy:
       matrix:
         include:
           - arch: x86_64
-            runner: windows-latest
             msystem: MINGW64
-          - arch: aarch64
-            runner: windows-latest
-            msystem: UCRT64
+            prefix: mingw-w64-x86_64
+          - arch: arm64
+            msystem: CLANGARM64
+            prefix: mingw-w64-clang-aarch64   # ARM64 packages live here [web:64][web:84]
+
     defaults:
       run:
         shell: msys2 {0}
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
           msystem: ${{ matrix.msystem }}
           update: true
           install: >-
-            mingw-w64-${{ matrix.arch }}-toolchain
-            mingw-w64-${{ matrix.arch }}-cmake
-            mingw-w64-${{ matrix.arch }}-qt6-base
-            mingw-w64-${{ matrix.arch }}-qt6-tools
-            mingw-w64-${{ matrix.arch }}-glib2
-            mingw-w64-${{ matrix.arch }}-json-glib
-            mingw-w64-${{ matrix.arch }}-libsodium
-            mingw-w64-${{ matrix.arch }}-pkgconf
-            mingw-w64-${{ matrix.arch }}-vala
+            ${{ matrix.prefix }}-toolchain
+            ${{ matrix.prefix }}-cmake
+            ${{ matrix.prefix }}-qt6-base
+            ${{ matrix.prefix }}-qt6-tools
+            ${{ matrix.prefix }}-glib2
+            ${{ matrix.prefix }}-json-glib
+            ${{ matrix.prefix }}-libsodium
+            ${{ matrix.prefix }}-pkgconf
+            ${{ matrix.prefix }}-vala
             zip
-      
+
       - name: Build Windows
         env:
           TARGET_ARCH: ${{ matrix.arch }}
         run: |
-          echo "Building for Windows ${{ matrix.arch }}"
+          echo "MSYSTEM=$MSYSTEM, TARGET_ARCH=$TARGET_ARCH"
+          which cmake || echo "cmake missing"
+          pkg-config --exists json-glib-1.0 && echo "json-glib OK" || echo "json-glib missing"
+
           chmod +x build_gui.sh || true
           TARGET_ARCH="$TARGET_ARCH" ./build_gui.sh || echo "Build complete"
-          
+
           mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}"
-          find . -name "*backup-manager-gui*" -type f -executable -exec cp {} "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" \; || true
-          
+          find . -name "*backup-manager-gui*" -type f -executable -exec cp {} "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" \; 2>/dev/null || true
+
           cd "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}"
           if [ -n "$(ls -A . 2>/dev/null)" ]; then
             ZIP_FILE="../../../../${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip"
             zip -r "$ZIP_FILE" .
-            echo "✓ Created: $ZIP_FILE"
+            echo "Created: $ZIP_FILE"
+            ls -la "$ZIP_FILE"
           else
-            echo "✗ No Windows binaries found"
+            echo "No files to zip"
           fi
-      
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: Windows-${{ matrix.arch }}
-          path: |
-            ${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}*.zip
+          path: ${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}*.zip
 
+# ---------------------- macOS ----------------------
   build-macos:
     name: macOS ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
@@ -142,39 +145,44 @@ jobs:
             runner: macos-13
           - arch: aarch64
             runner: macos-14
+
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Install macOS dependencies
+
+      - name: Install macOS deps
         run: |
           brew update
           brew install pkg-config vala glib json-glib libsodium ninja cmake qt@6
-          echo "$(brew --prefix qt@6)/bin" >> $GITHUB_PATH
-      
+          QT_PATH=$(brew --prefix qt@6)
+          echo "$QT_PATH/bin" >> $GITHUB_PATH
+
       - name: Build macOS
         env:
           TARGET_ARCH: ${{ matrix.arch }}
         run: |
-          echo "Building macOS ${{ matrix.arch }}"
+          echo "TARGET_ARCH=$TARGET_ARCH"
           chmod +x build_gui.sh || true
           TARGET_ARCH="$TARGET_ARCH" ./build_gui.sh || echo "Build OK"
-          
+
           mkdir -p "$RELEASE_DIR/mac/${{ matrix.arch }}"
           find . -name "*backup-manager-gui*" -type f -executable -exec cp {} "$RELEASE_DIR/mac/${{ matrix.arch }}/" \; || true
-          
+
           if [ -d "$RELEASE_DIR/mac/${{ matrix.arch }}" ] && [ "$(ls -A "$RELEASE_DIR/mac/${{ matrix.arch }}")" ]; then
             cd "$RELEASE_DIR/mac/${{ matrix.arch }}"
             tar -czf "../../${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz" .
-            echo "✓ macOS ${{ matrix.arch }} binary created"
+            ls -la "../../${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz"
+          else
+            echo "No macOS binaries found"
           fi
-      
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: macOS-${{ matrix.arch }}
-          path: "${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}*.tar.gz"
+          path: ${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}*.tar.gz
           retention-days: 30
 
+# ---------------------- Publish ----------------------
   publish:
     name: Publish Release
     runs-on: ubuntu-latest
@@ -186,12 +194,12 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: release-artifacts
-      
+
       - name: List artifacts
         run: |
-          echo "=== Available artifacts ==="
-          find release-artifacts -type f -name "*.tar.gz" -o -name "*.zip" | sort
-      
+          echo "Artifacts:"
+          find release-artifacts -type f -name "*.tar.gz" -o -name "*.zip" | sort | head -50
+
       - uses: softprops/action-gh-release@v2
         with:
           files: |
