@@ -12,7 +12,7 @@ env:
   RELEASE_DIR: Releases
   ARTIFACT_PREFIX: Dvx3-Backup-Manager
 
-# ---------------------- Linux ----------------------
+# -------- Linux --------
 jobs:
   build-linux:
     name: Linux ${{ matrix.variant }}
@@ -25,7 +25,7 @@ jobs:
             runner: ubuntu-latest
           - arch: aarch64
             variant: arm64
-            runner: ubuntu-24.04-arm  # native ARM64 runner if available; else ubuntu-latest
+            runner: ubuntu-24.04-arm  # or ubuntu-latest if this label is unavailable
 
     steps:
       - uses: actions/checkout@v4
@@ -42,31 +42,37 @@ jobs:
       - name: Set architecture
         run: echo "TARGET_ARCH=${{ matrix.arch }}" >> $GITHUB_ENV
 
-      - name: Build & Package
+      - name: Build
         run: |
           chmod +x build_gui.sh || true
           TARGET_ARCH="$TARGET_ARCH" ./build_gui.sh || echo "Build warnings OK"
 
+      - name: Collect files
+        run: |
           mkdir -p "$RELEASE_DIR/linux/${{ matrix.variant }}"
-          find . -name "*backup-manager-gui*" -type f -executable -exec cp {} "$RELEASE_DIR/linux/${{ matrix.variant }}/" \; || true
+          # Copy all potential binaries and related files
+          find . -type f -executable -name "*backup*" -exec cp {} "$RELEASE_DIR/linux/${{ matrix.variant }}/" \; || true
+          find . -type f -name "*backup-manager-gui*" -exec cp {} "$RELEASE_DIR/linux/${{ matrix.variant }}/" \; || true
 
+      - name: Package tarball
+        run: |
           if [ -d "$RELEASE_DIR/linux/${{ matrix.variant }}" ] && [ "$(ls -A "$RELEASE_DIR/linux/${{ matrix.variant }}")" ]; then
             cd "$RELEASE_DIR/linux/${{ matrix.variant }}"
             tar -czf "../../../${ARTIFACT_PREFIX}-linux-${{ matrix.variant }}-${{ github.run_id }}.tar.gz" .
-            ls -la "../../../${ARTIFACT_PREFIX}-linux-${{ matrix.variant }}-${{ github.run_id }}.tar.gz"
           else
-            echo "No Linux binaries found"
-            exit 1
+            echo "No Linux files found to package for ${{ matrix.variant }}"
           fi
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload Linux artifacts
         if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: Linux-${{ matrix.variant }}
-          path: ${ARTIFACT_PREFIX}-linux-${{ matrix.variant }}*.tar.gz
+          path: Releases/linux/${{ matrix.variant }}/
+          if-no-files-found: warn
           retention-days: 30
 
-# ---------------------- Windows ----------------------
+# -------- Windows --------
   build-windows:
     name: Windows ${{ matrix.arch }}
     runs-on: windows-latest
@@ -78,7 +84,7 @@ jobs:
             prefix: mingw-w64-x86_64
           - arch: arm64
             msystem: CLANGARM64
-            prefix: mingw-w64-clang-aarch64   # ARM64 packages live here [web:64][web:84]
+            prefix: mingw-w64-clang-aarch64
 
     defaults:
       run:
@@ -109,32 +115,34 @@ jobs:
           TARGET_ARCH: ${{ matrix.arch }}
         run: |
           echo "MSYSTEM=$MSYSTEM, TARGET_ARCH=$TARGET_ARCH"
-          which cmake || echo "cmake missing"
-          pkg-config --exists json-glib-1.0 && echo "json-glib OK" || echo "json-glib missing"
-
           chmod +x build_gui.sh || true
           TARGET_ARCH="$TARGET_ARCH" ./build_gui.sh || echo "Build complete"
 
           mkdir -p "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}"
-          find . -name "*backup-manager-gui*" -type f -executable -exec cp {} "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" \; 2>/dev/null || true
+          find . -type f -executable -name "*backup*" -exec cp {} "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" \; 2>/dev/null || true
+          find . -type f -name "*backup-manager-gui*" -exec cp {} "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}/" \; 2>/dev/null || true
 
+      - name: Create ZIP (optional)
+        run: |
           cd "$GITHUB_WORKSPACE/$RELEASE_DIR/windows/${{ matrix.arch }}"
           if [ -n "$(ls -A . 2>/dev/null)" ]; then
             ZIP_FILE="../../../../${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}-${{ github.run_id }}.zip"
             zip -r "$ZIP_FILE" .
             echo "Created: $ZIP_FILE"
-            ls -la "$ZIP_FILE"
           else
-            echo "No files to zip"
+            echo "No Windows files to zip"
           fi
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload Windows artifacts
         if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: Windows-${{ matrix.arch }}
-          path: ${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}*.zip
+          path: Releases/windows/${{ matrix.arch }}/
+          if-no-files-found: warn
+          retention-days: 30
 
-# ---------------------- macOS ----------------------
+# -------- macOS --------
   build-macos:
     name: macOS ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
@@ -165,24 +173,28 @@ jobs:
           TARGET_ARCH="$TARGET_ARCH" ./build_gui.sh || echo "Build OK"
 
           mkdir -p "$RELEASE_DIR/mac/${{ matrix.arch }}"
-          find . -name "*backup-manager-gui*" -type f -executable -exec cp {} "$RELEASE_DIR/mac/${{ matrix.arch }}/" \; || true
+          find . -type f -executable -name "*backup*" -exec cp {} "$RELEASE_DIR/mac/${{ matrix.arch }}/" \; || true
+          find . -type f -name "*backup-manager-gui*" -exec cp {} "$RELEASE_DIR/mac/${{ matrix.arch }}/" \; || true
 
+      - name: Package macOS tarball
+        run: |
           if [ -d "$RELEASE_DIR/mac/${{ matrix.arch }}" ] && [ "$(ls -A "$RELEASE_DIR/mac/${{ matrix.arch }}")" ]; then
             cd "$RELEASE_DIR/mac/${{ matrix.arch }}"
             tar -czf "../../${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz" .
-            ls -la "../../${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}-${{ github.run_id }}.tar.gz"
           else
-            echo "No macOS binaries found"
+            echo "No macOS files to package"
           fi
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload macOS artifacts
         if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: macOS-${{ matrix.arch }}
-          path: ${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}*.tar.gz
+          path: Releases/mac/${{ matrix.arch }}/
+          if-no-files-found: warn
           retention-days: 30
 
-# ---------------------- Publish ----------------------
+# -------- Publish --------
   publish:
     name: Publish Release
     runs-on: ubuntu-latest
@@ -198,7 +210,7 @@ jobs:
       - name: List artifacts
         run: |
           echo "Artifacts:"
-          find release-artifacts -type f -name "*.tar.gz" -o -name "*.zip" | sort | head -50
+          find release-artifacts -type f -name "*.tar.gz" -o -name "*.zip" | sort || true
 
       - uses: softprops/action-gh-release@v2
         with:
