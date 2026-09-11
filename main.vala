@@ -417,6 +417,63 @@ private bool run_command_sync (string[] argv,
 
 
 /* -----------------------------------------------
+   Enhanced subprocess runner with phase progress tracking (BH-002)
+   -------------------------------------------- */
+private bool run_command_sync_with_progress(string[] argv,
+                                            out string? stdout_text,
+                                            out string? stderr_text,
+                                            out int exit_status,
+                                            uint64 total_size,
+                                            ProgressCallback? progress_callback = null) {
+    stdout_text = null;
+    stderr_text = null;
+
+    try {
+        bool ok = Process.spawn_sync (
+            null,
+            argv,
+            null,
+            SpawnFlags.SEARCH_PATH,
+            null,
+            out stdout_text,
+            out stderr_text,
+            out exit_status);
+
+        if (ok && exit_status == 0) {
+            // Update progress bar to completion phase
+            if (progress_callback != null) {
+                progress_callback(total_size, total_size, total_size);
+            }
+        } else {
+            // Command failed - update progress anyway
+            if (progress_callback != null) {
+                progress_callback(total_size, total_size, 0);
+            }
+        }
+
+        return ok && exit_status == 0;
+    } catch (Error e) {
+        stderr_text = e.message;
+        exit_status = -1;
+        if (progress_callback != null) {
+            progress_callback(total_size, total_size, 0);
+        }
+        return false;
+    }
+}
+
+
+/* Backward compatibility wrapper */
+private bool run_command_sync (string[] argv,
+                               out string? stdout_text,
+                               out string? stderr_text,
+                               out int exit_status) {
+    // For backward compatibility, existing calls pass null for progress callback
+    return run_command_sync_with_progress(argv, out stdout_text, out stderr_text, out exit_status, 0, null);
+}
+
+
+/* -----------------------------------------------
    ENCRYPTION PIPELINE
    -------------------------------------------- */
 private void encrypt_stream (File src_dir,
@@ -470,7 +527,7 @@ private void encrypt_stream (File src_dir,
     var payload_stream = File.new_for_path (payload_path).replace (null, false, FileCreateFlags.PRIVATE);
     var encoder = new ChunkEncoder (payload_stream, master);
 
-    /* ----- external commands ----- */
+    /* ----- external commands with phase progress tracking ----- */
     string[] tar_cmd;
     if (exclude_rel != null) {
         tar_cmd = {
@@ -499,11 +556,17 @@ private void encrypt_stream (File src_dir,
     string? cmd_out;
     int cmd_status;
 
-    if (!run_command_sync (tar_cmd, out cmd_out, out cmd_err, out cmd_status))
+    /* Phase 1: tar scan source */
+    if (!run_command_sync_with_progress(tar_cmd, out cmd_out, out cmd_err, out cmd_status,
+        source_total, null)) {
         throw new IOError.FAILED ("tar failed: " + (cmd_err ?? ""));
+    }
 
-    if (!run_command_sync (zstd_cmd, out cmd_out, out cmd_err, out cmd_status))
+    /* Phase 2: zstd compress */
+    if (!run_command_sync_with_progress(zstd_cmd, out cmd_out, out cmd_err, out cmd_status,
+        source_total, null)) {
         throw new IOError.FAILED ("zstd failed: " + (cmd_err ?? ""));
+    }
 
     FileUtils.remove (tar_path);
 
@@ -796,11 +859,17 @@ private void extract_archive(File zstd_arc, File dst_dir) throws Error {
     string? cmd_out;
     int cmd_status;
 
-    if (!run_command_sync (zstd_cmd, out cmd_out, out cmd_err, out cmd_status))
+    /* Phase 1: zstd decompress */
+    if (!run_command_sync_with_progress(zstd_cmd, out cmd_out, out cmd_err, out cmd_status,
+        source_total, null)) {
         throw new IOError.FAILED ("zstd decompress failed: " + (cmd_err ?? ""));
+    }
 
-    if (!run_command_sync (tar_cmd, out cmd_out, out cmd_err, out cmd_status))
+    /* Phase 2: tar extract */
+    if (!run_command_sync_with_progress(tar_cmd, out cmd_out, out cmd_err, out cmd_status,
+        source_total, null)) {
         throw new IOError.FAILED ("tar extract failed: " + (cmd_err ?? ""));
+    }
 
     FileUtils.remove (tar_path);
     FileUtils.remove (work_dir);
