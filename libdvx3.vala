@@ -652,7 +652,8 @@ namespace Dvx3 {
         if (integrity_hash != null) {
             var hex_hash = "";
             for (int i = 0; i < integrity_hash.length; i++) {
-                hex_hash += integrity_hash[i].to_hex_string();
+                var hc = "0123456789abcdef";
+                hex_hash += hc[(int)integrity_hash[i] >> 4] + hc[(int)integrity_hash[i] & 0xf];
             }
             final_header.set_string_member("sha256", hex_hash);
             final_header.set_bool_member("integrity_verified", true);
@@ -760,8 +761,6 @@ namespace Dvx3 {
             } else {
                 // Archive has integrity field - we'd verify against stored hash here
                 // For now: store the expected hash for comparison with decrypted output
-                var expected_hash = Base64.decode(sha256_hash);  // Convert base64 back to binary
-                
                 // Compute SHA-256 of what we'll write during decryption
                 // This requires computing hash while writing to pipe, so we'll do it
                 // by reading decrypted chunks into a buffer and hashing
@@ -870,22 +869,20 @@ namespace Dvx3 {
             uint8[] computed_hash = compute_sha256 (accumulator_for_integrity);
             accumulator_for_integrity = new uint8[0];
             
-            // Convert computed hash to hex for comparison
+            // Convert computed hash to 64-char hex string
             string computed_hex = "";
             for (int i = 0; i < computed_hash.length; i++) {
-                computed_hex += computed_hash[i].to_hex_string();
+                var hc = "0123456789abcdef";
+                computed_hex += hc[(int)computed_hash[i] >> 4] + hc[(int)computed_hash[i] & 0xf];
             }
+            bool has_integrity_field = hdr.has_member("integrity_verified");
             
             if (has_integrity_field) {
                 var integrity_verified = hdr.get_bool_member("integrity_verified");
                 string? stored_hash = hdr.get_string_member("sha256");
                 
                 if (integrity_verified && stored_hash != null) {
-                    var stored_bin = Base64.decode(stored_hash);
-                    string stored_hex = "";
-                    for (int i = 0; i < stored_bin.length; i++) {
-                        stored_hex += stored_bin[i].to_hex_string();
-                    }
+                    string stored_hex = stored_hash; // Already hex string
                     
                     if (computed_hex != stored_hex) {
                         throw new IOError.FAILED ("Integrity verification failed: archive content has been corrupted or tampered with");
