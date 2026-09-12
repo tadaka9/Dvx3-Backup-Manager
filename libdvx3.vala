@@ -1,10 +1,14 @@
 /* -*- coding: utf-8 -*- */
 
 /**
- * libdvx3 - Encrypted archive library
+ * libdvx3 - Encrypted archive library with integrity verification
  * 
  * Provides secure encryption/decryption using:
  * tar → zstd → Argon2id → Secretbox (XSalsa20-Poly1305)
+ * 
+ * Features:
+ * - SHA-256 integrity verification of archived content
+ * - Backward compatible with archives lacking integrity field
  */
 
 using GLib;
@@ -21,8 +25,6 @@ extern int posix_close (int fd);
 extern int posix_waitpid (int pid, out int status, int options);
 [CCode (cname = "kill", cheader_filename = "signal.h")]
 extern int posix_kill (int pid, int sig);
-[CCode (cname = "SIGUSR1", cheader_filename = "signal.h")]
-private const int _SIGUSR1 = 10; // Fallback value; actual from header when compiled
 [CCode (cname = "usleep", cheader_filename = "unistd.h")]
 extern int posix_usleep (uint usec);
 #endif
@@ -60,6 +62,16 @@ namespace Dvx3 {
             }
         }
         return total;
+    }
+
+    /* Compute SHA-256 hash of byte array */
+    private uint8[] compute_sha256 (uint8[] data) throws Error {
+        var chk = new Checksum (ChecksumType.SHA256);
+        chk.update (data, (ulong)data.length);
+        uint8[] hash = new uint8[32];  // SHA-256 produces 32 bytes
+        size_t len = hash.length;
+        chk.get_digest (hash, ref len);
+        return hash;
     }
 
     /* Big-endian helpers */
@@ -130,7 +142,7 @@ namespace Dvx3 {
                 master_key
             );
             if (ret != 0)
-                throw new IOError.FAILED ("Encryption failed");
+            throw new IOError.FAILED ("Encryption failed");
 
             size_t written;
             output.write_all (nonce, out written);
@@ -157,6 +169,14 @@ namespace Dvx3 {
     public delegate void ProgressCallback (uint64 processed, uint64 total, uint64 output_bytes);
 
     /**
+     * Encryption mode enum
+     */
+    public enum EncryptionMode {
+        WITH_INTEGRITY,   // Compute and store SHA-256 hash of plaintext
+        WITHOUT_INTEGRITY,// Legacy: no integrity field (backward compatible)
+    }
+
+    /**
      * Encrypt a directory to an encrypted archive
      * 
      * @param src_dir Source directory to encrypt
@@ -164,6 +184,7 @@ namespace Dvx3 {
      * @param password Password for encryption
      * @param exclude_path Optional path to exclude from archive (for in-place mode)
      * @param progress Optional progress callback
+     * @param mode Encryption mode (default: WITH_INTEGRITY for new archives)
      * @throws Error on encryption failure
      */
     public void encrypt (
@@ -171,7 +192,8 @@ namespace Dvx3 {
         File out_file,
         string password,
         string? exclude_path = null,
-        ProgressCallback? progress = null
+        ProgressCallback? progress = null,
+        EncryptionMode mode = EncryptionMode.WITH_INTEGRITY
     ) throws Error {
         
         var src_path = src_dir.get_path ();
@@ -196,6 +218,11 @@ namespace Dvx3 {
         argon.set_int_member("parallelism", (int64)ARGON_P);
         argon.set_string_member("type", "argon2id");
         placeholder_header.set_object_member("argon2", argon);
+
+        // Add integrity field if requested (backward compatible: optional field)
+        if (mode == EncryptionMode.WITH_INTEGRITY) {
+            placeholder_header.set_boolean_member("integrity_verified", false);
+        }
 
         var gen = new Json.Generator();
         var root_node = new Json.Node(Json.NodeType.OBJECT);
@@ -230,7 +257,11 @@ namespace Dvx3 {
         /* Launch tar and zstd as separate processes to refine estimates dynamically */
         uint64 compressed_bytes = 0;
         uint64 original_processed = 0;
-
+        
+        // Buffer for integrity hash computation
+        uint8[] buffer = new uint8[CHUNK_SIZE];
+        uint8[] plaintext_accumulator = new uint8[0];  // Will accumulate all plaintext
+        
 #if POSIX
         // Detect GNU tar for --totals=USR1 support
         bool gnu_tar = false;
@@ -361,13 +392,29 @@ namespace Dvx3 {
         });
 
         // Read from zstd stdout, encrypt and write
-        uint8[] buffer = new uint8[CHUNK_SIZE];
+        // Also accumulate plaintext for integrity hash computation
+        uint8[] buffer_enc = new uint8[CHUNK_SIZE];
         while (true) {
-            ssize_t bytes_read = posix_read (zstd_out_fd, buffer, CHUNK_SIZE);
+            ssize_t bytes_read = posix_read (zstd_out_fd, buffer_enc, CHUNK_SIZE);
             if (bytes_read <= 0)
                 break;
-            uint8[] blk = buffer[0:bytes_read];
+            uint8[] blk = buffer_enc[0:bytes_read];
             compressed_bytes += (uint64) bytes_read;
+            
+            // Accumulate plaintext for integrity verification
+            if (plaintext_accumulator.length == 0) {
+                plaintext_accumulator = blk;
+            } else {
+                var new_acc = new uint8[plaintext_accumulator.length + bytes_read];
+                for (int i = 0; i < plaintext_accumulator.length; i++) {
+                    new_acc[i] = plaintext_accumulator[i];
+                }
+                for (int i = 0; i < bytes_read; i++) {
+                    new_acc[plaintext_accumulator.length + i] = blk[i];
+                }
+                plaintext_accumulator = new_acc;
+            }
+            
             encoder.write (blk);
 
             if (progress != null) {
@@ -445,6 +492,21 @@ namespace Dvx3 {
                     break;
                 uint8[] blk = buffer_f[0:br];
                 compressed_bytes += (uint64) br;
+                
+                // Accumulate plaintext for integrity verification
+                if (plaintext_accumulator.length == 0) {
+                    plaintext_accumulator = blk;
+                } else {
+                    var new_acc = new uint8[plaintext_accumulator.length + br];
+                    for (int i = 0; i < plaintext_accumulator.length; i++) {
+                        new_acc[i] = plaintext_accumulator[i];
+                    }
+                    for (int i = 0; i < br; i++) {
+                        new_acc[plaintext_accumulator.length + i] = blk[i];
+                    }
+                    plaintext_accumulator = new_acc;
+                }
+                
                 encoder.write (blk);
                 if (progress != null)
                     progress (compressed_bytes, estimated_compressed, encoder.cipher_bytes);
@@ -524,6 +586,21 @@ namespace Dvx3 {
                 break;
             uint8[] blk = buffer2[0:bytes_read];
             compressed_bytes += (uint64) bytes_read;
+            
+            // Accumulate plaintext for integrity verification
+            if (plaintext_accumulator.length == 0) {
+                plaintext_accumulator = blk;
+            } else {
+                var new_acc = new uint8[plaintext_accumulator.length + bytes_read];
+                for (int i = 0; i < plaintext_accumulator.length; i++) {
+                    new_acc[i] = plaintext_accumulator[i];
+                }
+                for (int i = 0; i < bytes_read; i++) {
+                    new_acc[plaintext_accumulator.length + i] = blk[i];
+                }
+                plaintext_accumulator = new_acc;
+            }
+            
             encoder.write (blk);
             if (progress != null)
                 progress (compressed_bytes, estimated_compressed, encoder.cipher_bytes);
@@ -532,11 +609,37 @@ namespace Dvx3 {
         encoder.close ();
 #endif
 
-        /* Rewrite header with correct chunk count */
+        /* Compute integrity hash if enabled */
+        uint8[] integrity_hash = null;
+        if (mode == EncryptionMode.WITH_INTEGRITY && plaintext_accumulator.length > 0) {
+            integrity_hash = compute_sha256 (plaintext_accumulator);
+            
+            // Free accumulated buffer to prevent memory bloat for small archives
+            if (plaintext_accumulator.length < 10 * 1024 * 1024) {  // Less than 10 MiB
+                plaintext_accumulator = new uint8[0];
+            }
+        }
+
+        /* Rewrite header with correct chunk count and integrity hash */
         var final_header = new Json.Object();
         final_header.set_string_member("salt", Base64.encode(salt));
         final_header.set_int_member("chunks", (int64)encoder.chunks);
         final_header.set_int_member("last_chunk_size", (int64)encoder.last_chunk_size);
+        
+        // Add integrity hash if computed
+        if (integrity_hash != null) {
+            var hex_hash = "";
+            for (int i = 0; i < integrity_hash.length; i++) {
+                var hc = "0123456789abcdef";
+                hex_hash += hc[(int)integrity_hash[i] >> 4] + hc[(int)integrity_hash[i] & 0xf];
+            }
+            final_header.set_string_member("sha256", hex_hash);
+            final_header.set_boolean_member("integrity_verified", true);
+        } else {
+            // Mark as legacy archive without integrity verification
+            final_header.set_boolean_member("integrity_verified", false);
+        }
+
         final_header.set_object_member("argon2", argon);
 
         gen = new Json.Generator();
@@ -574,7 +677,7 @@ namespace Dvx3 {
      * @param dst_dir Destination directory to extract to
      * @param password Password for decryption
      * @param progress Optional progress callback
-     * @throws Error on decryption failure
+     * @throws Error on decryption failure (including integrity verification failures)
      */
     public void decrypt (
         File enc_file,
@@ -621,6 +724,24 @@ namespace Dvx3 {
         uint64 chunks = (uint64)hdr.get_int_member("chunks");
         uint64 last = (uint64)hdr.get_int_member("last_chunk_size");
 
+        // Check integrity verification status
+        bool? has_integrity_field = hdr.has_member("integrity_verified");
+        if (has_integrity_field) {
+            var integrity_verified = hdr.get_boolean_member("integrity_verified");
+            string? sha256_hash = hdr.get_string_member("sha256");
+            
+            if (!integrity_verified || sha256_hash == null) {
+                // Legacy archive without integrity verification
+                // No hash to compute, skip integrity check (backward compatible)
+            } else {
+                // Archive has integrity field - we'd verify against stored hash here
+                // For now: store the expected hash for comparison with decrypted output
+                // Compute SHA-256 of what we'll write during decryption
+                // This requires computing hash while writing to pipe, so we'll do it
+                // by reading decrypted chunks into a buffer and hashing
+            }
+        }
+
         uint64 cipher_total = 0;
         if (enc_bytes > (uint64) (4 + hlen))
             cipher_total = enc_bytes - (uint64) (4 + hlen);
@@ -634,7 +755,7 @@ namespace Dvx3 {
         string[] pipeline_cmd = {
             "sh", "-c",
             "zstd -d -c | tar -x -C '%s'".printf(dst_dir.get_path().replace("'", "'\\''")),
-        };
+        ];
 
         int pipe_stdin;
         Pid child_pid;
@@ -648,6 +769,10 @@ namespace Dvx3 {
             out pipe_stdin,
             null,
             null);
+
+        // Buffer to accumulate decrypted plaintext for integrity verification
+        uint8[] buffer_dec = new uint8[CHUNK_SIZE];
+        uint8[] accumulator_for_integrity = new uint8[0];
 
         for (uint64 i = 0; i < chunks; i++) {
             uint8[] nonce = new uint8[(int)Sodium.Symmetric.NONCE_BYTES];
@@ -680,6 +805,20 @@ namespace Dvx3 {
             ssize_t written = posix_write (pipe_stdin, plain, plain.length);
             if (written != plain.length)
                 throw new IOError.FAILED ("Failed to write decrypted data to pipe");
+            
+            // Accumulate plaintext for integrity verification
+            if (accumulator_for_integrity.length == 0) {
+                accumulator_for_integrity = plain;
+            } else {
+                var new_acc = new uint8[accumulator_for_integrity.length + plain.length];
+                for (int j = 0; j < accumulator_for_integrity.length; j++) {
+                    new_acc[j] = accumulator_for_integrity[j];
+                }
+                for (int j = 0; j < plain.length; j++) {
+                    new_acc[accumulator_for_integrity.length + j] = plain[j];
+                }
+                accumulator_for_integrity = new_acc;
+            }
 
             processed_cipher += (uint64)(nonce.length + ct.length);
             plain_emitted += (uint64)plain.length;
@@ -699,5 +838,32 @@ namespace Dvx3 {
             throw new IOError.FAILED ("Extraction pipeline failed");
 #endif
         Process.close_pid (child_pid);
+
+        // Verify integrity if archive has integrity field with hash
+        if (accumulator_for_integrity.length > 0) {
+            uint8[] computed_hash = compute_sha256 (accumulator_for_integrity);
+            accumulator_for_integrity = new uint8[0];
+            
+            // Convert computed hash to 64-char hex string
+            string computed_hex = "";
+            for (int i = 0; i < computed_hash.length; i++) {
+                var hc = "0123456789abcdef";
+                computed_hex += hc[(int)computed_hash[i] >> 4] + hc[(int)computed_hash[i] & 0xf];
+            }
+            bool? has_integrity_field = hdr.has_member("integrity_verified");
+            
+            if (has_integrity_field) {
+                var integrity_verified = hdr.get_boolean_member("integrity_verified");
+                string? stored_hash = hdr.get_string_member("sha256");
+                
+                if (integrity_verified && stored_hash != null) {
+                    string stored_hex = stored_hash; // Already hex string
+                    
+                    if (computed_hex != stored_hex) {
+                        throw new IOError.FAILED ("Integrity verification failed: archive content has been corrupted or tampered with");
+                    }
+                }
+            }
+        }
     }
 }
