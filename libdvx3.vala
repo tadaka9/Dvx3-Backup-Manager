@@ -74,28 +74,6 @@ namespace Dvx3 {
         return hash;
     }
 
-    /* Compute SHA-256 hash of stream via callback */
-    private uint8[] compute_sha256_stream (Action<int> on_bytes, Action<uint8[]> on_chunk) throws Error {
-        var chk = new Checksum (ChecksumType.SHA256);
-        
-        // Create a temporary buffer to accumulate data
-        uint8[] buffer = new uint8[CHUNK_SIZE];
-        int total_read = 0;
-        
-        while (true) {
-            ssize_t n = on_bytes ((size_t)buffer.length, ref total_read);
-            if (n <= 0) break;
-            
-            // Feed the chunk to checksum
-            chk.update (buffer[0:(int)n], (ulong)n);
-        }
-        
-        uint8[] hash = new uint8[32];
-        size_t len = hash.length;
-        chk.get_digest (hash, ref len);
-        return hash;
-    }
-
     /* Big-endian helpers */
     // uint64_to_be helper is defined in main.vala for CLI usage; avoid duplicate definition here
 
@@ -243,7 +221,7 @@ namespace Dvx3 {
 
         // Add integrity field if requested (backward compatible: optional field)
         if (mode == EncryptionMode.WITH_INTEGRITY) {
-            placeholder_header.set_bool_member("integrity_verified", false);
+            placeholder_header.set_boolean_member("integrity_verified", false);
         }
 
         var gen = new Json.Generator();
@@ -656,10 +634,10 @@ namespace Dvx3 {
                 hex_hash += hc[(int)integrity_hash[i] >> 4] + hc[(int)integrity_hash[i] & 0xf];
             }
             final_header.set_string_member("sha256", hex_hash);
-            final_header.set_bool_member("integrity_verified", true);
+            final_header.set_boolean_member("integrity_verified", true);
         } else {
             // Mark as legacy archive without integrity verification
-            final_header.set_bool_member("integrity_verified", false);
+            final_header.set_boolean_member("integrity_verified", false);
         }
 
         final_header.set_object_member("argon2", argon);
@@ -690,9 +668,6 @@ namespace Dvx3 {
         fout.write_all (final_json, out written);
         fout.flush ();
         fout.close ();
-        
-        // Clean up temporary buffer
-        buffer = new uint8[0];
     }
 
     /**
@@ -750,9 +725,9 @@ namespace Dvx3 {
         uint64 last = (uint64)hdr.get_int_member("last_chunk_size");
 
         // Check integrity verification status
-        bool has_integrity_field = hdr.has_member("integrity_verified");
+        bool? has_integrity_field = hdr.has_member("integrity_verified");
         if (has_integrity_field) {
-            var integrity_verified = hdr.get_bool_member("integrity_verified");
+            var integrity_verified = hdr.get_boolean_member("integrity_verified");
             string? sha256_hash = hdr.get_string_member("sha256");
             
             if (!integrity_verified || sha256_hash == null) {
@@ -875,10 +850,10 @@ namespace Dvx3 {
                 var hc = "0123456789abcdef";
                 computed_hex += hc[(int)computed_hash[i] >> 4] + hc[(int)computed_hash[i] & 0xf];
             }
-            bool has_integrity_field = hdr.has_member("integrity_verified");
+            bool? has_integrity_field = hdr.has_member("integrity_verified");
             
             if (has_integrity_field) {
-                var integrity_verified = hdr.get_bool_member("integrity_verified");
+                var integrity_verified = hdr.get_boolean_member("integrity_verified");
                 string? stored_hash = hdr.get_string_member("sha256");
                 
                 if (integrity_verified && stored_hash != null) {
