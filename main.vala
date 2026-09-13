@@ -496,16 +496,6 @@ private bool run_command_sync_with_progress(string[] argv,
 }
 
 
-/* Backward compatibility wrapper */
-private bool run_command_sync (string[] argv,
-                               out string? stdout_text,
-                               out string? stderr_text,
-                               out int exit_status) {
-    // For backward compatibility, existing calls pass null for progress callback
-    return run_command_sync_with_progress(argv, out stdout_text, out stderr_text, out exit_status, 0, null);
-}
-
-
 /* -----------------------------------------------
    ENCRYPTION PIPELINE
    -------------------------------------------- */
