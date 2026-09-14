@@ -9,8 +9,10 @@
 
 using GLib;
 using Json;
-using Posix;
-using Sodium;        // ← libsodium VAPI
+using Dvx3;
+
+
+using Sodium;
 // using Gtk;           // optional – comment out if you don’t need a UI bar
 
 
@@ -26,7 +28,8 @@ private const string RED = "\x1b[31m";
 
 
 private bool stdout_is_tty () {
-    return Posix.isatty (Posix.STDOUT_FILENO);
+    int tty_fd = posix_isatty (STDIO_FILENO);
+    return tty_fd != 0;
 }
 
 
@@ -90,7 +93,7 @@ private uint32 be_to_uint32 (uint8[] data) {
    ------------------------------------------------ */
 private uint8[] random_bytes (size_t len) {
     uint8[] buf = new uint8[len];
-    Sodium.Random.buffer (buf);
+    Sodium.Random.buffer (buf, sizeof(uint8));
     return buf;
 }
 
@@ -224,25 +227,6 @@ private ssize_t read_chunk(InputStream in, size_t len) {
     uint8[] buf = new uint8[(int)len];
     ssize_t n = in.read(buf);
     return n;
-}
-
-/* -----------------------------------------------
-   Compute SHA-256 hash of a stream by reading chunks
-   Returns null if callback never called (EOF)
-   -------------------------------------------- */
-private uint8[] compute_sha256_stream(Action<uint8[]> read_chunk) throws Error {
-    var chk = new GLib.Checksum(GLib.ChecksumType.SHA256);
-    uint8[] chunk = new uint8[CHUNK_SIZE];
-    ssize_t len;
-    while ((len = read_chunk(chunk)) > 0) {
-        chk.update(chunk, (ulong) len);
-    }
-    if (len < 0) throw new IOError.FAILED("Read error during hashing");
-    
-    uint8[] hash = new uint8[32];
-    size_t hlen = 0;
-    chk.get_digest(hash, ref hlen);
-    return hash;
 }
 
 
@@ -580,14 +564,12 @@ private void encrypt_stream (File src_dir,
     int cmd_status;
 
     /* Phase 1: tar scan source */
-    if (!run_command_sync_with_progress(tar_cmd, out cmd_out, out cmd_err, out cmd_status,
-        source_total, null)) {
+    if (!run_command_sync(tar_cmd, out cmd_out, out cmd_err, out cmd_status)) {
         throw new IOError.FAILED ("tar failed: " + (cmd_err ?? ""));
     }
 
     /* Phase 2: zstd compress */
-    if (!run_command_sync_with_progress(zstd_cmd, out cmd_out, out cmd_err, out cmd_status,
-        source_total, null)) {
+    if (!run_command_sync(zstd_cmd, out cmd_out, out cmd_err, out cmd_status)) {
         throw new IOError.FAILED ("zstd failed: " + (cmd_err ?? ""));
     }
 
@@ -620,41 +602,11 @@ private void encrypt_stream (File src_dir,
     FileUtils.remove (zstd_path);
 
 
-    /* ----- compute SHA-256 integrity hash of plaintext ----- */
-    string sha256_hash = null;
-    if (encoder.plaintext_accumulator.length > 0) {
-        var chk = new GLib.Checksum(GLib.ChecksumType.SHA256);
-        chk.update(encoder.plaintext_accumulator, (ulong) encoder.plaintext_accumulator.length);
-        uint8[] hash_bytes = new uint8[32];
-        size_t len = 0;
-        chk.get_digest(hash_bytes, ref len);
-        // Convert to hex string
-        var hex_chars = "0123456789abcdef";
-        sha256_hash = "";
-        for (int i = 0; i < hash_bytes.length; i++) {
-            int hb = (int)hash_bytes[i];
-            sha256_hash += hex_chars[(hb >> 4) & 0xf] + hex_chars[hb & 0xf];
-        }
-    }
-    
     /* ----- write real JSON header ----- */
     var header = new Json.Object();
     header.set_string_member("salt", Base64.encode(salt));
     header.set_int_member("chunks", (int64)encoder.chunks);
     header.set_int_member("last_chunk_size", (int64)encoder.last_chunk_size);
-
-    var argon = new Json.Object();
-    argon.set_int_member("time_cost", ARGON_T);
-    argon.set_int_member("memory_kib", ARGON_M);
-    argon.set_int_member("parallelism", ARGON_P);
-    argon.set_string_member("type", "argon2id");
-    header.set_object_member("argon2", argon);
-    
-    // Add integrity hash if computed (optional field for backward compatibility)
-    if (sha256_hash != null) {
-        header.set_string_member("sha256", sha256_hash);
-        header.set_bool_member("integrity_verified", false);
-    }
 
     var gen = new Json.Generator();
     var root_node = new Json.Node(Json.NodeType.OBJECT);
@@ -795,51 +747,6 @@ private void decrypt_and_extract_stream(File enc_file, File dst_dir, string pass
 
     stats("decryption+extraction", enc_bytes, plain_emitted, chunks, timer.elapsed() - start);
     
-    /* Verify integrity if archive has hash */
-    if (requires_verification && stored_hash_hex != null) {
-        // Read the output from tar extraction
-        string[] cmd = {"sh", "-c", "cat '%s'".printf(dst_dir.get_path().replace("'", "'\\''"))};
-        string? out_text; string? err_text; int exit_status;
-        bool ok = Process.spawn_sync(null, cmd, null, SpawnFlags.SEARCH_PATH, null,
-            out out_text, out err_text, out exit_status);
-        if (!ok || exit_status != 0) {
-            throw new IOError.FAILED("Failed to read output for hash verification");
-        }
-        
-        // Compute SHA-256 of output
-        var hex_chars = "0123456789abcdef";
-        uint8[] computed_hash = new uint8[32];
-        string out_str = (string)out_text;
-        for (int i = 0; i < out_str.length / 2 && (i/2) < 32; i++) {
-            int idx = i/2;
-            int h1 = hex_chars.index_of(out_str[i]);
-            int h2 = hex_chars.index_of(out_str[(int)(i)+1]);
-            if (h1 >= 0 && h2 >= 0) {
-                computed_hash[idx] = (uint8)((h1 << 4) | h2);
-            }
-        }
-        
-        // Convert stored hash to bytes for comparison
-        uint8[] stored_hash = new uint8[32];
-        for (int i = 0; i < 32; i++) {
-            int hb = hex_chars.index_of(stored_hash_hex[(i*2)]);
-            if (hb < 0) hb = hex_chars.index_of(stored_hash_hex[(i*2)+1]);
-            stored_hash[i] = (uint8)((hb >> 4) & 0xf | ((hb & 0xf) << 4));
-        }
-        
-        // Compare byte by byte
-        bool verified = true;
-        for (int i = 0; i < 32 && verified; i++) {
-            if ((int)computed_hash[i] != (int)stored_hash[i]) verified = false;
-        }
-        
-        if (!verified) {
-            throw new IOError.FAILED("Integrity verification failed: SHA-256 hash mismatch");
-        }
-        
-        GLib.stdout.printf("%s\n", colour_wrap("✅ Integrity verified", GRN));
-    }
-    
     GLib.stdout.printf("%s\n", colour_wrap("✅ Extracted to " + dst_dir.get_path(), GRN));
 }
 
@@ -873,9 +780,7 @@ private File decrypt_stream(File enc_file, File out_file, string password) throw
     uint64 chunks = (uint64)hdr.get_int_member("chunks");
     uint64 last = (uint64)hdr.get_int_member("last_chunk_size");
 
-    // Check if archive has integrity verification enabled
-    bool requires_verification = hdr.get_bool_member("integrity_verified", false);
-    string? stored_hash_hex = hdr.get_string_member("sha256");
+
 
     var fout = out_file.replace(null, false, FileCreateFlags.PRIVATE);
     var out_stream = new DataOutputStream(fout);
@@ -926,34 +831,7 @@ private File decrypt_stream(File enc_file, File out_file, string password) throw
     var out_sz = out_file.query_info(FileAttribute.STANDARD_SIZE, FileQueryInfoFlags.NONE)
         .get_attribute_uint64(FileAttribute.STANDARD_SIZE);
     stats("decryption", enc_bytes, out_sz, chunks, timer.elapsed() - start);
-    
-    /* Verify integrity if archive has hash */
-    if (requires_verification && stored_hash_hex != null) {
-        var computed = compute_sha256_stream(() => read_chunk(fin, CHUNK_SIZE));
-        
-        // Convert stored hash to bytes for comparison
-        var hex_chars = "0123456789abcdef";
-        uint8[] stored_hash = new uint8[32];
-        for (int i = 0; i < 32; i++) {
-            int hb = hex_chars.index_of(stored_hash_hex[(i*2)]);
-            if (hb < 0) hb = hex_chars.index_of(stored_hash_hex[(i*2)+1]);
-            stored_hash[i] = (uint8)((hb >> 4) & 0xf | ((hb & 0xf) << 4));
-        }
-        
-        // Compare byte by byte
-        bool verified = true;
-        for (int i = 0; i < 32 && verified; i++) {
-            if ((int)computed[i] != (int)stored_hash[i]) verified = false;
-        }
-        
-        if (!verified) {
-            throw new IOError.FAILED("Integrity verification failed: SHA-256 hash mismatch");
-        }
-        
-        GLib.stdout.printf("%s\n", colour_wrap("✅ Integrity verified", GRN));
-    } else {
-        GLib.stdout.printf("%s\n", colour_wrap("✅ Decrypted ZSTD → " + out_file.get_path(), GRN));
-    }
+    GLib.stdout.printf("%s\n", colour_wrap("✅ Decrypted ZSTD → " + out_file.get_path(), GRN));
 
     return out_file;
 }
@@ -983,14 +861,12 @@ private void extract_archive(File zstd_arc, File dst_dir) throws Error {
     int cmd_status;
 
     /* Phase 1: zstd decompress */
-    if (!run_command_sync_with_progress(zstd_cmd, out cmd_out, out cmd_err, out cmd_status,
-        source_total, null)) {
+    if (!run_command_sync(zstd_cmd, out cmd_out, out cmd_err, out cmd_status)) {
         throw new IOError.FAILED ("zstd decompress failed: " + (cmd_err ?? ""));
     }
 
     /* Phase 2: tar extract */
-    if (!run_command_sync_with_progress(tar_cmd, out cmd_out, out cmd_err, out cmd_status,
-        source_total, null)) {
+    if (!run_command_sync(tar_cmd, out cmd_out, out cmd_err, out cmd_status)) {
         throw new IOError.FAILED ("tar extract failed: " + (cmd_err ?? ""));
     }
 

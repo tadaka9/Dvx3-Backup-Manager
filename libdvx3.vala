@@ -15,6 +15,8 @@ using GLib;
 using Sodium;
 
 /* Direct C bindings for low-level POSIX I/O */
+[CCode (cname = "STDIO_FILENO", cheader_filename = "unistd.h")]
+extern const int STDIO_FILENO;
 [CCode (cname = "isatty", cheader_filename = "unistd.h")]
 extern int posix_isatty (int fd);
 [CCode (cname = "read", cheader_filename = "unistd.h")]
@@ -417,15 +419,16 @@ namespace Dvx3 {
             // Read encrypted content and compute SHA-256 of plaintext portion
             var enc_info = out_file.query_info (FileAttribute.STANDARD_SIZE, FileQueryInfoFlags.NONE);
             uint64 enc_bytes = enc_info.get_attribute_uint64 (FileAttribute.STANDARD_SIZE);
-            uint32 hlen = (uint32) placeholder_header.get_int_member("chunks");
+
             
             var fin = out_file.read();
             fin.skip (4); // Skip length field
-            var hdr_json_raw = new uint8[placeholder_header.get_int_member("last_chunk_size") as int];
-            fin.read(hdr_json_raw);
+            int64 last_chunk_size = placeholder_header.get_int_member("last_chunk_size");
+            var hdr_json_raw = new uint8[last_chunk_size];
+            var hdr_bytes = fin.read_bytes ((ssize_t)hdr_json_raw.length);
             
             var parser = new Json.Parser();
-            parser.load_from_data ((string) hdr_json_raw[0:hdr_json_raw.length], (ssize_t) hdr_json_raw.length);
+            parser.load_from_data ((string) hdr_bytes, (ssize_t) hdr_bytes.length);
             var hdr = parser.get_root().get_object();
             
             var salt2 = Base64.decode(hdr.get_string_member("salt"));
