@@ -204,7 +204,15 @@ jobs:
       - name: Install macOS dependencies
         run: |
           brew update
-          brew install pkg-config valac glib json-glib libsodium zip dos2unix
+          brew install --quiet \
+            pkg-config \
+            valac \
+            glib \
+            json-glib \
+            libsodium \
+            zip \
+            dos2unix \
+            gio-unix  # Required for GUI build on macOS
 
           QT_PATH=$(brew --prefix qt@6)
           if [ -n "$QT_PATH" ] && [ -d "$QT_PATH" ]; then
