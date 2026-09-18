@@ -1,0 +1,563 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface domain="dvx3">
+  <template class="BackupManagerWindow" parent="Gtk.Window">
+    <property name="default-width">1200</property>
+    <property name="default-height">800</property>
+    <property name="title" translatable="yes">Dvx3 Backup Manager</property>
+    <child>
+      <object class="Gtk.Box" id="main_box">
+        <property name="orientation">vertical</property>
+        <property name="margin-top">0</property>
+        <property name="margin-bottom">0</property>
+        <property name="spacing">6</property>
+        
+        <!-- Header Bar -->
+        <child>
+          <object class="Gtk.HeaderBar" id="header_bar">
+            <property name="show-title-popup">true</property>
+            <child type="start">
+              <object class="Gtk.Button" id="menu_button">
+                <property name="label">≡</property>
+                <style-class>flat</style-class>
+                <property name="halign">end</property>
+              </object>
+            </child>
+            <child type="title">
+              <object class="Gtk.Label" id="header_title_label">
+                <property name="label" translatable="yes">Dvx3 Backup Manager</property>
+                <property name="use-markup">true</property>
+                <attributes>
+                  <weight:normal/>
+                  <style-type:normal/>
+                </attributes>
+              </object>
+            </child>
+            <child type="end">
+              <object class="Gtk.Button" id="help_button">
+                <property name="label">?</property>
+                <style-class>flat</style-class>
+              </object>
+            </child>
+          </object>
+        </child>
+        
+        <!-- Notebook for navigation -->
+        <child>
+          <object class="Gtk.Notebook" id="notebook">
+            <property name="margin-start">6</property>
+            <property name="margin-end">6</property>
+            <property name="tab-expand">false</property>
+            <property name="scrollable">true</property>
+            
+            <!-- Dashboard Page -->
+            <page>
+              <object class="Gtk.Stack" id="stack">
+                <property name="margin-top">6</property>
+                <property name="margin-bottom">6</property>
+                
+                <!-- Dashboard Stack Page -->
+                <child>
+                  <object class="Gtk.Box" id="dashboard_box">
+                    <property name="orientation">vertical</property>
+                    <property name="spacing">6</property>
+                    
+                    <!-- Dashboard Header Frame -->
+                    <child>
+                      <object class="Gtk.Frame" id="dashboard_header_frame">
+                        <property name="label" translatable="yes">Dashboard</property>
+                        <property name="margin-top">10</property>
+                        <property name="margin-bottom">10</property>
+                        <child>
+                          <object class="Gtk.Box" id="dashboard_header_box">
+                            <property name="orientation">horizontal</property>
+                            <property name="spacing">6</property>
+                            
+                            <!-- Dashboard Title -->
+                            <child>
+                              <object class="Gtk.Label" id="dashboard_title">
+                                <property name="label" translatable="yes">Dashboard</property>
+                                <style-name>title</style-name>
+                              </object>
+                            </child>
+                            
+                            <!-- Create Backup Button -->
+                            <child>
+                              <object class="Gtk.Button" id="create_backup_button">
+                                <property name="label" translatable="yes">Create Backup</property>
+                                <style-class>suggested-action</style-class>
+                              </object>
+                            </child>
+                            
+                            <!-- Restore Button -->
+                            <child>
+                              <object class="Gtk.Button" id="restore_button">
+                                <property name="label" translatable="yes">Restore</property>
+                                <style-class>destructive-action</style-class>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    
+                    <!-- Backup Jobs FlowBox -->
+                    <child>
+                      <object class="Gtk.FlowBox" id="backup_jobs_box">
+                        <property name="margin-top">6</property>
+                        <property name="margin-bottom">6</property>
+                        <property name="column-spacing">6</property>
+                        <property name="row-spacing">6</property>
+                        <property name="max-column-width">400</property>
+                        
+                        <!-- FlowBox Selection -->
+                        <signal name="child-activated" handler="on_backup_activated"/>
+                      </object>
+                    </child>
+                    
+                    <!-- Dashboard Footer -->
+                    <child>
+                      <object class="Gtk.FlowBox" id="dashboard_footer_box">
+                        <property name="margin-top">6</property>
+                        <property name="margin-bottom">6</property>
+                        <property name="column-spacing">6</property>
+                        <property name="row-spacing">6</property>
+                        <property name="max-column-width">400</property>
+                        
+                        <!-- Statistics Button -->
+                        <child>
+                          <object class="Gtk.Button" id="stats_button">
+                            <property name="label" translatable="yes">Statistics</property>
+                            <style-class>flat</style-class>
+                          </object>
+                        </child>
+                        
+                        <!-- Settings Button -->
+                        <child>
+                          <object class="Button" id="settings_footer_button">
+                            <property name="label" translatable="yes">Settings</property>
+                            <style-class>flat</style-class>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                
+                <!-- Jobs Stack Page -->
+                <child>
+                  <object class="Gtk.Box" id="jobs_box">
+                    <property name="orientation">vertical</property>
+                    <property name="spacing">6</property>
+                    
+                    <!-- Jobs Header Frame -->
+                    <child>
+                      <object class="Gtk.Frame" id="jobs_header_frame">
+                        <property name="label" translatable="yes">Backup Jobs</property>
+                        <property name="margin-top">10</property>
+                        <property name="margin-bottom">10</property>
+                        <child>
+                          <object class="Gtk.Box" id="jobs_header_box">
+                            <property name="orientation">horizontal</property>
+                            <property name="spacing">6</property>
+                            
+                            <!-- Jobs Title -->
+                            <child>
+                              <object class="Gtk.Label" id="jobs_title">
+                                <property name="label" translatable="yes">Backup Jobs</property>
+                              </object>
+                            </child>
+                            
+                            <!-- New Job Button -->
+                            <child>
+                              <object class="Gtk.Button" id="new_job_button">
+                                <property name="label" translatable="yes">New Job</property>
+                                <style-class>suggested-action</style-class>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    
+                    <!-- Jobs List -->
+                    <child>
+                      <object class="Gtk.FlowBox" id="jobs_flowbox">
+                        <property name="margin-top">6</property>
+                        <property name="margin-bottom">6</property>
+                        <property name="column-spacing">6</property>
+                        <property name="row-spacing">6</property>
+                        <property name="max-column-width">500</property>
+                        
+                        <!-- FlowBox Selection -->
+                        <signal name="child-activated" handler="on_job_activated"/>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                
+                <!-- Restore Stack Page -->
+                <child>
+                  <object class="Gtk.Box" id="restore_box">
+                    <property name="orientation">vertical</property>
+                    <property name="spacing">6</property>
+                    
+                    <!-- Restore Header Frame -->
+                    <child>
+                      <object class="Gtk.Frame" id="restore_header_frame">
+                        <property name="label" translatable="yes">Restore from Archive</property>
+                        <property name="margin-top">10</property>
+                        <property name="margin-bottom">10</property>
+                        <child>
+                          <object class="Gtk.Box" id="restore_header_box">
+                            <property name="orientation">horizontal</property>
+                            <property name="spacing">6</property>
+                            
+                            <!-- Restore Title -->
+                            <child>
+                              <object class="Gtk.Label" id="restore_title">
+                                <property name="label" translatable="yes">Restore from Archive</property>
+                              </object>
+                            </child>
+                            
+                            <!-- Browse Archives Button -->
+                            <child>
+                              <object class="Gtk.Button" id="browse_archives_button">
+                                <property name="label" translatable="yes">Browse...</property>
+                                <style-class>suggested-action</style-class>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    
+                    <!-- Browse Archives List -->
+                    <child>
+                      <object class="Gtk.FlowBox" id="archives_flowbox">
+                        <property name="margin-top">6</property>
+                        <property name="margin-bottom">6</property>
+                        <property name="column-spacing">6</property>
+                        <property name="row-spacing">6</property>
+                        <property name="max-column-width">500</property>
+                        
+                        <!-- FlowBox Selection -->
+                        <signal name="child-activated" handler="on_archive_activated"/>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                
+                <!-- Settings Stack Page -->
+                <child>
+                  <object class="Gtk.Box" id="settings_box">
+                    <property name="orientation">vertical</property>
+                    <property name="spacing">6</property>
+                    
+                    <!-- Settings Header Frame -->
+                    <child>
+                      <object class="Gtk.Frame" id="settings_header_frame">
+                        <property name="label" translatable="yes">Settings</property>
+                        <property name="margin-top">10</property>
+                        <property name="margin-bottom">10</property>
+                        <child>
+                          <object class="Gtk.Box" id="settings_header_box">
+                            <property name="orientation">horizontal</property>
+                            <property name="spacing">6</property>
+                            
+                            <!-- Settings Title -->
+                            <child>
+                              <object class="Gtk.Label" id="settings_title">
+                                <property name="label" translatable="yes">Settings</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    
+                    <!-- Settings Content -->
+                    <child>
+                      <object class="Gtk.Box" id="settings_content_box">
+                        <property name="orientation">vertical</property>
+                        <property name="spacing">6</property>
+                        
+                        <!-- Password Entry -->
+                        <child>
+                          <object class="Gtk.Box" id="password_entry_box">
+                            <property name="orientation">horizontal</property>
+                            <property name="spacing">6</property>
+                            
+                            <child>
+                              <object class="Gtk.Label" id="password_label">
+                                <property name="label" translatable="yes">Password:</property>
+                              </object>
+                            </child>
+                            
+                            <child>
+                              <object class="Gtk.Entry" id="password_entry">
+                                <property name="visibility-char" empty="true">*</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        
+                        <!-- Integrity Check Checkbox -->
+                        <child>
+                          <object class="Gtk.Box" id="integrity_check_box">
+                            <property name="orientation">horizontal</property>
+                            <property name="spacing">6</property>
+                            
+                            <child>
+                              <object class="Gtk.CheckButton" id="integrity_check_button">
+                                <property name="label" translatable="yes">Enable SHA-256 Integrity Verification</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        
+                        <!-- Progress Display -->
+                        <child>
+                          <object class="Gtk.FlowBox" id="settings_progress_box">
+                            <property name="margin-top">6</property>
+                            <property name="margin-bottom">6</property>
+                            <property name="column-spacing">6</property>
+                            <property name="row-spacing">6</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </page>
+            
+            <!-- Jobs Notebook Page -->
+            <page>
+              <object class="Gtk.Box" id="jobs_notebook_box">
+                <property name="orientation">vertical</property>
+                <property name="spacing">6</property>
+                
+                <!-- Jobs Header Frame -->
+                <child>
+                  <object class="Gtk.Frame" id="jobs_notebook_header_frame">
+                    <property name="label" translatable="yes">Backup Jobs</property>
+                    <property name="margin-top">10</property>
+                    <property name="margin-bottom">10</property>
+                    <child>
+                      <object class="Gtk.Box" id="jobs_notebook_header_box">
+                        <property name="orientation">horizontal</property>
+                        <property name="spacing">6</property>
+                        
+                        <!-- Jobs Title -->
+                        <child>
+                          <object class="Gtk.Label" id="jobs_notebook_title">
+                            <property name="label" translatable="yes">Backup Jobs</property>
+                          </object>
+                        </child>
+                        
+                        <!-- New Job Button -->
+                        <child>
+                          <object class="Gtk.Button" id="new_job_notebook_button">
+                            <property name="label" translatable="yes">New Job</property>
+                            <style-class>suggested-action</style-class>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                
+                <!-- Jobs List -->
+                <child>
+                  <object class="Gtk.FlowBox" id="jobs_notebook_flowbox">
+                    <property name="margin-top">6</property>
+                    <property name="margin-bottom">6</property>
+                    <property name="column-spacing">6</property>
+                    <property name="row-spacing">6</property>
+                    <property name="max-column-width">500</property>
+                    
+                    <!-- FlowBox Selection -->
+                    <signal name="child-activated" handler="on_job_notebook_activated"/>
+                  </object>
+                </child>
+              </object>
+            </page>
+            
+            <!-- Restore Notebook Page -->
+            <page>
+              <object class="Gtk.Box" id="restore_notebook_box">
+                <property name="orientation">vertical</property>
+                <property name="spacing">6</property>
+                
+                <!-- Restore Header Frame -->
+                <child>
+                  <object class="Gtk.Frame" id="restore_notebook_header_frame">
+                    <property name="label" translatable="yes">Restore from Archive</property>
+                    <property name="margin-top">10</property>
+                    <property name="margin-bottom">10</property>
+                    <child>
+                      <object class="Gtk.Box" id="restore_notebook_header_box">
+                        <property name="orientation">horizontal</property>
+                        <property name="spacing">6</property>
+                        
+                        <!-- Restore Title -->
+                        <child>
+                          <object class="Gtk.Label" id="restore_notebook_title">
+                            <property name="label" translatable="yes">Restore from Archive</property>
+                          </object>
+                        </child>
+                        
+                        <!-- Browse Archives Button -->
+                        <child>
+                          <object class="Gtk.Button" id="browse_archives_notebook_button">
+                            <property name="label" translatable="yes">Browse...</property>
+                            <style-class>suggested-action</style-class>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                
+                <!-- Browse Archives List -->
+                <child>
+                  <object class="Gtk.FlowBox" id="archives_notebook_flowbox">
+                    <property name="margin-top">6</property>
+                    <property name="margin-bottom">6</property>
+                    <property name="column-spacing">6</property>
+                    <property name="row-spacing">6</property>
+                    <property name="max-column-width">500</property>
+                    
+                    <!-- FlowBox Selection -->
+                    <signal name="child-activated" handler="on_archive_notebook_activated"/>
+                  </object>
+                </child>
+              </object>
+            </page>
+            
+            <!-- Settings Notebook Page -->
+            <page>
+              <object class="Gtk.Box" id="settings_notebook_box">
+                <property name="orientation">vertical</property>
+                <property name="spacing">6</property>
+                
+                <!-- Settings Header Frame -->
+                <child>
+                  <object class="Gtk.Frame" id="settings_notebook_header_frame">
+                    <property name="label" translatable="yes">Settings</property>
+                    <property name="margin-top">10</property>
+                    <property name="margin-bottom">10</property>
+                    <child>
+                      <object class="Gtk.Box" id="settings_notebook_header_box">
+                        <property name="orientation">horizontal</property>
+                        <property name="spacing">6</property>
+                        
+                        <!-- Settings Title -->
+                        <child>
+                          <object class="Gtk.Label" id="settings_notebook_title">
+                            <property name="label" translatable="yes">Settings</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                
+                <!-- Settings Content -->
+                <child>
+                  <object class="Gtk.Box" id="settings_notebook_content_box">
+                    <property name="orientation">vertical</property>
+                    <property name="spacing">6</property>
+                    
+                    <!-- Password Entry -->
+                    <child>
+                      <object class="Gtk.Box" id="settings_notebook_password_entry_box">
+                        <property name="orientation">horizontal</property>
+                        <property name="spacing">6</property>
+                        
+                        <child>
+                          <object class="Gtk.Label" id="settings_notebook_password_label">
+                            <property name="label" translatable="yes">Password:</property>
+                          </object>
+                        </child>
+                        
+                        <child>
+                          <object class="Gtk.Entry" id="settings_notebook_password_entry">
+                            <property name="visibility-char" empty="true">*</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    
+                    <!-- Integrity Check Checkbox -->
+                    <child>
+                      <object class="Gtk.Box" id="settings_notebook_integrity_check_box">
+                        <property name="orientation">horizontal</property>
+                        <property name="spacing">6</property>
+                        
+                        <child>
+                          <object class="Gtk.CheckButton" id="settings_notebook_integrity_check_button">
+                            <property name="label" translatable="yes">Enable SHA-256 Integrity Verification</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    
+                    <!-- Progress Display -->
+                    <child>
+                      <object class="Gtk.FlowBox" id="settings_notebook_progress_box">
+                        <property name="margin-top">6</property>
+                        <property name="margin-bottom">6</property>
+                        <property name="column-spacing">6</property>
+                        <property name="row-spacing">6</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </page>
+          </object>
+        </child>
+        
+        <!-- Bottom Box with Progress Display -->
+        <child>
+          <object class="Gtk.Box" id="bottom_box">
+            <property name="orientation">horizontal</property>
+            <property name="spacing">6</property>
+            <property name="margin-start">10</property>
+            <property name="margin-end">10</property>
+            
+            <!-- Progress Bar -->
+            <child>
+              <object class="Gtk.ProgressBar" id="progress_bar_2">
+                <property name="show-fraction">false</property>
+                <property name="valign">start</property>
+                <property name="vexpand">true</property>
+                <property name="halign">center</property>
+              </object>
+            </child>
+            
+            <!-- Status Label -->
+            <child>
+              <object class="Gtk.Label" id="status_label_2">
+                <property name="label" translatable="yes">Ready</property>
+                <property name="halign">center</property>
+                <property name="use-markup">true</property>
+              </object>
+            </child>
+            
+            <!-- Progress Text Label -->
+            <child>
+              <object class="Gtk.Label" id="progress_label_2">
+                <property name="halign">center</property>
+                <property name="use-markup">true</property>
+                <property name="wrap">true</property>
+                <property name="max-width-chars">40</property>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>

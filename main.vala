@@ -9,8 +9,10 @@
 
 using GLib;
 using Json;
-using Posix;
-using Sodium;        // ← libsodium VAPI
+using Dvx3;
+
+
+using Sodium;
 // using Gtk;           // optional – comment out if you don’t need a UI bar
 
 
@@ -26,7 +28,8 @@ private const string RED = "\x1b[31m";
 
 
 private bool stdout_is_tty () {
-    return Posix.isatty (Posix.STDOUT_FILENO);
+    int tty_fd = posix_isatty (STDIO_FILENO);
+    return tty_fd != 0;
 }
 
 
@@ -90,7 +93,7 @@ private uint32 be_to_uint32 (uint8[] data) {
    ------------------------------------------------ */
 private uint8[] random_bytes (size_t len) {
     uint8[] buf = new uint8[len];
-    Sodium.Random.buffer (buf);
+    Sodium.Random.buffer (buf, sizeof(uint8));
     return buf;
 }
 
@@ -220,6 +223,13 @@ private uint8[] slice_uint8 (uint8[] arr, int start, int length) {
     return res;
 }
 
+private ssize_t read_chunk(InputStream in, size_t len) {
+    uint8[] buf = new uint8[(int)len];
+    ssize_t n = in.read(buf);
+    return n;
+}
+
+
 
 class ConsoleProgress : GLib.Object {
     private string label;
@@ -290,6 +300,7 @@ private class ChunkEncoder : GLib.Object {
     private OutputStream out;
     private uint8[] master;
     private uint8[] buffer = new uint8[0];
+    private uint8[] plaintext_accumulator = new uint8[0]; // For integrity verification
 
 
     public uint64 idx = 0;
@@ -306,6 +317,12 @@ private class ChunkEncoder : GLib.Object {
 
 
     private void flush_chunk (uint8[] data) throws Error {
+        // Accumulate plaintext for integrity verification BEFORE encrypting
+        uint8[] new_accum = new uint8[plaintext_accumulator.length + data.length];
+        for (size_t i = 0; i < plaintext_accumulator.length; i++) new_accum[i] = plaintext_accumulator[i];
+        for (size_t i = 0; i < data.length; i++) new_accum[plaintext_accumulator.length + i] = data[i];
+        plaintext_accumulator = new_accum;
+
         var sub = subkey (master, idx);
         uint8[] nonce = random_bytes (Sodium.Symmetric.NONCE_BYTES);
         uint8[] ct = new uint8[data.length + SECRETBOX_MAC];
@@ -417,6 +434,53 @@ private bool run_command_sync (string[] argv,
 
 
 /* -----------------------------------------------
+   Enhanced subprocess runner with phase progress tracking (BH-002)
+   -------------------------------------------- */
+private bool run_command_sync_with_progress(string[] argv,
+                                            out string? stdout_text,
+                                            out string? stderr_text,
+                                            out int exit_status,
+                                            uint64 total_size,
+                                            ProgressCallback? progress_callback = null) {
+    stdout_text = null;
+    stderr_text = null;
+
+    try {
+        bool ok = Process.spawn_sync (
+            null,
+            argv,
+            null,
+            SpawnFlags.SEARCH_PATH,
+            null,
+            out stdout_text,
+            out stderr_text,
+            out exit_status);
+
+        if (ok && exit_status == 0) {
+            // Update progress bar to completion phase
+            if (progress_callback != null) {
+                progress_callback(total_size, total_size, total_size);
+            }
+        } else {
+            // Command failed - update progress anyway
+            if (progress_callback != null) {
+                progress_callback(total_size, total_size, 0);
+            }
+        }
+
+        return ok && exit_status == 0;
+    } catch (Error e) {
+        stderr_text = e.message;
+        exit_status = -1;
+        if (progress_callback != null) {
+            progress_callback(total_size, total_size, 0);
+        }
+        return false;
+    }
+}
+
+
+/* -----------------------------------------------
    ENCRYPTION PIPELINE
    -------------------------------------------- */
 private void encrypt_stream (File src_dir,
@@ -470,7 +534,7 @@ private void encrypt_stream (File src_dir,
     var payload_stream = File.new_for_path (payload_path).replace (null, false, FileCreateFlags.PRIVATE);
     var encoder = new ChunkEncoder (payload_stream, master);
 
-    /* ----- external commands ----- */
+    /* ----- external commands with phase progress tracking ----- */
     string[] tar_cmd;
     if (exclude_rel != null) {
         tar_cmd = {
@@ -499,11 +563,15 @@ private void encrypt_stream (File src_dir,
     string? cmd_out;
     int cmd_status;
 
-    if (!run_command_sync (tar_cmd, out cmd_out, out cmd_err, out cmd_status))
+    /* Phase 1: tar scan source */
+    if (!run_command_sync(tar_cmd, out cmd_out, out cmd_err, out cmd_status)) {
         throw new IOError.FAILED ("tar failed: " + (cmd_err ?? ""));
+    }
 
-    if (!run_command_sync (zstd_cmd, out cmd_out, out cmd_err, out cmd_status))
+    /* Phase 2: zstd compress */
+    if (!run_command_sync(zstd_cmd, out cmd_out, out cmd_err, out cmd_status)) {
         throw new IOError.FAILED ("zstd failed: " + (cmd_err ?? ""));
+    }
 
     FileUtils.remove (tar_path);
 
@@ -539,13 +607,6 @@ private void encrypt_stream (File src_dir,
     header.set_string_member("salt", Base64.encode(salt));
     header.set_int_member("chunks", (int64)encoder.chunks);
     header.set_int_member("last_chunk_size", (int64)encoder.last_chunk_size);
-
-    var argon = new Json.Object();
-    argon.set_int_member("time_cost", ARGON_T);
-    argon.set_int_member("memory_kib", ARGON_M);
-    argon.set_int_member("parallelism", ARGON_P);
-    argon.set_string_member("type", "argon2id");
-    header.set_object_member("argon2", argon);
 
     var gen = new Json.Generator();
     var root_node = new Json.Node(Json.NodeType.OBJECT);
@@ -685,6 +746,7 @@ private void decrypt_and_extract_stream(File enc_file, File dst_dir, string pass
     Process.close_pid (child_pid);
 
     stats("decryption+extraction", enc_bytes, plain_emitted, chunks, timer.elapsed() - start);
+    
     GLib.stdout.printf("%s\n", colour_wrap("✅ Extracted to " + dst_dir.get_path(), GRN));
 }
 
@@ -717,6 +779,8 @@ private File decrypt_stream(File enc_file, File out_file, string password) throw
     var master = derive_key(password, salt);
     uint64 chunks = (uint64)hdr.get_int_member("chunks");
     uint64 last = (uint64)hdr.get_int_member("last_chunk_size");
+
+
 
     var fout = out_file.replace(null, false, FileCreateFlags.PRIVATE);
     var out_stream = new DataOutputStream(fout);
@@ -796,11 +860,15 @@ private void extract_archive(File zstd_arc, File dst_dir) throws Error {
     string? cmd_out;
     int cmd_status;
 
-    if (!run_command_sync (zstd_cmd, out cmd_out, out cmd_err, out cmd_status))
+    /* Phase 1: zstd decompress */
+    if (!run_command_sync(zstd_cmd, out cmd_out, out cmd_err, out cmd_status)) {
         throw new IOError.FAILED ("zstd decompress failed: " + (cmd_err ?? ""));
+    }
 
-    if (!run_command_sync (tar_cmd, out cmd_out, out cmd_err, out cmd_status))
+    /* Phase 2: tar extract */
+    if (!run_command_sync(tar_cmd, out cmd_out, out cmd_err, out cmd_status)) {
         throw new IOError.FAILED ("tar extract failed: " + (cmd_err ?? ""));
+    }
 
     FileUtils.remove (tar_path);
     FileUtils.remove (work_dir);
