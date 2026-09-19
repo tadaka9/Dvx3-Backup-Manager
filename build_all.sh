@@ -121,7 +121,6 @@ mkdir -p "$BUILD_GEN_C_DIR"
 # Generate C bindings from Vala
 valac \
     --pkg glib-2.0 \
-    --pkg $GIO_PKG \
     --pkg json-glib-1.0 \
     --vapidir="${SCRIPT_DIR}/vala-extra-vapis" \
     --pkg libsodium \
@@ -178,12 +177,11 @@ valac \
     libdvx3.vala \
     -H "${SCRIPT_DIR}/dvx3.h" \
     --pkg glib-2.0 \
-    --pkg $GIO_PKG \
     --pkg json-glib-1.0 \
     --vapidir="${SCRIPT_DIR}/vala-extra-vapis" \
     --pkg libsodium \
     $VALA_DEFINES \
-    --ccode-gen \
+    -C \
     -g:0 \
     -o "${CLI_BIN}.tmp.so" \
     2>&1 | grep -i "error\|warning" || true

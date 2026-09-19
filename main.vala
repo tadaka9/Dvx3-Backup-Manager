@@ -28,7 +28,9 @@ private const string RED = "\x1b[31m";
 
 
 private bool stdout_is_tty () {
-    int tty_fd = posix_isatty (STDIO_FILENO);
+    // STDOUT_FILENO is 1 for standard output
+    const int STDOUT_FD = 1;
+    int tty_fd = posix_isatty (STDOUT_FD);
     return tty_fd != 0;
 }
 
@@ -703,7 +705,8 @@ private void decrypt_and_extract_stream(File enc_file, File dst_dir, string pass
         throw new IOError.FAILED ("Failed to launch zstd|tar pipeline: " + e.message);
     }
 
-    var pipe_out = new GLib.UnixOutputStream (pipe_stdin, true);
+    // Use direct POSIX write to child process stdin
+    // pipe_out will be handled via posix_write() calls
 
     for (uint64 i = 0; i < chunks; i++) {
         uint8[] nonce = new uint8[(int)Sodium.Symmetric.NONCE_BYTES];
@@ -730,19 +733,15 @@ private void decrypt_and_extract_stream(File enc_file, File dst_dir, string pass
         if (rc != 0)
             throw new IOError.FAILED("Secretbox decryption failed");
 
-        size_t written;
-        pipe_out.write_all(pt, out written);
+        ssize_t written = posix_write (pipe_stdin, pt, (size_t)pt.length);
+        if (written <= 0)
+            throw new IOError.FAILED("Failed to write to pipeline");
         processed_cipher += (uint64) Sodium.Symmetric.NONCE_BYTES + (uint64) ct.length;
         plain_emitted += (uint64) plain_len;
         dec_progress.update (processed_cipher, plain_emitted, processed_cipher);
     }
 
-    pipe_out.flush();
-    pipe_out.close();
-    dec_progress.finish (plain_emitted, processed_cipher);
-
     /* Wait for pipeline to complete */
-    int exit_status;
     Process.close_pid (child_pid);
 
     stats("decryption+extraction", enc_bytes, plain_emitted, chunks, timer.elapsed() - start);

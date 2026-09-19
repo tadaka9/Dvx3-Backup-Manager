@@ -3,18 +3,14 @@
 #ifndef __DVX3_H__
 #define __DVX3_H__
 
-#include <glib.h>
-#include <gio/gio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <glib.h>
+#include <glib-object.h>
+#include <gio/gio.h>
 
 G_BEGIN_DECLS
 
-#define DVX3_CHUNK_SIZE ((gsize) (1024 * 1024))
-#define DVX3_ARGON_T ((guint) 2)
-#define DVX3_ARGON_M ((guint) 64000)
-#define DVX3_ARGON_P ((guint) 4)
-#define DVX3_HEADER_RESERVE ((gsize) 512)
 #if !defined(VALA_EXTERN)
 #if defined(_MSC_VER)
 #define VALA_EXTERN __declspec(dllexport) extern
@@ -24,22 +20,40 @@ G_BEGIN_DECLS
 #define VALA_EXTERN extern
 #endif
 #endif
+#define DVX3_CHUNK_SIZE ((gsize) (1024 * 1024))
+#define DVX3_ARGON_T ((guint) 2)
+#define DVX3_ARGON_M ((guint) 64000)
+#define DVX3_ARGON_P ((guint) 4)
+#define DVX3_HEADER_RESERVE ((gsize) 512)
 
 typedef void (*Dvx3ProgressCallback) (guint64 processed, guint64 total, guint64 output_bytes, gpointer user_data);
+typedef enum  {
+	DVX3_ENCRYPTION_MODE_WITH_INTEGRITY,
+	DVX3_ENCRYPTION_MODE_WITHOUT_INTEGRITY
+} Dvx3EncryptionMode;
 
+#define DVX3_TYPE_ENCRYPTION_MODE (dvx3_encryption_mode_get_type ())
+
+static gint _vala_main (gchar** args,
+                 gint args_length1);
+VALA_EXTERN GType dvx3_encryption_mode_get_type (void) G_GNUC_CONST ;
 VALA_EXTERN void dvx3_encrypt (GFile* src_dir,
                    GFile* out_file,
                    const gchar* password,
                    const gchar* exclude_path,
                    Dvx3ProgressCallback progress,
                    gpointer progress_target,
+                   Dvx3EncryptionMode mode,
                    GError** error);
 VALA_EXTERN void dvx3_decrypt (GFile* enc_file,
                    GFile* dst_dir,
                    const gchar* password,
                    Dvx3ProgressCallback progress,
                    gpointer progress_target,
+                   Dvx3EncryptionMode mode,
                    GError** error);
+VALA_EXTERN gchar* dvx3_colour_wrap (const gchar* text,
+                         const gchar* color);
 
 G_END_DECLS
 
