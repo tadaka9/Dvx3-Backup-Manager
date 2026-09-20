@@ -482,8 +482,10 @@ namespace Dvx3 {
                 int hbyte = (int)integrity_hash[i];
                 int hhigh = hbyte >> 4;
                 int hlow = hbyte & 0xf;
-                string s1 = "0123456789abcdef".substring((int)(hhigh % 16));
-                string s2 = "0123456789abcdef".substring((int)(hlow % 16));
+                // Zero-padded hex encoding: each nibble = 1 char
+                string hex_str = "0123456789abcdef";
+                string s1 = hex_str.substring(hhigh, 1);
+                string s2 = hex_str.substring(hlow, 1);
                 hex_hash += s1 + s2;
             }
             final_header.set_string_member("sha256", hex_hash);
@@ -624,8 +626,8 @@ namespace Dvx3 {
             null,
             null);
 
-        // Buffer to accumulate decrypted plaintext for integrity verification (not currently used)
-        uint8[] _buffer_dec = null;
+        // Buffer to accumulate decrypted plaintext for integrity verification
+        uint8[] buffer_dec = new uint8[CHUNK_SIZE];
         uint8[] accumulator_for_integrity = new uint8[0];
 
         for (uint64 i = 0; i < chunks; i++) {
@@ -690,14 +692,15 @@ namespace Dvx3 {
             uint8[] computed_hash = compute_sha256(accumulator_for_integrity);
             accumulator_for_integrity = new uint8[0];
             
-            // Convert computed hash to 64-char hex string
+            // Convert computed hash to 64-char hex string (zero-padded)
+            var hex_str = "0123456789abcdef";
             string computed_hex = "";
             for (int i = 0; i < computed_hash.length; i++) {
                 int hbyte = (int)computed_hash[i];
                 int hhigh = hbyte >> 4;
                 int hlow = hbyte & 0xf;
-                string s1 = "0123456789abcdef".substring((int)(hhigh % 16));
-                string s2 = "0123456789abcdef".substring((int)(hlow % 16));
+                string s1 = hex_str.substring(hhigh, 1);
+                string s2 = hex_str.substring(hlow, 1);
                 computed_hex += s1 + s2;
             }
             

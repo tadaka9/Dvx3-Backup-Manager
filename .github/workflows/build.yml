@@ -1,6 +1,21 @@
-# -------- macOS --------
-  build-macos:
-    name: macOS ${{ matrix.arch }}
+name: Multi-Arch Build & Release
+
+on:
+  push:
+    branches: [ main, master, develop, clean-version ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master, develop, clean-version ]
+  workflow_dispatch:
+
+env:
+  RELEASE_DIR: Releases
+  ARTIFACT_PREFIX: Dvx3-Backup-Manager
+
+# -------- Linux --------
+jobs:
+  build-linux:
+    name: Linux ${{ matrix.variant }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
@@ -8,65 +23,34 @@
       matrix:
         include:
           - arch: x86_64
-            runner: macos-13
+            variant: amd64
+            runner: ubuntu-latest
           - arch: aarch64
-            runner: macos-14
+            variant: arm64
+            runner: ubuntu-24.04-arm
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install macOS dependencies
+      - name: Install dependencies (Linux)
         run: |
-          brew update || true
-          brew install --quiet \
-            pkg-config \
-            valac \
-            glib \
-            json-glib \
-            libsodium \
-            zip \
-            dos2unix || true
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            build-essential valac gcc pkg-config zip \
+            libglib2.0-dev libgio-2.0-dev libjson-glib-dev \
+            libsodium-dev gir1.2-gtk-4.0 libgtk-4-dev
 
-          # Conditionally install GioUnix and GTK if available (needed for GUI)
-          echo "=== Checking for GioUnix/GTK availability ==="
-          if brew list --quiet gio-unix &>/dev/null; then
-            echo "✓ GioUnix found, will attempt full GUI build"
-            GIOSYMBOLIC=yes
-          else
-            echo "⚠️  GioUnix not found (common on macOS runners), will use CLI-only mode"
-            GIOSYMBOLIC=no
-          fi
+      - name: Set architecture
+        run: echo "TARGET_ARCH=${{ matrix.arch }}" >> $GITHUB_ENV
 
-          # Install GTK and gio-unix if available
-          if [ "$GIOSYMBOLIC" = "yes" ]; then
-            brew install --quiet gio-unix gtk || true
-          fi
-
-      - name: Set up Qt6 (macOS fallback)
+      - name: Verify dependencies
         run: |
-          QT_PATH=$(brew --prefix qt@6 2>/dev/null)
-          if [ -n "$QT_PATH" ] && [ -d "$QT_PATH" ]; then
-            echo "$QT_PATH/bin" >> $GITHUB_PATH
-            echo "✓ Qt6 found at $QT_PATH (will use Qt-based GUI)"
-          else
-            echo "⚠️  Qt6 not found, GTK4-based build will be used if dependencies available"
-          fi
-
-      - name: Verify macOS dependencies
-        run: |
-          echo "=== macOS dependency check ==="
+          echo "=== Dependency check ==="
           pkg-config --modversion glib-2.0
           pkg-config --modversion json-glib-1.0
           pkg-config --modversion libsodium
-          
-          GTK_CHECK=$(pkg-config --exists gtk+-4.0 2>/dev/null && echo "yes" || echo "no")
-          if [ "$GTK_CHECK" = "yes" ]; then
-            echo "✓ GTK+ found - will build GUI"
-          else
-            echo "⚠️  GTK not found - building CLI only"
-          fi
 
-      - name: Build for macOS
+      - name: Build for Linux
         env:
           TARGET_ARCH: ${{ matrix.arch }}
           RELEASE_DIR: Releases
@@ -74,39 +58,213 @@
           chmod +x build_all.sh || true
           ./build_all.sh
 
-      - name: Collect macOS binaries
+      - name: Collect CLI binary
         run: |
-          mkdir -p "$RELEASE_DIR/mac/${{ matrix.arch }}"
+          mkdir -p "$RELEASE_DIR/linux/${{ matrix.variant }}"
+          if [ -f "cli_backup_manager" ]; then
+            cp cli_backup_manager "$RELEASE_DIR/linux/${{ matrix.variant }}/"
+            echo "✓ Copied CLI binary"
+          else
+            echo "⚠️  CLI binary not found"
+          fi
+
+      - name: Package Linux artifacts
+        run: |
+          mkdir -p "$RELEASE_DIR/linux/${{ matrix.variant }}"
           
           if [ -f "cli_backup_manager" ]; then
-            cp cli_backup_manager "$RELEASE_DIR/mac/${{ matrix.arch }}/"
-            echo "✓ Copied CLI binary to $RELEASE_DIR/mac/${{ matrix.arch }}/cli_backup_manager"
+            cp cli_backup_manager "$RELEASE_DIR/linux/${{ matrix.variant }}/"
+            tar -czf "../../../${ARTIFACT_PREFIX}-linux-${{ matrix.variant }}.tar.gz" .
+            echo "✓ Created Linux package"
           else
-            echo "⚠️  CLI binary not found at cli_backup_manager"
+            echo "No Linux CLI found to package for ${{ matrix.variant }}"
           fi
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Linux-${{ matrix.variant }}
+          path: Releases/linux/${{ matrix.variant }}/
+          if-no-files-found: skip
+          retention-days: 30
+          compression-level: 9
+
+# -------- macOS --------
+  build-macos:
+    name: macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        - os: macos-latest
+          arch: x86_64
+        - os: macos-latest
+          arch: aarch64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Homebrew on macOS
+        run: |
+          if [ ! -f /usr/local/bin/brew ] && [ ! -f "$(brew --prefix)" ]; then
+            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          fi
+          brew update
+
+      - name: Install macOS dependencies (x86_64)
+        if: matrix.arch == 'x86_64'
+        run: |
+          brew install --cask valac 2>/dev/null || echo "Vala package not available, using CLI fallback"
+          brew install cmake zip dos2unix pkg-config
+
+      - name: Install macOS dependencies (aarch64)
+        if: matrix.arch == 'aarch64'
+        run: |
+          brew install --cask valac 2>/dev/null || echo "Vala package not available, using CLI fallback"
+          brew install cmake zip dos2unix pkg-config
+
+      - name: Install Qt6 for macOS (optional GUI build)
+        run: |
+          echo "Qt6 is optional. Building CLI-only if not available."
+          if brew list qt@6 > /dev/null 2>&1; then
+            echo "QTDIR=$(brew --prefix qt@6)" >> $GITHUB_ENV
+          fi
+
+      - name: Set architecture
+        run: echo "TARGET_ARCH=${{ matrix.arch }}" >> $GITHUB_ENV
+
+      - name: Build CLI for macOS (all architectures)
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
+          RELEASE_DIR: Releases
+        run: |
+          echo "=== Building Dvx3 Backup Manager CLI for macOS ${{ matrix.arch }} ==="
           
-          if [ -f "dvx3-backup-manager" ]; then
-            cp dvx3-backup-manager "$RELEASE_DIR/mac/${{ matrix.arch }}/"
-            echo "✓ Copied GUI binary to $RELEASE_DIR/mac/${{ matrix.arch }}/dvx3-backup-manager"
+          # Install minimal dependencies for Vala
+          brew install cmake zip dos2unix pkg-config || true
+          
+          chmod +x build_all.sh || true
+          ./build_all.sh
+
+      - name: Collect macOS artifacts
+        run: |
+          mkdir -p "$RELEASE_DIR/macos/${{ matrix.arch }}"
+          
+          if [ -f "cli_backup_manager" ]; then
+            cp cli_backup_manager "$RELEASE_DIR/macos/${{ matrix.arch }}/"
+            echo "✓ Copied CLI binary: $(ls -lh "$RELEASE_DIR/macos/${{ matrix.arch }}/cli_backup_manager")"
           else
-            echo "⚠️  GUI binary not found (CLI-only build)"
+            echo "⚠️  macOS CLI binary not found"
           fi
 
       - name: Package macOS artifacts
         run: |
-          MAC_REL="${RELEASE_DIR}/mac/${{ matrix.arch }}"
+          MACOS_REL="$RELEASE_DIR/macos/${{ matrix.arch }}"
           
-          if [ -d "$MAC_REL" ] && [ "$(ls -A "$MAC_REL")" ]; then
-            cd "$MAC_REL"
-            tar -czf "../../${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}.tar.gz" .
-            echo "✓ Created: $(pwd)/../../${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}.tar.gz"
+          if [ -f "cli_backup_manager" ]; then
+            mkdir -p "$MACOS_REL"
+            cp cli_backup_manager "$MACOS_REL/"
+            
+            # Create universal binary or architecture-specific package
+            if [ "$(uname -m)" = "arm64" ]; then
+              tar -czf "../../../${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}.tar.gz" .
+            else
+              tar -czf "../../../${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}.tar.gz" .
+            fi
+            echo "✓ Created: $(pwd)/${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}.tar.gz"
           else
-            echo "⚠️  No macOS files found to package"
+            echo "No macOS CLI found to package for ${{ matrix.arch }}"
           fi
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
           name: macOS-${{ matrix.arch }}
-          path: Releases/mac/${{ matrix.arch }}/
-          if-no-files-found: fail
+          path: Releases/macos/${{ matrix.arch }}/
+          if-no-files-found: skip
+          retention-days: 30
+          compression-level: 9
+
+# -------- Windows --------
+  build-windows:
+    name: Windows ${{ matrix.arch }}
+    runs-on: windows-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        - arch: x86_64
+          msystem: MINGW64
+          prefix: mingw-w64-x86_64
+        - arch: arm64
+          msystem: CLANGARM64
+          prefix: mingw-w64-clang-aarch64
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup MSYS2 ${{ matrix.msystem }}
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.msystem }}
+          update: true
+          install: >-
+            ${{ matrix.prefix }}-toolchain
+            ${{ matrix.prefix }}-cmake
+            ${{ matrix.prefix }}-glib2
+            ${{ matrix.prefix }}-json-glib
+            ${{ matrix.prefix }}-libsodium
+            ${{ matrix.prefix }}-pkgconf
+            ${{ matrix.prefix }}-vala
+
+      - name: Install Windows dependencies
+        run: |
+          pacman -S --noconfirm zip dos2unix 2>&1 | tail -5
+
+      - name: Build for Windows
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
+          RELEASE_DIR: Releases
+        run: |
+          echo "=== Windows environment ==="
+          echo "MSYSTEM=$MSYSTEM"
+          echo "TARGET_ARCH=$TARGET_ARCH"
+          mkdir -p "$GITHUB_WORKSPACE/${RELEASE_DIR}/windows/${{ matrix.arch }}"
+          
+          chmod +x build_all.sh || true
+          TARGET_ARCH="$TARGET_ARCH" ./build_all.sh
+
+      - name: Collect Windows binaries
+        run: |
+          if [ -f "cli_backup_manager.exe" ]; then
+            mkdir -p "$GITHUB_WORKSPACE/${RELEASE_DIR}/windows/${{ matrix.arch }}"
+            cp cli_backup_manager.exe "$GITHUB_WORKSPACE/${RELEASE_DIR}/windows/${{ matrix.arch }}/"
+            echo "✓ Copied Windows CLI: $(ls -lh "$GITHUB_WORKSPACE/${RELEASE_DIR}/windows/${{ matrix.arch }}/cli_backup_manager.exe")"
+          else
+            echo "⚠️  Windows CLI binary not found (MSYS2 mingw-w64 toolchain required)"
+          fi
+
+      - name: Create Windows ZIP artifact
+        run: |
+          WIN_REL="${RELEASE_DIR}/windows/${{ matrix.arch }}"
+          if [ -n "$(ls -A "$WIN_REL" 2>/dev/null)" ]; then
+            cd "$GITHUB_WORKSPACE/$WIN_REL"
+            zip -r "${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}.zip" .
+            echo "✓ Created: $(pwd)/${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}.zip"
+          else
+            echo "⚠️  No Windows files to zip"
+          fi
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-${{ matrix.arch }}
+          path: Releases/windows/${{ matrix.arch }}/
+          if-no-files-found: skip
+          retention-days: 30
+          compression-level: 9
