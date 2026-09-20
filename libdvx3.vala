@@ -624,8 +624,8 @@ namespace Dvx3 {
             null,
             null);
 
-        // Buffer to accumulate decrypted plaintext for integrity verification
-        uint8[] buffer_dec = new uint8[CHUNK_SIZE];
+        // Buffer to accumulate decrypted plaintext for integrity verification (not currently used)
+        uint8[] _buffer_dec = null;
         uint8[] accumulator_for_integrity = new uint8[0];
 
         for (uint64 i = 0; i < chunks; i++) {
