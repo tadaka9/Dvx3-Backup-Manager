@@ -1,204 +1,8 @@
-#!/bin/bash
-# build_all.sh - Build all targets for Dvx3 Backup Manager (CLI + GUI)
-# Supports: Linux, macOS, Windows (via MSYS2/WSL), with Qt6 GUI for cross-platform builds
-set -e
-set -o pipefail
-
-# Configuration
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RELEASE_DIR="${RELEASE_DIR:-Releases}"
-ARTIFACT_PREFIX="${ARTIFACT_PREFIX:-Dvx3-Backup-Manager}"
-TARGET_ARCH="${TARGET_ARCH:-x86_64}"
-
-echo "=========================================="
-echo "  Dvx3 Backup Manager - Cross-Platform Build"
-echo "=========================================="
-echo ""
-echo "Target Platform: $(uname -s)"
-echo "Architecture: $TARGET_ARCH"
-echo "Working Directory: $SCRIPT_DIR"
-echo ""
-
-# Create release directory
-mkdir -p "$RELEASE_DIR/linux/${TARGET_ARCH}"
-mkdir -p "$RELEASE_DIR/mac/${TARGET_ARCH}"
-mkdir -p "$RELEASE_DIR/windows/${TARGET_ARCH}"
-
-echo "[1/7] Checking dependencies..."
-
-# Check for valac
-if ! command -v valac &>/dev/null; then
-    echo "❌ Error: valac not found. Install Vala toolchain."
-    exit 1
-fi
-valac_version=$(valac --version | head -1)
-echo "✓ Vala version: $valac_version"
-
-# Check for pkg-config
-if ! command -v pkg-config &>/dev/null; then
-    echo "❌ Error: pkg-config not found. Install pkg-config."
-    exit 1
-fi
-
-# Check for GLib/json-glib dependencies
-GLIB_CHECK=$(pkg-config --exists glib-2.0 && echo "yes" || echo "no")
-JSON_GLIB_CHECK=$(pkg-config --exists json-glib-1.0 && echo "yes" || echo "no")
-LIBSODIUM_CHECK=$(pkg-config --exists libsodium && echo "yes" || echo "no")
-
-if [ "$GLIB_CHECK" = "no" ]; then
-    echo "❌ Error: glib-2.0 not found via pkg-config"
-    exit 1
-fi
-echo "✓ GLib version: $(pkg-config --modversion glib-2.0)"
-
-if [ "$JSON_GLIB_CHECK" = "no" ]; then
-    echo "❌ Error: json-glib-1.0 not found via pkg-config"
-    exit 1
-fi
-echo "✓ json-glib version: $(pkg-config --modversion json-glib-1.0)"
-
-if [ "$LIBSODIUM_CHECK" = "no" ]; then
-    echo "❌ Error: libsodium not found via pkg-config"
-    exit 1
-fi
-echo "✓ libsodium version: $(pkg-config --modversion libsodium)"
-
-# Check for optional Qt6 (GUI build)
-QT6_CHECK=$(pkg-config --exists Qt6::Core && echo "yes" || echo "no")
-if [ "$QT6_CHECK" = "yes" ]; then
-    echo "✓ Qt6 found - GUI build enabled"
-    BUILD_GUI=true
-else
-    echo "⚠️  Warning: Qt6 not found - will build CLI only, skip GUI build"
-    BUILD_GUI=false
-fi
-
-echo ""
-echo "[2/7] Detecting platform and setting up build environment..."
-
-UNAME_OUT="$(uname -s 2>/dev/null || echo unknown)"
-case "$UNAME_OUT" in
-    MINGW*|MSYS*|CYGWIN*)
-        PLATFORM="windows"
-        ;;
-    Darwin)
-        PLATFORM="macos"
-        ;;
-    Linux)
-        PLATFORM="linux"
-        ;;
-    *)
-        PLATFORM="unknown"
-        echo "❌ Error: Unknown platform '$UNAME_OUT' not supported"
-        exit 1
-        ;;
-esac
-
-echo "✓ Detected platform: $PLATFORM"
-
-# Set GIO packages based on platform
-case "$PLATFORM" in
-    linux|macos)
-        GIO_PKG="--pkg gio-unix-2.0"
-        VALA_DEFINES="-D POSIX"
-        ;;
-    windows)
-        GIO_PKG=""  # Windows uses gio-2.0 only (no Unix bindings)
-        VALA_DEFINES=""
-        ;;
-esac
-
-echo "✓ GIO packages: $GIO_PKG"
-echo ""
-echo "[3/7] Building library C sources from Vala..."
-
-# Create build directory for generated C sources
-BUILD_GEN_C_DIR="${SCRIPT_DIR}/build/gen-c"
-rm -rf "$BUILD_GEN_C_DIR"
-mkdir -p "$BUILD_GEN_C_DIR"
-
-# Generate C bindings from Vala
-valac \
-    --pkg glib-2.0 \
-    --pkg json-glib-1.0 \
-    --vapidir="${SCRIPT_DIR}/vala-extra-vapis" \
-    --pkg libsodium \
-    $VALA_DEFINES \
-    libdvx3.vala \
-    -C \
-    -d "$BUILD_GEN_C_DIR" \
-    2>&1 | grep -i "error\|warning" || true
-
-if [ ! -f "${BUILD_GEN_C_DIR}/libdvx3.c" ]; then
-    echo "❌ Error: C generation failed. libdvx3.c not created."
-    exit 1
-fi
-
-echo "✓ Generated C sources in ${BUILD_GEN_C_DIR}"
-
-# Patch generated C if patch script exists
-if [ -f "${SCRIPT_DIR}/scripts/patch-gen-c.sh" ]; then
-    chmod +x "${SCRIPT_DIR}/scripts/patch-gen-c.sh" || true
-    "${SCRIPT_DIR}/scripts/patch-gen-c.sh" "$BUILD_GEN_C_DIR/libdvx3.c" 2>&1 || echo "⚠️  Patch skipped or failed (non-fatal)"
-fi
-
-echo ""
-echo "[4/7] Compiling C library..."
-
-# Compile generated C into object file
-C_FLAGS="$(pkg-config --cflags glib-2.0 json-glib-1.0 libsodium)"
-LIBS="$(pkg-config --libs glib-2.0 json-glib-1.0 libsodium)"
-
-gcc $C_FLAGS \
-    -c "${BUILD_GEN_C_DIR}/libdvx3.c" \
-    -o "${SCRIPT_DIR}/gen-c/libdvx3.o" \
-    -I"${SCRIPT_DIR}" \
-    -Wno-incompatible-pointer-types \
-    -Wno-discarded-qualifiers \
-    -fPIC \
-    2>&1 | grep -i "error\|warning" || true
-
-if [ ! -f "${SCRIPT_DIR}/gen-c/libdvx3.o" ]; then
-    echo "❌ Error: C compilation failed. libdvx3.o not created."
-    exit 1
-fi
-
-echo "✓ Compiled C library (libdvx3.o)"
-
-# Compile CLI executable from Vala source directly
-echo ""
-echo "[5/7] Building CLI executable..."
-
-CLI_BIN="${SCRIPT_DIR}/cli_backup_manager"
-
-valac \
-    main.vala \
-    libdvx3.vala \
-    -H "${SCRIPT_DIR}/dvx3.h" \
-    --pkg glib-2.0 \
-    --pkg json-glib-1.0 \
-    --vapidir="${SCRIPT_DIR}/vala-extra-vapis" \
-    --pkg libsodium \
-    $VALA_DEFINES \
-    -C \
-    -o "${CLI_BIN}" \
-    2>&1 | grep -i "error\|warning" || true
-
-echo "✓ CLI executable created: ${CLI_BIN}"
-ls -lh "$CLI_BIN"
-
-# Build Qt6 GUI application if Qt6 is available
-if [ "$BUILD_GUI" = "true" ]; then
-    echo ""
-    echo "[6/7] Building Qt6 Desktop GUI..."
-    
-    mkdir -p "${SCRIPT_DIR}/build-gui/qt/qtdesktop/src"
-    
-    # Create main.cpp for Qt6 desktop app
-    cat > "${SCRIPT_DIR}/gui/qt/qtdesktop/main.cpp" << 'EOF'
 /**
  * Dvx3 Backup Manager - Qt6 Desktop Application
+ * 
  * Modern, cross-platform GUI for backup creation and restoration.
+ * Integrates with the CLI backend for reliable operations across all platforms.
  */
 
 #include <QApplication>
@@ -211,6 +15,7 @@ if [ "$BUILD_GUI" = "true" ]; then
 #include <QMessageBox>
 #include <QProgressBar>
 #include <QProcess>
+#include <QSplitter>
 #include <QTabWidget>
 #include <QGroupBox>
 #include <QScrollArea>
@@ -223,14 +28,19 @@ if [ "$BUILD_GUI" = "true" ]; then
 #include <QAction>
 #include <QFont>
 
+// Modern, dark-themed Qt6 application with tabbed interface
+// Follows Apple HIG principles for macOS/Windows and provides native Linux experience
+
 class Dvx3BackupApp : public QMainWindow {
     Q_OBJECT
+
 public:
     explicit Dvx3BackupApp(QWidget *parent = nullptr)
         : QMainWindow(parent), backupPath("/backup.dvx3")
     {
         setupUI();
         setupTrayIcon();
+        
         statusBar()->showMessage("Dvx3 Backup Manager - Ready");
     }
 
@@ -239,23 +49,29 @@ private:
         setWindowTitle("Dvx3 Backup Manager");
         resize(1200, 800);
         
+        // Create tab widget for different sections
         TabWidget = new QTabWidget(this);
         TabWidget->setDocumentMode(true);
         TabWidget->setMovable(false);
         TabWidget->setExpanding(true);
         
+        // Welcome Tab
         WelcomeTab = new WelcomePage(TabWidget);
         TabWidget->addTab(WelcomeTab, "🎉 Welcome");
         
+        // Backup Tab
         BackupTab = new BackupPage(TabWidget);
         TabWidget->addTab(BackupTab, "📦 Create Backup");
         
+        // Restore Tab
         RestoreTab = new RestorePage(TabWidget);
         TabWidget->addTab(RestoreTab, "🔄 Restore");
         
+        // Dashboard Tab
         DashboardTab = new DashboardPage(TabWidget);
         TabWidget->addTab(DashboardTab, "📊 Dashboard");
         
+        // Settings Tab
         SettingsTab = new SettingsPage();
         TabWidget->addTab(SettingsTab, "⚙️ Settings");
         
@@ -266,30 +82,53 @@ private:
 private:
     void setupTrayIcon() {
         TrayIcon = new QSystemTrayIcon(this);
+        QIcon Icon;
         
+        TrayIcon->setContextMenu(TrayMenu);
+        
+        // Add tray menu items
         ActionBackup = new QAction("📦 Create Backup", this);
         ActionRestore = new QAction("🔄 Restore", this);
         ActionQuit = new QAction("❌ Quit", this);
         
-        TrayIcon->setContextMenu(new QMenu());
-        QMenu* menu = static_cast<QMenu*>(TrayIcon->setContextMenu(new QMenu()));
-        menu->addAction(ActionBackup);
-        menu->addSeparator();
-        menu->addAction(ActionRestore);
-        menu->addSeparator();
-        menu->addAction(ActionQuit);
+        TrayMenu->addAction(ActionBackup);
+        TrayMenu->addSeparator();
+        TrayMenu->addAction(ActionRestore);
+        TrayMenu->addSeparator();
+        TrayMenu->addAction(ActionQuit);
         
-        connect(TrayIcon, &QSystemTrayIcon::activated, [this](QSystemTrayIcon::ActivationReason reason) {
+        connect(TrayIcon, &QSystemTrayIcon::activated, this, [](QSystemTrayIcon::ActivationReason reason) {
             if (reason == QSystemTrayIcon::DoubleClick) {
-                showWindow(); raise(); activateWindow();
+                showWindow();
+                raise();
+                activateWindow();
             }
         });
+        
+        connect(ActionBackup, &QAction::triggered, [this]() {
+            if (BackupTab && BackupTab->isVisible() == false) {
+                TabWidget->widget(1)->show();
+            } else if (BackupTab && BackupTab->isVisible()) {
+                BackupTab->setFocus();
+            }
+        });
+        
+        connect(ActionRestore, &QAction::triggered, [this]() {
+            if (RestoreTab && RestoreTab->isVisible() == false) {
+                TabWidget->widget(2)->show();
+            } else if (RestoreTab && RestoreTab->isVisible()) {
+                RestoreTab->setFocus();
+            }
+        });
+        
+        connect(ActionQuit, &QAction::triggered, this, &QWidget::close);
         
         TrayIcon->show();
     }
 
 private slots:
     void onEncrypt() {
+        // Validate inputs
         QString sourceDir = backupSourceLabel->text().trimmed();
         if (sourceDir.isEmpty()) {
             QMessageBox::warning(this, "Missing Source", 
@@ -304,9 +143,15 @@ private slots:
             return;
         }
         
+        // Start encryption process
         QProcess* process = new QProcess(this);
+        
         QString exe = qApp->applicationDirPath() + "/cli_backup_manager";
-        QStringList args = {"encrypt", sourceDir, "-p", password, "-o", backupPath + ".dvx3"};
+        
+        QStringList args;
+        args << "encrypt" << sourceDir
+              << "-p" << password
+              << "-o" << backupPath + ".dvx3";
         
         connect(process, &QProcess::started, [this]() {
             statusBar()->showMessage("Encrypting...", 0);
@@ -323,13 +168,84 @@ private slots:
                 [process]() {
             if (process->exitCode() == 0) {
                 statusBar()->showMessage("✅ Backup completed successfully!", 0);
-                if (DashboardTab) DashboardTab->addRecentOperation("Encrypt", "Success", sourceDir + " -> " + backupPath);
+                
+                // Add to dashboard
+                if (DashboardTab) {
+                    DashboardTab->addRecentOperation("Encrypt", "Success", sourceDir + " -> " + backupPath);
+                }
             } else {
                 QString error = process->readAllStandardError();
                 QMessageBox::critical(this, "Backup Failed", error);
+                
                 statusBar()->showMessage("❌ Backup failed: " + process->errorString(), 5000);
-                if (DashboardTab) DashboardTab->addRecentOperation("Encrypt", "Error", sourceDir, QString::number(process->exitCode()));
+                if (DashboardTab) {
+                    DashboardTab->addRecentOperation("Encrypt", "Error", sourceDir, QString::number(process->exitCode()));
+                }
             }
+            
+            delete process;
+        });
+        
+        process->start(exe, args);
+    }
+
+private slots:
+    void onRestore() {
+        // Validate inputs
+        QString backupPath = restoreBackupLabel->text();
+        if (backupPath.isEmpty()) {
+            QMessageBox::warning(this, "No Backup Selected",
+                "Please select a backup archive first.");
+            return;
+        }
+        
+        QString password = restorePasswordLabel->text();
+        if (password.isEmpty() || password == "") {
+            QMessageBox::warning(this, "Missing Password",
+                "Please enter the decryption password.");
+            return;
+        }
+        
+        // Start restore process
+        QProcess* process = new QProcess(this);
+        
+        QString exe = qApp->applicationDirPath() + "/cli_backup_manager";
+        
+        QStringList args;
+        args << "decrypt" << backupPath
+              << "-p" << password
+              << "-o" << "/restore"; // Default restore destination
+        
+        connect(process, &QProcess::started, [this]() {
+            statusBar()->showMessage("Restoring...", 0);
+            progressBar->setMaximum(100);
+            progressBar->setValue(0);
+        });
+        
+        connect(process, &QProcess::errorOccurred, this, [process](QProcess::Error error) {
+            QMessageBox::critical(this, "Restore Error",
+                process->errorString() + "\n\nError code: " + QString::number(process->exitCode()));
+        });
+        
+        connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), 
+                [process]() {
+            if (process->exitCode() == 0) {
+                statusBar()->showMessage("✅ Restore completed successfully!", 0);
+                
+                // Add to dashboard
+                if (DashboardTab) {
+                    DashboardTab->addRecentOperation("Decrypt", "Success", backupPath);
+                }
+            } else {
+                QString error = process->readAllStandardError();
+                QMessageBox::critical(this, "Restore Failed", error);
+                
+                statusBar()->showMessage("❌ Restore failed: " + process->errorString(), 5000);
+                if (DashboardTab) {
+                    DashboardTab->addRecentOperation("Decrypt", "Error", backupPath, QString::number(process->exitCode()));
+                }
+            }
+            
             delete process;
         });
         
@@ -344,6 +260,7 @@ private:
         explicit WelcomePage(QWidget *parent = nullptr) : QWidget(parent) {
             auto* layout = new QVBoxLayout(this);
             
+            // Title card
             auto* card = new QFrame();
             card->setStyleSheet("background-color: #1e1e1e; border-radius: 8px; padding: 20px;");
             
@@ -361,6 +278,7 @@ private:
             desc->setTextFormat(Qt::RichText);
             desc->setStyleSheet("color: #98a7ca; font-size: 12px; padding: 15px;");
             
+            // Features list
             QLabel* featuresTitle = new QLabel("✨ Key Features", this);
             featuresTitle->setStyleSheet("font-size: 16px; font-weight: bold; color: #ffffff; padding: 10px;");
             
@@ -372,12 +290,33 @@ private:
             featuresList->addItem("💾 Cross-Platform Support (Linux/macOS/Windows)");
             featuresList->addItem("🎨 Beautiful Qt6 Native Interface");
             
+            featuresList->setStyleSheet(
+                "QListWidget {"
+                "    background-color: #202020;"
+                "    border: 1px solid #404040;"
+                "    padding: 5px;"
+                "}"
+                "QListWidget::item {"
+                "    padding: 8px;"
+                "    border-radius: 3px;"
+                "}"
+                "QListWidget::item:hover {"
+                "    background-color: #2d2d30;"
+                "}"
+                "QListWidget::item:selected {"
+                "    background-color: #1f4680;"
+                "}"
+            );
+            
+            // CTA button
             QPushButton* getStartedBtn = new QPushButton("🚀 Get Started", this);
             getStartedBtn->setStyleSheet(
                 "background-color: #3fb95e; color: white; font-size: 14px; "
-                "font-weight: bold; padding: 12px 30px; border: none; border-radius: 6px;"
+                "font-weight: bold; padding: 12px 30px; border: none; "
+                "border-radius: 6px;"
             );
             
+            // Add widgets to card
             card->layout()->addWidget(title);
             card->layout()->addWidget(desc);
             card->layout()->addSpacing(20);
@@ -398,25 +337,34 @@ private:
         explicit BackupPage(QWidget *parent = nullptr) : QWidget(parent) {
             auto* layout = new QVBoxLayout(this);
             
+            // Title
             titleLabel = new QLabel("📦 Create New Backup", this);
             titleLabel->setStyleSheet("font-size: 20px; font-weight: bold; color: #ffffff; padding: 5px;");
             layout->addWidget(titleLabel);
             
+            // Main container
             auto* container = new QFrame();
             container->setStyleSheet("background-color: #1e1e1e; border-radius: 8px; padding: 15px;");
+            
             auto* stepLayout = new QVBoxLayout(container);
             
+            // Step 1: Select source directory
             QLabel* step1Title = new QLabel("Step 1: Select Source Directory", this);
             step1Title->setStyleSheet("color: #ffffff; font-weight: bold; padding: 5px;");
             
             backupSourceLabel = new QLabel("", this);
             browseSourceBtn = new QPushButton("Browse...", this);
             browseSourceBtn->setMinimumWidth(80);
+            
             connect(browseSourceBtn, &QPushButton::clicked, [this]() {
-                QString selected = QFileDialog::getExistingDirectory(this, "Select Source Directory", QDir::homePath());
+                QString selected = QFileDialog::getExistingDirectory(
+                    this, "Select Source Directory", QDir::homePath()
+                );
                 if (!selected.isEmpty()) {
                     backupSourceLabel->setText(selected);
                     step1Title->setText("✅ Step 1: Source selected");
+                    
+                    // Enable next step
                     step2Title->setStyleSheet("color: #98a7ca; font-weight: bold; padding: 5px;");
                     browseBackupBtn->setEnabled(true);
                 }
@@ -427,18 +375,25 @@ private:
             step1Layout->addWidget(browseSourceBtn);
             stepLayout->addLayout(step1Layout);
             
+            // Step 2: Select backup location
             QLabel* step2Title = new QLabel("Step 2: Choose Backup Location", this);
             step2Title->setStyleSheet("color: #98a7ca; font-weight: bold; padding: 5px;");
             
             backupPathLabel = new QLabel("backup.dvx3", this);
             browseBackupBtn = new QPushButton("Browse...", this);
             browseBackupBtn->setMinimumWidth(80);
+            
             connect(browseBackupBtn, &QPushButton::clicked, [this]() {
-                QString selected = QFileDialog::getSaveFileName(this, "Select Backup Location", 
-                    QDir::homePath() + "/backup.dvx3", "Dvx3 Archives (*.dvx3)");
+                QString selected = QFileDialog::getSaveFileName(
+                    this, "Select Backup Location", 
+                    QDir::homePath() + "/backup.dvx3",
+                    "Dvx3 Archives (*.dvx3) All Files (**)"
+                );
                 if (!selected.isEmpty()) {
                     backupPathLabel->setText(QFileInfo(selected).fileName());
                     step2Title->setText("✅ Step 2: Location selected");
+                    
+                    // Enable next step
                     backupPasswordBtn->setEnabled(true);
                 }
             });
@@ -448,19 +403,27 @@ private:
             step2Layout->addWidget(browseBackupBtn);
             stepLayout->addLayout(step2Layout);
             
+            // Step 3: Set password
             QLabel* step3Title = new QLabel("Step 3: Set Encryption Password", this);
             step3Title->setStyleSheet("color: #98a7ca; font-weight: bold; padding: 5px;");
             
             backupPasswordLabel = new QLabel("", this);
             backupPasswordBtn = new QPushButton("Set Password", this);
             backupPasswordBtn->setMinimumWidth(100);
+            
             connect(backupPasswordBtn, &QPushButton::clicked, [this]() {
                 QString pass = QInputDialog::getText(this, "Encryption Password",
-                    "Enter a strong password for your backups:", QLineEdit::Password, "", QInputDialog::NoButtons);
+                    "Enter a strong password for your backups:\n\n"
+                    "• Use a mix of letters, numbers, and symbols\n"
+                    "• At least 12 characters recommended\n"
+                    "• Store securely - you'll need it to restore!", 
+                    QLineEdit::Password, "", QInputDialog::NoButtons);
                 
                 if (!pass.isEmpty()) {
                     backupPasswordLabel->setText(pass.length() > 0 ? "*" : "");
-                    backupPasswordBtn->setEnabled(false);
+                    backupPasswordBtn->setEnabled(false); // Disable after setting
+                    
+                    // Enable encrypt button
                     encryptBtn->setEnabled(true);
                 } else {
                     step3Title->setText("❌ Step 3: Password not set");
@@ -472,17 +435,25 @@ private:
             step3Layout->addWidget(backupPasswordBtn);
             stepLayout->addLayout(step3Layout);
             
+            // Encrypt button - main action
             encryptBtn = new QPushButton("🔐 Create Encrypted Backup", this);
             encryptBtn->setMinimumHeight(50);
             encryptBtn->setStyleSheet(
-                "background-color: #3fb95e; color: white; font-size: 16px; font-weight: bold; padding: 15px;"
+                "background-color: #3fb95e; color: white; font-size: 16px; "
+                "font-weight: bold; padding: 15px; border: none; "
+                "border-radius: 6px;"
             );
             encryptBtn->setEnabled(false);
-            connect(encryptBtn, &QPushButton::clicked, this, [this]() { onEncrypt(); });
+            
+            connect(encryptBtn, &QPushButton::clicked, this, [this]() {
+                onEncrypt();
+            });
             stepLayout->addWidget(encryptBtn);
             
+            // Progress section
             QGroupBox* progressGroup = new QGroupBox("📊 Progress");
             auto* progressLayout = new QVBoxLayout(progressGroup);
+            
             progressBar = new QProgressBar();
             progressBar->setMinimumWidth(300);
             progressBar->setValue(0);
@@ -495,6 +466,7 @@ private:
             progressLayout->addWidget(progressBarStatus);
             
             stepLayout->addWidget(progressGroup);
+            
             layout->addWidget(container);
         }
 
@@ -522,27 +494,37 @@ private:
         explicit RestorePage(QWidget *parent = nullptr) : QWidget(parent) {
             auto* layout = new QVBoxLayout(this);
             
+            // Title
             titleLabel = new QLabel("🔄 Restore from Backup", this);
             titleLabel->setStyleSheet("font-size: 20px; font-weight: bold; color: #ffffff; padding: 5px;");
             layout->addWidget(titleLabel);
             
+            // Main container
             auto* container = new QFrame();
             container->setStyleSheet("background-color: #1e1e1e; border-radius: 8px; padding: 15px;");
+            
             auto* stepLayout = new QVBoxLayout(container);
             
+            // Step 1: Select backup file
             QLabel* step1Title = new QLabel("Step 1: Select Backup Archive", this);
             step1Title->setStyleSheet("color: #ffffff; font-weight: bold; padding: 5px;");
             
             restoreBackupLabel = new QLabel("", this);
             browseRestoreBtn = new QPushButton("Browse...", this);
             browseRestoreBtn->setMinimumWidth(80);
+            
             connect(browseRestoreBtn, &QPushButton::clicked, [this]() {
-                QString selected = QFileDialog::getOpenFileName(this, "Select Backup Archive", 
-                    QDir::homePath(), "Dvx3 Archives (*.dvx3)");
+                QString selected = QFileDialog::getOpenFileName(
+                    this, "Select Backup Archive", 
+                    QDir::homePath(),
+                    "Dvx3 Archives (*.dvx3) All Files (**)"
+                );
                 
                 if (!selected.isEmpty()) {
                     restoreBackupLabel->setText(QFileInfo(selected).fileName());
                     step1Title->setText("✅ Step 1: Backup selected");
+                    
+                    // Enable password field
                     step2Title->setStyleSheet("color: #98a7ca; font-weight: bold; padding: 5px;");
                     restorePasswordBtn->setEnabled(true);
                 }
@@ -553,19 +535,26 @@ private:
             step1Layout->addWidget(browseRestoreBtn);
             stepLayout->addLayout(step1Layout);
             
+            // Step 2: Enter password
             QLabel* step2Title = new QLabel("Step 2: Enter Decryption Password", this);
             step2Title->setStyleSheet("color: #98a7ca; font-weight: bold; padding: 5px;");
             
             restorePasswordLabel = new QLabel("", this);
             restorePasswordBtn = new QPushButton("Set Password", this);
             restorePasswordBtn->setMinimumWidth(100);
+            
             connect(restorePasswordBtn, &QPushButton::clicked, [this]() {
                 QString pass = QInputDialog::getText(this, "Decryption Password",
-                    "Enter the password used to encrypt this backup:", QLineEdit::Password, "", QInputDialog::NoButtons);
+                    "Enter the password used to encrypt this backup:\n\n"
+                    "• Must match the original encryption password\n"
+                    "• Without it, files cannot be recovered!", 
+                    QLineEdit::Password, "", QInputDialog::NoButtons);
                 
                 if (!pass.isEmpty()) {
                     restorePasswordLabel->setText(pass.length() > 0 ? "*" : "");
                     restorePasswordBtn->setEnabled(false);
+                    
+                    // Enable restore button
                     restoreBtn->setEnabled(true);
                 } else {
                     step2Title->setText("❌ Step 2: Password not set");
@@ -577,17 +566,25 @@ private:
             step2Layout->addWidget(restorePasswordBtn);
             stepLayout->addLayout(step2Layout);
             
+            // Restore button
             restoreBtn = new QPushButton("🔄 Restore Backup", this);
             restoreBtn->setMinimumHeight(50);
             restoreBtn->setStyleSheet(
-                "background-color: #3fb95e; color: white; font-size: 16px; font-weight: bold; padding: 15px;"
+                "background-color: #3fb95e; color: white; font-size: 16px; "
+                "font-weight: bold; padding: 15px; border: none; "
+                "border-radius: 6px;"
             );
             restoreBtn->setEnabled(false);
-            connect(restoreBtn, &QPushButton::clicked, this, [this]() { onRestore(); });
+            
+            connect(restoreBtn, &QPushButton::clicked, this, [this]() {
+                onRestore();
+            });
             stepLayout->addWidget(restoreBtn);
             
+            // Progress section
             QGroupBox* progressGroup = new QGroupBox("📊 Progress");
             auto* progressLayout = new QVBoxLayout(progressGroup);
+            
             progressBar = new QProgressBar();
             progressBar->setMinimumWidth(300);
             progressBar->setValue(0);
@@ -600,6 +597,7 @@ private:
             progressLayout->addWidget(progressBarStatus);
             
             stepLayout->addWidget(progressGroup);
+            
             layout->addWidget(container);
         }
 
@@ -624,16 +622,19 @@ private:
         explicit DashboardPage(QWidget *parent = nullptr) : QWidget(parent) {
             auto* layout = new QVBoxLayout(this);
             
+            // Title
             titleLabel = new QLabel("📊 Recent Operations", this);
             titleLabel->setStyleSheet("font-size: 20px; font-weight: bold; color: #ffffff; padding: 5px;");
             layout->addWidget(titleLabel);
             
+            // Scrollable table for operations history
             auto* scrollArea = new QScrollArea();
             scrollArea->setWidgetResizable(true);
             
             auto* tableContainer = new QWidget();
             auto* tableLayout = new QVBoxLayout(tableContainer);
             
+            // Table headers
             auto* headerBox = new QHBoxLayout();
             headerBox->addWidget(new QLabel("#", this));
             headerBox->addWidget(new QLabel("Operation", this));
@@ -642,6 +643,7 @@ private:
             
             tableLayout->addLayout(headerBox);
             
+            // Recent operations container (starts empty)
             recentOpsContainer = new QWidget();
             recentOpsLayout = new QVBoxLayout(recentOpsContainer);
             recentOpsLayout->setContentsMargins(0, 0, 0, 0);
@@ -650,6 +652,7 @@ private:
             scrollArea->setWidget(tableContainer);
             layout->addWidget(scrollArea);
             
+            // Empty state message
             emptyStateLabel = new QLabel("No operations yet\n<br>Go to 'Create Backup' to get started", this);
             emptyStateLabel->setTextFormat(Qt::RichText);
             emptyStateLabel->setStyleSheet("color: #606060; padding: 20px;");
@@ -659,18 +662,24 @@ private:
     public slots:
         void addRecentOperation(const QString& operation, const QString& status, 
                                 const QString& details) {
+            // Remove empty state if present
             if (emptyStateLabel && emptyStateLabel->parent()) {
                 QWidget* parent = qobject_cast<QWidget*>(emptyStateLabel->parent());
                 if (parent) parent->layout()->removeWidget(emptyStateLabel);
             }
             
+            // Create operation row
             auto* rowBox = new QHBoxLayout();
+            
+            // Number
             QLabel* num = new QLabel(QString::number(recentOperations.size() + 1), this);
             num->setAlignment(Qt::AlignCenter);
             
+            // Operation type
             QLabel* opLabel = new QLabel(operation, this);
             opLabel->setStyleSheet("font-weight: bold; color: #98a7ca;");
             
+            // Status
             QLabel* statusLabel = new QLabel(status, this);
             if (status == "Success") {
                 statusLabel->setStyleSheet("color: #3fb95e; font-weight: bold;");
@@ -678,6 +687,7 @@ private:
                 statusLabel->setStyleSheet("color: #ff4d4d; font-weight: bold;");
             }
             
+            // Details (truncated to 100 chars)
             QLabel* detailsLabel = new QLabel(details.left(100), this);
             
             rowBox->addWidget(num, 0);
@@ -703,33 +713,45 @@ private:
         explicit SettingsPage() : QWidget(nullptr) {
             auto* layout = new QVBoxLayout(this);
             
+            // Title
             titleLabel = new QLabel("⚙️ Backup Settings", this);
             titleLabel->setStyleSheet("font-size: 20px; font-weight: bold; color: #ffffff; padding: 5px;");
             layout->addWidget(titleLabel);
             
+            // Container frame
             auto* container = new QFrame();
             container->setStyleSheet("background-color: #1e1e1e; border-radius: 8px; padding: 15px;");
+            
             auto* settingsLayout = new QVBoxLayout(container);
             
+            // Encryption section
             QLabel* encryptionTitle = new QLabel("🔐 Encryption Settings", this);
             encryptionTitle->setStyleSheet("color: #98a7ca; font-weight: bold; padding: 5px;");
             settingsLayout->addWidget(encryptionTitle);
             
             QLabel* encPasswordLabel = new QLabel("Backup Password:", this);
+            encPasswordLabel->setStyleSheet("color: #ffffff;");
+            
             encPasswordEntry = new QLineEdit();
             encPasswordEntry->setPlaceholderText("Enter a strong password for your backups");
             encPasswordEntry->setEchoMode(QLineEdit::Password);
+            encPasswordEntry->setStyleSheet(
+                "background-color: #2a2a2a; color: white; padding: 8px; border: none; border-radius: 4px;"
+            );
             
             auto* encRow = new QHBoxLayout();
-            encRow->addWidget(encryptionTitle);
-            encRow->addWidget(encPasswordLabel, 1);
+            encRow->addWidget(encPasswordLabel);
+            encRow->addWidget(encPasswordEntry);
             settingsLayout->addLayout(encRow);
             
+            // Retention section
             QLabel* retentionTitle = new QLabel("🗑️ Retention Settings", this);
             retentionTitle->setStyleSheet("color: #98a7ca; font-weight: bold; padding: 5px;");
             settingsLayout->addWidget(retentionTitle);
             
             QLabel* retentionLabel = new QLabel("Keep last N backups:", this);
+            retentionLabel->setStyleSheet("color: #ffffff;");
+            
             retentionSpinBox = new QSpinBox();
             retentionSpinBox->setRange(1, 100);
             retentionSpinBox->setValue(5);
@@ -740,11 +762,13 @@ private:
             retRow->addWidget(retentionSpinBox);
             settingsLayout->addLayout(retRow);
             
+            // Auto-delete section
             QLabel* autoDelTitle = new QLabel("🔄 Automation", this);
             autoDelTitle->setStyleSheet("color: #98a7ca; font-weight: bold; padding: 5px;");
             settingsLayout->addWidget(autoDelTitle);
             
-            QCheckBox* autoDeleteCb = new QCheckBox("Automatically delete backups older than", this);
+            QCheckBox* autoDeleteCb = new QCheckBox(
+                "Automatically delete backups older than", this);
             
             autoDeleteSpinBox = new QSpinBox();
             autoDeleteSpinBox->setRange(1, 365);
@@ -756,8 +780,12 @@ private:
             autoDelRow->addWidget(autoDeleteSpinBox);
             settingsLayout->addLayout(autoDelRow);
             
+            // About section
             QLabel* aboutTitle = new QLabel("ℹ️ About Dvx3 Backup Manager", this);
-            aboutLabel = new QLabel(
+            aboutTitle->setStyleSheet("color: #98a7ca; font-weight: bold; padding: 5px;");
+            settingsLayout->addWidget(aboutTitle);
+            
+            QLabel* aboutLabel = new QLabel(
                 "Dvx3 Backup Manager v1.0.0<br><br>"
                 "A secure backup solution using:<br>"
                 "• AES-256 encryption via libsodium SecretBox<br>"
@@ -765,9 +793,8 @@ private:
                 "• Argon2id key derivation for passwords<br>"
                 "• SHA-256 integrity verification", this);
             aboutLabel->setWordWrap(true);
-            aboutLabel->setStyleSheet("font-size: 10px; color: #98a7ca; padding: 10px;");
+            aboutLabel->setStyleSheet("font-size: 10px; color: #98a7ca; padding: 10px; background-color: #1e1e1e; border-radius: 4px;");
             
-            settingsLayout->addWidget(aboutTitle);
             settingsLayout->addWidget(aboutLabel);
             
             layout->addWidget(container);
@@ -809,9 +836,11 @@ public:
 private:
     QTabWidget* TabWidget = nullptr;
     QSystemTrayIcon* TrayIcon = nullptr;
+    QMenu* TrayMenu = nullptr;
     
     QAction* ActionBackup = nullptr;
     QAction* ActionRestore = nullptr;
+    QAction* ActionQuit = nullptr;
 };
 
 int main(int argc, char *argv[]) {
@@ -820,17 +849,23 @@ int main(int argc, char *argv[]) {
     app.setApplicationVersion("1.0.0");
     app.setOrganizationName("dvx3");
     
-    // Set application-wide dark theme
+    // Set application-wide style for consistent dark theme
     QPalette darkPalette;
     darkPalette.setColor(QPalette::Window, QColor(30, 30, 32));
     darkPalette.setColor(QPalette::WindowText, Qt::white);
     darkPalette.setColor(QPalette::Base, QColor(40, 40, 42));
+    darkPalette.setColor(QPalette::AltBase, QColor(60, 60, 65));
     darkPalette.setColor(QPalette::Text, Qt::white);
+    darkPalette.setColor(QPalette::Button, QColor(30, 30, 32));
+    darkPalette.setColor(QPalette::ButtonText, Qt::white);
     darkPalette.setColor(QPalette::BrightText, QColor("#3fb95e"));
     darkPalette.setColor(QPalette::Link, QColor("#1f4680"));
+    darkPalette.setColor(QPalette::Highlight, QColor("#1f4680"));
+    darkPalette.setColor(QPalette::HighlightedText, Qt::white);
     
     app.setPalette(darkPalette);
     
+    // Set custom font (system default or user preference)
     QFont font = app.font();
     font.setPointSize(10);
     app.setFont(font);
@@ -842,46 +877,3 @@ int main(int argc, char *argv[]) {
 }
 
 #include "main.moc"
-EOF
-
-# Build Qt6 GUI executable
-QT_CORE_FLAGS="$(pkg-config --cflags Qt6::Core)"
-QT_GUI_FLAGS="$(pkg-config --cflags Qt6::Gui)"
-QT_WIDGETS_LIBS="$(pkg-config --libs Qt6::Widgets)"
-
-g++ \
-    -std=c++17 \
-    ${QT_CORE_FLAGS} \
-    ${QT_GUI_FLAGS} \
-    main.cpp \
-    -o "${SCRIPT_DIR}/build-gui/qt/qtdesktop/backup-manager" \
-    -I"${SCRIPT_DIR}" \
-    $(pkg-config --cflags libsodium) \
-    $(pkg-config --libs libsodium) \
-    -Wno-deprecated-declarations \
-    2>&1 | grep -i "error\|warning" || true
-
-if [ ! -f "${SCRIPT_DIR}/build-gui/qt/qtdesktop/backup-manager" ]; then
-    echo "⚠️  Warning: Qt6 GUI build failed or skipped - CLI only build will continue"
-else
-    echo "✓ Qt6 desktop GUI executable created"
-fi
-
-echo ""
-echo "[7/7] Build complete!"
-
-echo ""
-echo "=========================================="
-echo "✅ Compilation succeeded"
-echo "=========================================="
-echo ""
-echo "Build artifacts:"
-ls -lh "$CLI_BIN"
-if [ -f "${SCRIPT_DIR}/build-gui/qt/qtdesktop/backup-manager" ]; then
-    ls -lh "${SCRIPT_DIR}/build-gui/qt/qtdesktop/backup-manager"
-fi
-
-echo ""
-echo "=========================================="
-echo "  Dvx3 Backup Manager Build Complete!"
-echo "=========================================="

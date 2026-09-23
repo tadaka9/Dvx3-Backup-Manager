@@ -1,0 +1,7 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/">
+        <file>icons/dvx3-app.ico</file>
+        <file>resources.dvx3</file>
+    </qresource>
+</RCC>
