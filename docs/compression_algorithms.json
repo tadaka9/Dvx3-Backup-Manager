@@ -1,0 +1,238 @@
+{
+  "compression_algorithms": {
+    "description": "Complete list of lossless compression algorithms supported by tar and common utilities",
+    "categorization": "all_lossless_no_data_loss",
+    
+    "standard_algorithms": [
+      {
+        "name": "Gzip",
+        "extension": ".tar.gz / .tgz",
+        "tar_flag": "-z or --gzip",
+        "parameters": {
+          "variable": "GZIP",
+          "range": "-1 to -9",
+          "default": "-6",
+          "description": "-1: fastest/least compression, -9: slowest/max compression"
+        },
+        "characteristics": {
+          "compression_ratio": "Good balance",
+          "speed": "Fast",
+          "cpu_usage": "Low",
+          "compatibility": "Universal"
+        }
+      },
+      {
+        "name": "Bzip2",
+        "extension": ".tar.bz2 / .tbz2",
+        "tar_flag": "-j or --bzip2",
+        "parameters": {
+          "variable": "BZIP2",
+          "range": "-1 to -9",
+          "description": "Block size from 100KB to 900KB"
+        },
+        "characteristics": {
+          "compression_ratio": "Better than Gzip",
+          "speed": "Slow (both compress/decompress)",
+          "cpu_usage": "High",
+          "compatibility": "Good"
+        }
+      },
+      {
+        "name": "XZ",
+        "extension": ".tar.xz / .txz",
+        "tar_flag": "-J or --xz",
+        "parameters": {
+          "variable": "XZ_OPT",
+          "range": "-0 to -9",
+          "advanced_flags": {
+            "--extreme": "-e (optimize further, slower)",
+            "-T/--threads": "multi-threading support"
+          },
+          "example": "XZ_OPT=\"-T0 -9\""
+        },
+        "characteristics": {
+          "compression_ratio": "Very high (often best)",
+          "speed": "Very slow to compress",
+          "ram_usage": "High",
+          "decompression_speed": "Extremely fast",
+          "algorithm": "LZMA2"
+        }
+      },
+      {
+        "name": "Zstandard",
+        "extension": ".tar.zst / .tzst",
+        "tar_flag": "--zstd",
+        "parameters": {
+          "variable": "ZSTD_CLEVEL",
+          "range": "-1 to -19 (default -3)",
+          "ultra_range": "-22 (requires --ultra flag)",
+          "multi_threading": "Integrated via binary flag"
+        },
+        "characteristics": {
+          "compression_ratio": "Similar to Gzip",
+          "speed": "Much faster than Gzip/Bzip2/XZ",
+          "cpu_usage": "Low to Medium",
+          "compatibility": "Modern standard (Arch Linux, Ubuntu packages)",
+          "developer": "Meta/Facebook"
+        }
+      },
+      {
+        "name": "LZMA",
+        "extension": ".tar.lzma",
+        "tar_flag": "--lzma",
+        "parameters": {
+          "variable": "Similar to XZ",
+          "description": "Predecessor of XZ"
+        },
+        "characteristics": {
+          "compression_ratio": "High",
+          "speed": "Slow",
+          "status": "Generally superseded by XZ (LZMA2)",
+          "compatibility": "Legacy support"
+        }
+      },
+      {
+        "name": "Lzop",
+        "extension": ".tar.lzo",
+        "tar_flag": "--lzop",
+        "parameters": {
+          "variable": "LZOP_OPT",
+          "range": "-1 to -9 (default -3)"
+        },
+        "characteristics": {
+          "compression_ratio": "Moderate",
+          "speed": "Very fast (focused on speed)",
+          "use_case": "Real-time data streams"
+        }
+      }
+    ],
+    
+    "external_compress_programs": [
+      {
+        "name": "Pigz",
+        "tar_flag": "-I pigz",
+        "parameters": {
+          "variable": "GZIP",
+          "range": "-1 to -9"
+        },
+        "characteristics": {
+          "description": "Multi-threaded Gzip",
+          "speed": "Much faster than standard gzip",
+          "compatibility": "Full backward compatible with .gz"
+        }
+      },
+      {
+        "name": "Pixz",
+        "tar_flag": "-I pixz",
+        "parameters": {},
+        "characteristics": {
+          "description": "Multi-threaded XZ with indexing",
+          "special_feature": "Instant single-file extraction without decompressing entire archive"
+        }
+      },
+      {
+        "name": "LZ4",
+        "tar_flag": "-I lz4",
+        "parameters": {
+          "variable": "LZ4_CLEVEL",
+          "range": "-1 (default, max speed) to -9 (high compression/lz4_hc)"
+        },
+        "characteristics": {
+          "description": "Extremely fast decompression",
+          "speed": "GB/s per core",
+          "use_case": "Live systems, boot images, real-time logs"
+        }
+      }
+    ]
+  },
+  
+  "recommended_algorithm_function": {
+    "name": "get_recommended_algorithm",
+    "description": "Logic for automatic algorithm recommendation based on goals and resources",
+    
+    "decision_tree": [
+      {
+        "goal": "Maximum Space Savings (Long-term archival)",
+        "algorithm": "XZ",
+        "parameters": "-T0 -9 (all cores enabled)",
+        "rationale": "Best compression ratio, fastest decompression"
+      },
+      {
+        "goal": "Best Modern Balance (Speed + Space)",
+        "algorithm": "Zstandard",
+        "parameters": "-3 to -6 (default -3 or higher for better ratio)",
+        "rationale": "Modern standard, excellent speed/ratio balance, used by Arch Linux and Ubuntu"
+      },
+      {
+        "goal": "Maximum Compatibility (Legacy systems)",
+        "algorithm": "Gzip",
+        "parameters": "-6 (default) or -9 for better ratio",
+        "rationale": "Universal support on all systems"
+      },
+      {
+        "goal": "Maximum Speed (Real-time/Log data)",
+        "algorithm": "LZ4",
+        "parameters": "-1 (default, max speed)",
+        "rationale": "Extremely fast decompression, suitable for live operations"
+      }
+    ]
+  },
+  
+  "compression_algorithm_theory": {
+    "description": "How lossless compression algorithms work",
+    
+    "principles": [
+      "Redundancy Analysis: Identify patterns, sequences, or repeated symbols in data",
+      "Efficient Encoding: Replace repeated data with shorter representations (frequency tables or dictionaries)",
+      "Reversibility: Process is bidirectional; decompressed file is identical bit-for-bit to original"
+    ],
+    
+    "main_algorithms_theory": [
+      {
+        "name": "Huffman Coding",
+        "description": "Assigns shorter binary codes to more frequent elements, longer codes to rare ones",
+        "use_case": "General purpose compression"
+      },
+      {
+        "name": "LZ Family (Lempel-Ziv)",
+        "subfamilies": ["LZ77", "LZ78", "LZW"],
+        "description": "Replace repeated sequences with references to earlier occurrences in data stream",
+        "used_in": ["ZIP", "GIF", "PNG"]
+      },
+      {
+        "name": "Run-Length Encoding (RLE)",
+        "description": "Simplifies consecutive identical data by counting repetitions (e.g., 8W instead of WWWWWWWW)",
+        "use_case": "Simple patterns, small files"
+      },
+      {
+        "name": "Arithmetic Coding",
+        "description": "Converts entire message into a single real number between 0 and 1, optimizing space based on symbol probabilities",
+        "use_case": "High compression ratio, complex data"
+      },
+      {
+        "name": "Burrows-Wheeler Transform (BWT)",
+        "description": "Rearranges data to group similar characters, preparing stream for more effective compression",
+        "used_in": ["bzip2"]
+      }
+    ]
+  },
+  
+  "common_applications": {
+    "documents_and_archives": [".ZIP", ".GZ", ".7z"],
+    "images": [".PNG (ideal for graphics/screenshots)"],
+    "audio": [".FLAC", ".ALAC (high-fidelity music)"]
+  },
+  
+  "important_notes": [
+    "Lossless compression algorithms cannot guarantee that ALL input data will decrease in size",
+    "Some data types (e.g., already compressed files like JPEG, MP3) may increase in size",
+    "Compression ratio varies by data type and content patterns",
+    "Always test with representative data before large-scale deployment"
+  ],
+  
+  "security_considerations": {
+    "integrity_verification": "SHA-256 hash verification recommended for backup archives",
+    "encryption_compatibility": "All lossless formats support post-compression encryption (Argon2id + XSalsa20-Poly1305)",
+    "recommended_workflow": "tar -> zstd -> encrypt (no intermediate files, streaming pipeline)"
+  }
+}
