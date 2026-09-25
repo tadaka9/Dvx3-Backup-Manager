@@ -116,13 +116,27 @@ jobs:
         if: matrix.arch == 'x86_64'
         run: |
           brew install --cask valac 2>/dev/null || echo "Vala package not available, using CLI fallback"
-          brew install cmake zip dos2unix pkg-config
+          brew install cmake zip dos2unix pkg-config glib
+          # glib provides gio-unix-2.0.pc which Vala requires for Unix I/O bindings
+          if pkg-config --exists gio-unix-2.0; then
+            echo "✓ gio-unix-2.0 found via Homebrew glib"
+          else
+            echo "❌ ERROR: gio-unix-2.0 not found! Run: brew install glib"
+            exit 1
+          fi
 
       - name: Install macOS dependencies (aarch64)
         if: matrix.arch == 'aarch64'
         run: |
           brew install --cask valac 2>/dev/null || echo "Vala package not available, using CLI fallback"
-          brew install cmake zip dos2unix pkg-config
+          brew install cmake zip dos2unix pkg-config glib
+          # glib provides gio-unix-2.0.pc which Vala requires for Unix I/O bindings
+          if pkg-config --exists gio-unix-2.0; then
+            echo "✓ gio-unix-2.0 found via Homebrew glib"
+          else
+            echo "❌ ERROR: gio-unix-2.0 not found! Run: brew install glib"
+            exit 1
+          fi
 
       - name: Install Qt6 for macOS (optional GUI build)
         run: |
@@ -141,8 +155,15 @@ jobs:
         run: |
           echo "=== Building Dvx3 Backup Manager CLI for macOS ${{ matrix.arch }} ==="
           
-          # Install minimal dependencies for Vala
-          brew install cmake zip dos2unix pkg-config || true
+          # Install Vala and glib (glib provides gio-unix-2.0.pc for Unix I/O bindings)
+          brew install --cask valac cmake zip dos2unix pkg-config glib || true
+          
+          # Verify gio-unix is available
+          if pkg-config --exists gio-unix-2.0; then
+            echo "✓ gio-unix-2.0.pc found: $(pkg-config --modversion gio-unix-2.0)"
+          else
+            echo "⚠️  WARNING: gio-unix-2.0 not found - GUI build will fail, CLI may still work"
+          fi
           
           chmod +x build_all.sh || true
           ./build_all.sh
