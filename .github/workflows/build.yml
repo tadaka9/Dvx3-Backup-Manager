@@ -1,303 +1,230 @@
-name: Multi-Arch Build & Release
-
-on:
-  push:
-    branches: [ main, master, develop, clean-version ]
-    tags: [ 'v*' ]
-  pull_request:
-    branches: [ main, master, develop, clean-version ]
-  workflow_dispatch:
-
-env:
-  RELEASE_DIR: Releases
-  ARTIFACT_PREFIX: Dvx3-Backup-Manager
-
 ---
-name: Multi-Arch Build & Release
+name: Build & Release
 
 on:
   push:
-    branches: [ main, master, develop, clean-version ]
-    tags:
-      - 'v*'
+    branches: [ main, master, develop ]
+    tags: ['v*']
   pull_request:
-    branches: [ main, master, develop, clean-version ]
+    branches: [ main, master, develop ]
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Release version (if tagging manually)"
-        required: false
-        default: ""
 
 env:
   RELEASE_DIR: Releases
   ARTIFACT_PREFIX: Dvx3-Backup-Manager
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}  # Optional: for artifact signing with GPG
 
 # =============================================================================
-# AUTOMATED RELEASE TAGGING (triggers on v* tag push)
+# LINUX BUILD MATRIX (Ubuntu)
 # =============================================================================
 jobs:
-  release-on-tag:
-    name: "🏷️ Auto-release from git tag"
+  build-linux-x86_64:
+    name: Linux x86_64 (amd64)
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Extract version from tag
-        id: get_version
-        run: |
-          VERSION="${{ github.ref_name }}"
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "📦 Detected release version: ${{ steps.get_version.outputs.VERSION }}"
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ steps.get_version.outputs.VERSION }}
-          generate_release_notes: true
-          draft: false
-          prerelease: false
-          body: |
-            ## Dvx3 Backup Manager v${{ steps.get_version.outputs.VERSION }}
-
-            ### 🚀 New in this release
-            - SHA-256 integrity verification for encrypted archives
-            - Multi-algorithm compression (zstd, lz4, snappy, xz, bzip2, gzip)
-            - XChaCha20-Poly1305 / AES-GCM-256 encryption
-            - GTK4 dashboard GUI with real-time progress
-
-            ### 📋 Platform support
-            - Linux x86_64 ✅
-            - macOS ARM64 (Apple Silicon) ✅  
-            - macOS x86_64 ⚠️ Requires Homebrew glib for gio-unix-2.0.pc
-            - Windows x86_64 ✅ (MSYS2)
-
-            ### 🔒 Security
-            - Argon2id KDF with memory-hard parameters
-            - XSalsa20-Poly1305 authenticated encryption
-            - No intermediate plaintext files
-
-            ### 🧪 Testing
-            - 7 cryptographic tests passing (Argon2id + XSalsa20-Poly1305)
-            - Cross-platform build matrix: Linux x86_64/aarch64, macOS ARM64/x86_64, Windows x86_64/arm64
-
-            ---
-            **Build Status:** CI passing on all platforms.
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  build-linux:
-jobs:
-  build-linux:
-    name: Linux ${{ matrix.variant }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x86_64
-            variant: amd64
-            runner: ubuntu-latest
-          - arch: aarch64
-            variant: arm64
-            runner: ubuntu-24.04-arm
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies (Linux)
+      - name: Install dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y \
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
             build-essential valac gcc pkg-config zip \
             libglib2.0-dev libgio-2.0-dev libjson-glib-dev \
             libsodium-dev gir1.2-gtk-4.0 libgtk-4-dev
 
-      - name: Set architecture
-        run: echo "TARGET_ARCH=${{ matrix.arch }}" >> $GITHUB_ENV
-
       - name: Verify dependencies
         run: |
-          echo "=== Dependency check ==="
-          pkg-config --modversion glib-2.0
-          pkg-config --modversion json-glib-1.0
-          pkg-config --modversion libsodium
+          echo "=== Linux x86_64 Dependencies ==="
+          pkg-config --modversion glib-2.0 || exit 1
+          pkg-config --modversion json-glib-1.0 || exit 1
+          pkg-config --modversion libsodium || exit 1
 
-      - name: Build for Linux
+      - name: Build for Linux x86_64
         env:
-          TARGET_ARCH: ${{ matrix.arch }}
+          TARGET_ARCH: x86_64
           RELEASE_DIR: Releases
         run: |
-          chmod +x build_all.sh || true
+          echo "=== Building Dvx3 Backup Manager for Linux x86_64 ==="
+          chmod +x build_all.sh
           ./build_all.sh
 
-      - name: Collect CLI binary
+      - name: Collect binary
         run: |
-          mkdir -p "$RELEASE_DIR/linux/${{ matrix.variant }}"
+          mkdir -p "$RELEASE_DIR/linux/x86_64"
           if [ -f "cli_backup_manager" ]; then
-            cp cli_backup_manager "$RELEASE_DIR/linux/${{ matrix.variant }}/"
-            echo "✓ Copied CLI binary"
+            cp cli_backup_manager "$RELEASE_DIR/linux/x86_64/"
+            echo "✓ cli_backup_manager ($(ls -lh cli_backup_manager | awk '{print $5}'))"
           else
-            echo "⚠️  CLI binary not found"
+            echo "⚠️  Binary not found, skipping..."
           fi
 
-      - name: Package Linux artifacts
-        run: |
-          mkdir -p "$RELEASE_DIR/linux/${{ matrix.variant }}"
-          
-          if [ -f "cli_backup_manager" ]; then
-            cp cli_backup_manager "$RELEASE_DIR/linux/${{ matrix.variant }}/"
-            tar -czf "../../../${ARTIFACT_PREFIX}-linux-${{ matrix.variant }}.tar.gz" .
-            echo "✓ Created Linux package"
-          else
-            echo "No Linux CLI found to package for ${{ matrix.variant }}"
-          fi
-
-      - name: Upload Linux artifacts
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Linux-${{ matrix.variant }}
-          path: Releases/linux/${{ matrix.variant }}/
-          if-no-files-found: skip
-          retention-days: 30
-          compression-level: 9
+          name: Dvx3-Backup-Manager-linux-x86_64
+          path: Releases/linux/x86_64/cli_backup_manager
+          retention-days: 7
 
-# -------- macOS --------
-  build-macos:
-    name: macOS ${{ matrix.arch }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        - os: macos-latest
-          arch: x86_64
-        - os: macos-latest
-          arch: aarch64
+  build-linux-arm64:
+    name: Linux arm64 (Ubuntu ARM)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Homebrew on macOS
+      - name: Install dependencies
         run: |
-          if [ ! -f /usr/local/bin/brew ] && [ ! -f "$(brew --prefix)" ]; then
-            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          fi
-          brew update
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            build-essential valac gcc pkg-config zip \
+            libglib2.0-dev libgio-2.0-dev libjson-glib-dev \
+            libsodium-dev gir1.2-gtk-4.0 libgtk-4-dev
 
-      - name: Install macOS dependencies (x86_64)
-        if: matrix.arch == 'x86_64'
+      - name: Verify dependencies
         run: |
-          brew install --cask valac 2>/dev/null || echo "Vala package not available, using CLI fallback"
-          brew install cmake zip dos2unix pkg-config glib
-          # glib provides gio-unix-2.0.pc which Vala requires for Unix I/O bindings
-          if pkg-config --exists gio-unix-2.0; then
-            echo "✓ gio-unix-2.0 found via Homebrew glib"
-          else
-            echo "❌ ERROR: gio-unix-2.0 not found! Run: brew install glib"
-            exit 1
-          fi
+          echo "=== Linux arm64 Dependencies ==="
+          uname -m
+          pkg-config --modversion glib-2.0 || exit 1
+          pkg-config --modversion json-glib-1.0 || exit 1
+          pkg-config --modversion libsodium || exit 1
 
-      - name: Install macOS dependencies (aarch64)
-        if: matrix.arch == 'aarch64'
-        run: |
-          brew install --cask valac 2>/dev/null || echo "Vala package not available, using CLI fallback"
-          brew install cmake zip dos2unix pkg-config glib
-          # glib provides gio-unix-2.0.pc which Vala requires for Unix I/O bindings
-          if pkg-config --exists gio-unix-2.0; then
-            echo "✓ gio-unix-2.0 found via Homebrew glib"
-          else
-            echo "❌ ERROR: gio-unix-2.0 not found! Run: brew install glib"
-            exit 1
-          fi
-
-      - name: Install Qt6 for macOS (optional GUI build)
-        run: |
-          echo "Qt6 is optional. Building CLI-only if not available."
-          if brew list qt@6 > /dev/null 2>&1; then
-            echo "QTDIR=$(brew --prefix qt@6)" >> $GITHUB_ENV
-          fi
-
-      - name: Set architecture
-        run: echo "TARGET_ARCH=${{ matrix.arch }}" >> $GITHUB_ENV
-
-      - name: Build CLI for macOS (all architectures)
+      - name: Build for Linux arm64
         env:
-          TARGET_ARCH: ${{ matrix.arch }}
+          TARGET_ARCH: aarch64
           RELEASE_DIR: Releases
         run: |
-          echo "=== Building Dvx3 Backup Manager CLI for macOS ${{ matrix.arch }} ==="
-          
-          # Install Vala and glib (glib provides gio-unix-2.0.pc for Unix I/O bindings)
-          brew install --cask valac cmake zip dos2unix pkg-config glib || true
-          
-          # Verify gio-unix is available
-          if pkg-config --exists gio-unix-2.0; then
-            echo "✓ gio-unix-2.0.pc found: $(pkg-config --modversion gio-unix-2.0)"
-          else
-            echo "⚠️  WARNING: gio-unix-2.0 not found - GUI build will fail, CLI may still work"
-          fi
-          
-          chmod +x build_all.sh || true
+          echo "=== Building Dvx3 Backup Manager for Linux arm64 ==="
+          chmod +x build_all.sh
           ./build_all.sh
 
-      - name: Collect macOS artifacts
+      - name: Collect binary
         run: |
-          mkdir -p "$RELEASE_DIR/macos/${{ matrix.arch }}"
-          
+          mkdir -p "$RELEASE_DIR/linux/aarch64"
           if [ -f "cli_backup_manager" ]; then
-            cp cli_backup_manager "$RELEASE_DIR/macos/${{ matrix.arch }}/"
-            echo "✓ Copied CLI binary: $(ls -lh "$RELEASE_DIR/macos/${{ matrix.arch }}/cli_backup_manager")"
+            cp cli_backup_manager "$RELEASE_DIR/linux/aarch64/"
+            echo "✓ cli_backup_manager ($(ls -lh cli_backup_manager | awk '{print $5}'))"
           else
-            echo "⚠️  macOS CLI binary not found"
+            echo "⚠️  Binary not found, skipping..."
           fi
 
-      - name: Package macOS artifacts
-        run: |
-          MACOS_REL="$RELEASE_DIR/macos/${{ matrix.arch }}"
-          
-          if [ -f "cli_backup_manager" ]; then
-            mkdir -p "$MACOS_REL"
-            cp cli_backup_manager "$MACOS_REL/"
-            
-            # Create universal binary or architecture-specific package
-            if [ "$(uname -m)" = "arm64" ]; then
-              tar -czf "../../../${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}.tar.gz" .
-            else
-              tar -czf "../../../${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}.tar.gz" .
-            fi
-            echo "✓ Created: $(pwd)/${ARTIFACT_PREFIX}-macos-${{ matrix.arch }}.tar.gz"
-          else
-            echo "No macOS CLI found to package for ${{ matrix.arch }}"
-          fi
-
-      - name: Upload macOS artifacts
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macOS-${{ matrix.arch }}
-          path: Releases/macos/${{ matrix.arch }}/
-          if-no-files-found: skip
-          retention-days: 30
-          compression-level: 9
+          name: Dvx3-Backup-Manager-linux-aarch64
+          path: Releases/linux/aarch64/cli_backup_manager
+          retention-days: 7
 
-# -------- Windows --------
-  build-windows:
-    name: Windows ${{ matrix.arch }}
+
+# =============================================================================
+# MACOS BUILD MATRIX (Apple Silicon + Intel)
+# =============================================================================
+  build-macos-arm64:
+    name: macOS ARM64 (Apple Silicon)
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Homebrew dependencies
+        run: |
+          brew install valac cmake zip dos2unix pkg-config glib gtk4 libsodium || true
+          
+          echo "=== macOS ARM64 Dependencies ==="
+          if pkg-config --exists gio-unix-2.0; then
+            echo "✓ gio-unix-2.0.pc found (glib $$(pkg-config --modversion glib-2.0))"
+          else
+            echo "⚠️  GioUnix not available - CLI may still work"
+          fi
+
+      - name: Build for macOS arm64
+        env:
+          TARGET_ARCH: aarch64
+          RELEASE_DIR: Releases
+        run: |
+          echo "=== Building Dvx3 Backup Manager for macOS ARM64 ==="
+          
+          # Create minimal build directory if needed
+          mkdir -p "$RELEASE_DIR/macos/aarch64"
+          
+          chmod +x build_all.sh || true
+          ./build_all.sh 2>&1 | tee build-output.log
+
+          if [ -f "cli_backup_manager" ]; then
+            cp cli_backup_manager "$RELEASE_DIR/macos/aarch64/"
+            echo "✓ cli_backup_manager built successfully ($(ls -lh cli_backup_manager | awk '{print $5}'))"
+          else
+            echo "⚠️  Binary not found in build output, checking logs..."
+            if [ -f build-output.log ]; then
+              tail -30 build-output.log || true
+            fi
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dvx3-Backup-Manager-macos-arm64
+          path: Releases/macos/aarch64/cli_backup_manager
+          retention-days: 7
+
+  build-macos-x86_64:
+    name: macOS x86_64 (Intel)
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Homebrew dependencies
+        run: |
+          brew install valac cmake zip dos2unix pkg-config glib gtk4 libsodium || true
+          
+          echo "=== macOS x86_64 Dependencies ==="
+          if pkg-config --exists gio-unix-2.0; then
+            echo "✓ gio-unix-2.0.pc found (glib $$(pkg-config --modversion glib-2.0))"
+          else
+            echo "⚠️  GioUnix not available - CLI may still work"
+          fi
+
+      - name: Build for macOS x86_64
+        env:
+          TARGET_ARCH: x86_64
+          RELEASE_DIR: Releases
+        run: |
+          echo "=== Building Dvx3 Backup Manager for macOS x86_64 ==="
+          
+          mkdir -p "$RELEASE_DIR/macos/x86_64"
+          
+          chmod +x build_all.sh || true
+          ./build_all.sh 2>&1 | tee build-output.log
+
+          if [ -f "cli_backup_manager" ]; then
+            cp cli_backup_manager "$RELEASE_DIR/macos/x86_64/"
+            echo "✓ cli_backup_manager built successfully ($(ls -lh cli_backup_manager | awk '{print $5}'))"
+          else
+            echo "⚠️  Binary not found in build output, checking logs..."
+            if [ -f build-output.log ]; then
+              tail -30 build-output.log || true
+            fi
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dvx3-Backup-Manager-macos-x86_64
+          path: Releases/macos/x86_64/cli_backup_manager
+          retention-days: 7
+
+
+# =============================================================================
+# WINDOWS BUILD MATRIX (MSYS2)
+# =============================================================================
+  build-windows-x86_64:
+    name: Windows x86_64 (MSYS2 MINGW64)
     runs-on: windows-latest
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        - arch: x86_64
-          msystem: MINGW64
-          prefix: mingw-w64-x86_64
-        - arch: arm64
-          msystem: CLANGARM64
-          prefix: mingw-w64-clang-aarch64
+    timeout-minutes: 30
 
     defaults:
       run:
@@ -306,63 +233,156 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup MSYS2 ${{ matrix.msystem }}
+      - name: Setup MSYS2 MINGW64
         uses: msys2/setup-msys2@v2
         with:
-          msystem: ${{ matrix.msystem }}
+          msystem: MINGW64
           update: true
           install: >-
-            ${{ matrix.prefix }}-toolchain
-            ${{ matrix.prefix }}-cmake
-            ${{ matrix.prefix }}-glib2
-            ${{ matrix.prefix }}-json-glib
-            ${{ matrix.prefix }}-libsodium
-            ${{ matrix.prefix }}-pkgconf
-            ${{ matrix.prefix }}-vala
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-glib2
+            mingw-w64-x86_64-json-glib
+            mingw-w64-x86_64-libsodium
 
-      - name: Install Windows dependencies
+      - name: Install build tools
         run: |
-          pacman -S --noconfirm zip dos2unix 2>&1 | tail -5
+          pacman -S --noconfirm zip dos2unix 2>&1 | tail -3
 
-      - name: Build for Windows
+      - name: Verify dependencies
+        run: |
+          echo "=== Windows x86_64 Dependencies ==="
+          valac --version || echo "⚠️  Vala not found via MSYS2 package manager"
+          glib-2.0-config --cflags 2>/dev/null && echo "✓ glib headers found" || echo "⚠️  No glib config found"
+
+      - name: Build for Windows x86_64
         env:
-          TARGET_ARCH: ${{ matrix.arch }}
+          TARGET_ARCH: x86_64
           RELEASE_DIR: Releases
         run: |
-          echo "=== Windows environment ==="
-          echo "MSYSTEM=$MSYSTEM"
-          echo "TARGET_ARCH=$TARGET_ARCH"
-          mkdir -p "$GITHUB_WORKSPACE/${RELEASE_DIR}/windows/${{ matrix.arch }}"
+          echo "=== Building Dvx3 Backup Manager for Windows x86_64 ==="
+          
+          mkdir -p "$RELEASE_DIR/windows/x86_64"
           
           chmod +x build_all.sh || true
-          TARGET_ARCH="$TARGET_ARCH" ./build_all.sh
+          ./build_all.sh 2>&1 | tee build-output.log
 
-      - name: Collect Windows binaries
-        run: |
           if [ -f "cli_backup_manager.exe" ]; then
-            mkdir -p "$GITHUB_WORKSPACE/${RELEASE_DIR}/windows/${{ matrix.arch }}"
-            cp cli_backup_manager.exe "$GITHUB_WORKSPACE/${RELEASE_DIR}/windows/${{ matrix.arch }}/"
-            echo "✓ Copied Windows CLI: $(ls -lh "$GITHUB_WORKSPACE/${RELEASE_DIR}/windows/${{ matrix.arch }}/cli_backup_manager.exe")"
+            cp cli_backup_manager.exe "$RELEASE_DIR/windows/x86_64/"
+            echo "✓ cli_backup_manager.exe built successfully ($(ls -lh cli_backup_manager.exe | awk '{print $5}'))"
           else
-            echo "⚠️  Windows CLI binary not found (MSYS2 mingw-w64 toolchain required)"
+            echo "⚠️  Binary not found, checking build output..."
+            if [ -f build-output.log ]; then
+              tail -40 build-output.log
+            fi
           fi
 
-      - name: Create Windows ZIP artifact
-        run: |
-          WIN_REL="${RELEASE_DIR}/windows/${{ matrix.arch }}"
-          if [ -n "$(ls -A "$WIN_REL" 2>/dev/null)" ]; then
-            cd "$GITHUB_WORKSPACE/$WIN_REL"
-            zip -r "${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}.zip" .
-            echo "✓ Created: $(pwd)/${ARTIFACT_PREFIX}-windows-${{ matrix.arch }}.zip"
-          else
-            echo "⚠️  No Windows files to zip"
-          fi
-
-      - name: Upload Windows artifacts
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Windows-${{ matrix.arch }}
-          path: Releases/windows/${{ matrix.arch }}/
-          if-no-files-found: skip
-          retention-days: 30
-          compression-level: 9
+          name: Dvx3-Backup-Manager-windows-x86_64
+          path: Releases/windows/x86_64/cli_backup_manager.exe
+          retention-days: 7
+
+
+# =============================================================================
+# AUTOMATED RELEASE ON TAG PUSH
+# =============================================================================
+  release-on-tag:
+    name: 🏷️ Auto-release from git tag
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [build-linux-x86_64, build-macos-arm64, build-windows-x86_64]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: get_version
+        run: |
+          VERSION="${{ github.ref_name }}"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Release Version: ${{ steps.get_version.outputs.VERSION }}"
+
+      - name: Download all Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Dvx3-Backup-Manager-linux-*
+          path: Releases/
+          merge-multiple: true
+
+      - name: Download all macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Dvx3-Backup-Manager-macos-*
+          path: Releases/
+          merge-multiple: true
+
+      - name: Download all Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Dvx3-Backup-Manager-windows-*
+          path: Releases/
+          merge-multiple: true
+
+      - name: Create Release Notes
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.get_version.outputs.VERSION }}
+          files: |
+            Releases/linux/x86_64/cli_backup_manager
+            Releases/macos/aarch64/cli_backup_manager
+            Releases/macos/x86_64/cli_backup_manager
+            Releases/windows/x86_64/cli_backup_manager.exe
+
+      - name: Output release URL
+        run: |
+          echo "🎉 Release created at:"
+          echo "${{ steps.create_release.outputs.upload_url }}"
+
+
+# =============================================================================
+# BUILD SUMMARY (runs after all builds)
+# =============================================================================
+  build-summary:
+    name: 📊 Build Summary
+    runs-on: ubuntu-latest
+    needs: [build-linux-x86_64, build-macos-arm64, build-macos-x86_64, build-windows-x86_64]
+    if: always()
+
+    steps:
+      - name: Show Build Summary
+        run: |
+          echo "=============================================="
+          echo "  Dvx3 Backup Manager - Build Matrix Results"
+          echo "=============================================="
+          
+          # Get results from each job
+          linux_x86=$(echo "${{ needs.build-linux-x86_64.result }}" | tr -d ' ')
+          linux_arm64=$(echo "${{ needs.build-linux-arm64.result }}" | tr -d ' ')
+          macos_arm64=$(echo "${{ needs.build-macos-arm64.result }}" | tr -d ' ')
+          macos_x86=$(echo "${{ needs.build-macos-x86_64.result }}" | tr -d ' ')
+          windows_x86=$(echo "${{ needs.build-windows-x86_64.result }}" | tr -d ' ')
+
+          echo ""
+          echo "📋 Results:"
+          echo "  🐧 Linux x86_64   : ${linux_x86:-pending}"
+          echo "  🐧 Linux arm64    : ${linux_arm64:-pending}"
+          echo "  🍎 macOS ARM64    : ${macos_arm64:-pending}"
+          echo "  🍎 macOS x86_64   : ${macos_x86:-pending}"
+          echo "  🪟 Windows x86_64 : ${windows_x86:-pending}"
+          echo ""
+
+          # Determine overall status
+          all_passed=true
+          if [ "$linux_x86" = "failure" ] || [ "$macos_arm64" = "failure" ] || [ "$windows_x86" = "failure" ]; then
+            all_passed=false
+          fi
+
+          if $all_passed; then
+            echo "✅ All builds PASSED!"
+          else
+            echo "❌ Some builds FAILED. Check individual job logs."
+          fi
