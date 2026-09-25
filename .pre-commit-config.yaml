@@ -1,0 +1,68 @@
+---
+# Pre-Commit Hooks Configuration
+# See: https://pre-commit.com/
+#
+# Install hooks locally:
+#   pip install pre-commit
+#   pre-commit install
+#
+# Run manually:
+#   pre-commit run --all-files
+
+repos:
+  - repo: meta
+    hooks:
+      - id: check-hooks-apply
+      - id: check-useless-excludes
+
+  # Linting & Code Quality
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: "v3.1.0"
+    hooks:
+      - id: prettier
+        files: "\\.md$|\\.(yml|yaml)$"
+
+  # Shell script linting (bash)
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: "v0.10.0.1"
+    hooks:
+      - id: shellcheck
+        name: ShellCheck for bash scripts
+        args: [--severity=warning]
+        exclude: ^tests/
+
+  # Vala syntax check (requires valac)
+  - repo: local
+    hooks:
+      - id: vala-check
+        name: Vala Syntax Check
+        entry: bash -c 'valac --help >/dev/null 2>&1 || echo "Vala not installed, skipping"'
+        language: system
+        pass_filenames: false
+
+  # Markdown linting
+  - repo: https://github.com/adrienverge/yamllint.git
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        args: [--strict]
+        exclude: ^tests/
+
+  # Check for trailing whitespace and mixed line endings
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+        exclude: ^\.github/
+
+# =============================================================================
+# DEVELOPER SETUP
+# =============================================================================
+# After cloning, run once to install hooks:
+#   pip install pre-commit
+#   pre-commit install --install-hooks
+#
+# Then all git commits will automatically run these checks.

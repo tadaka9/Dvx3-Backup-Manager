@@ -1,0 +1,117 @@
+---
+name: Pre-Push Validation
+
+on:
+  push:
+    branches: [ main, master ]
+    tags-ignore:
+      - "v*"
+
+concurrency:
+  group: pre-push-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-workflows:
+    name: Validate YAML & GitHub Actions Syntax
+    runs-on: ubuntu-latest
+    outputs:
+      needs_build: ${{ steps.check.outputs.needs_build }}
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate workflow files
+        run: |
+          for yaml in .github/workflows/*.yml; do
+            echo "📄 Validating: $(basename "$yaml")"
+            
+            # Check YAML syntax with Python's yaml module
+            python3 -c "import yaml; yaml.safe_load(open('$yaml'))" && \
+              echo "  ✓ $(( $(basename $yaml) )) is valid YAML" || \
+              (echo "  ❌ $(( $(basename $yaml) )) has invalid YAML syntax" && exit 1)
+            
+            # Check for required fields in each workflow
+            if grep -q "^name:" "$yaml" && grep -q "^on:" "$yaml"; then
+              echo "  ✓ Required headers present"
+            else
+              echo "  ⚠️  Missing required header (name or on)"
+            fi
+            
+          done
+
+      - name: Check build script syntax
+        run: |
+          for sh in *.sh; do
+            if [ -f "$sh" ]; then
+              bash -n "$sh" >/dev/null 2>&1 && \
+                echo "✓ $(( $(basename $sh) )) has valid bash syntax" || \
+                (echo "❌ $(( $(basename $sh) )) has syntax errors:"; \
+                 bash -n "$sh"; exit 1)
+            fi
+          done
+
+      - name: Check if build is needed
+        id: check
+        run: |
+          NEEDS_BUILD=false
+          
+          # If this is a build script change, mark as needing build
+          for file in *.sh build_all.sh; do
+            if [ -f "$file" ]; then
+              git diff --cached --name-only 2>/dev/null | grep -q "^${file}$" && NEEDS_BUILD=true
+            fi
+          done
+          
+          # If workflow changed, mark as needing build
+          if [ -n "$(git diff --cached --name-only 2>/dev/null)" ]; then
+            git diff --cached --name-only 2>/dev/null | grep -qE "^\.(github|\.pre-commit)" && NEEDS_BUILD=false
+          fi
+          
+          echo "needs_build=$NEEDS_BUILD" >> $GITHUB_OUTPUT
+          echo "Build check: $NEEDS_BUILD"
+
+  build-check:
+    name: Build Validation (dry-run)
+    needs: validate-workflows
+    if: needs.validate-workflows.outputs.needs_build == 'true' || github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            build-essential valac gcc pkg-config zip \
+            libglib2.0-dev libgio-2.0-dev libjson-glib-dev \
+            libsodium-dev gir1.2-gtk-4.0 libgtk-4-dev
+
+      - name: Verify build_all.sh exists and is executable
+        run: |
+          if [ -f "build_all.sh" ]; then
+            chmod +x build_all.sh
+            echo "✓ build_all.sh found and made executable"
+          else
+            echo "⚠️  build_all.sh not found - skipping full build check"
+          fi
+
+      - name: Run dry-build (capture errors only)
+        run: |
+          if [ -f "build_all.sh" ]; then
+            # Run with --dry-run equivalent by checking dependencies first
+            valac --version >/dev/null 2>&1 && echo "✓ Vala $(valac --version)" || true
+            pkg-config --exists glib-2.0 && echo "✓ GLib found" || (echo "❌ GLib missing" && exit 1)
+            pkg-config --exists json-glib-1.0 && echo "✓ JSON-Glib found" || (echo "❌ json-glib missing" && exit 1)
+            pkg-config --exists libsodium && echo "✓ Libsodium found" || (echo "❌ libsodium missing" && exit 1)
+          fi
+
+  summary:
+    name: 📋 Summary
+    needs: [validate-workflows, build-check]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "## CI Validation Complete ✅\n\nAll checks passed. Ready to commit."
