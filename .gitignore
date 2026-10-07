@@ -1,151 +1,39 @@
-# Build outputs — exclude these from git (rebuildable)
+# All generated output belongs to build/.
 /build/
-**/build/
+/build-*/
 *.o
+*.a
 *.so
 *.so.*
 *.dylib
 *.dll
 *.exe
-*.AppImage
-*.dmg
+*.vala.c
+*.moc
+qrc_*.cpp
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+# VAPI source bindings are tracked; generated VAPI/header files live in build/.
+/dvx3.vapi
+/vala-extra-vapis/
+/clone-local/
+/cli/C/
+/cli/src/
+/cli/build/
 *.deb
 *.rpm
-*.tar.gz
-*.zip
-*.snap
-*.flatpak
-
-# Generated Vala C API bindings (from valac --capi)
-vala/core/*.h
-vala/core/*.c
-gen-c/
-**/gen-c/
-
-# CMake generated files
-CMakeCache.txt
-CMakeFiles/
-cmake_install.cmake
-Makefile
-build/CMakeCache.txt
-build/*/CMakeCache.txt
-
-# Qt MOC/AUTOUIC/RCC outputs
-gui/qt/qtdesktop/moc_*.cpp
-gui/qt/qtdesktop/ui_*.h
-gui/qt/qtdesktop/*.moc
-gui/qt/qtdesktop/*.uic
-gui/qt/qtdesktop/*.rc
-qrc_*.cpp
-*.moc
-*.mocs
-
-# IDE / Editor files
+*.AppImage
+*.dmg
+/packages/
+/dist/
+*.log
+*.tmp
+*.swp
+*~
+.DS_Store
+Thumbs.db
 .vscode/
 .idea/
-.git/
-.DS_Store
-Thumbs.db
-*~
-.swp
-.swo
-*.sublime-project
-*.sublime-workspace
-.project
-.cproject
-.classpath
-.settings/
-.project.lock
-.env
-.env.local
-.vagrant/
-
-# Vala compiler intermediate files (large!)
-**/*.vala.gi
-**/*.vapi
-**/*.gir
-**/*.typelib
-libdvx3.vala.gi
-libdvx3.typelib
-
-# Shell script artifacts
-build.sh.tmp
-*.sh.log
-ci-test-output/
-coverage/
-.nix/
-.nix-channels/
-
-# Cross-compilation toolchains (large — don't commit)
-mingw64/
-mingw-w64/
-aarch64-linux-gnu-
-arm-linux-gnueabihf-
-x86_64-w64-mingw32-
-i686-w64-mingw32-
-
-# Vala compilation artifacts (can be large)
-libdvx3.vala.c
-dvx3-cli.vala.c
-cli_backup_manager.vala.gi
-**/*.vala.c
-
-# Release packaging intermediates
-packages/
-Releases/
-dist/
-dist-git/
-release-notes.tmp
-
-# Temporary files and caches
-*.tmp
-*.temp
-*.bak
-*.backup
 __pycache__/
-*.pyc
-.pytest_cache/
-.mypy_cache/
-.hypothesis/
-.mypy_cache/
-node_modules/
-venv/
-.venv/
-ENV/
 .env
-.env.local
-.env.*
-
-# Testing artifacts
-tests/coverage/
-**/.coverage
-.coverage
-htmlcov/
-.tox/
-.nox/
-.pytest_cache/
-.hypothesis/
-.hg/
-.svn/
-.buckd/
-.mypy_cache/
-.mesonpycache/
-meson-private/
-
-# macOS build artifacts
-*.swp
-*.swo
-*~
-.DS_Store
-.Spotlight-V100
-.Trashes
-.AppleDouble
-._*
-
-# Windows-specific
-Thumbs.db
-desktop.ini
-$RECYCLE.BIN/
-*.cab
-*.manifest
-*.pdb

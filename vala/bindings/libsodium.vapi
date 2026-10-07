@@ -2,6 +2,14 @@
 
 [CCode (cheader_filename = "sodium.h")]
 namespace Sodium {
+    [CCode (cname = "sodium_init")] public static int init ();
+    [CCode (cname = "sodium_memzero")]
+    public static void memzero ([CCode (array_length = false)] uint8[] data, size_t size);
+    [CCode (cname = "crypto_auth_BYTES")] public const size_t AUTH_BYTES;
+    [CCode (cname = "crypto_auth")]
+    public static int auth ([CCode (array_length = false)] uint8[] tag,
+                            [CCode (array_length = false)] uint8[] message, uint64 length,
+                            [CCode (array_length = false)] uint8[] key);
     /* Top-level constants and pwhash */
     [CCode (cname = "crypto_pwhash_SALTBYTES")] public const size_t CRYPTO_PWHASH_SALTBYTES;
     [CCode (cname = "crypto_pwhash_ALG_ARGON2ID13")] public const int CRYPTO_PWHASH_ALG_ARGON2ID13;
@@ -9,11 +17,11 @@ namespace Sodium {
     [CCode (cname = "crypto_pwhash")]
     public static int crypto_pwhash (
         [CCode (array_length = false)] uint8[] out,
-        ulong outlen,
+        uint64 outlen,
         string passwd,
-        ulong passwdlen,
+        uint64 passwdlen,
         [CCode (array_length = false)] uint8[] salt,
-        ulong opslimit,
+        uint64 opslimit,
         size_t memlimit,
         int alg
     );
@@ -32,7 +40,7 @@ namespace Sodium {
         public static int secretbox (
             [CCode (array_length = false)] uint8[] c,
             [CCode (array_length = false)] uint8[] m,
-            ulong mlen,
+            uint64 mlen,
             [CCode (array_length = false)] uint8[] n,
             [CCode (array_length = false)] uint8[] k
         );
@@ -41,7 +49,7 @@ namespace Sodium {
         public static int secretbox_open (
             [CCode (array_length = false)] uint8[] m,
             [CCode (array_length = false)] uint8[] c,
-            ulong clen,
+            uint64 clen,
             [CCode (array_length = false)] uint8[] n,
             [CCode (array_length = false)] uint8[] k
         );

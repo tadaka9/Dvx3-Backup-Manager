@@ -1,284 +1,103 @@
-name: CI — Cross-Platform Build Matrix
-
+name: Native Vala build and tests
 on:
   push:
     branches: [main, develop]
   pull_request:
-    branches: [main]
-
+  workflow_dispatch:
+permissions:
+  contents: read
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
-
-env:
-  CCACHE_DIR: ~/.cache/ccache
-  CMAKE_BUILD_TYPE: Release
-  VALA_VERSION: "0.74"
-  QT6_VERSION: "6.8"
-
 jobs:
-  build-linux-native:
-    name: Linux x86_64 (Ubuntu) — Core + CLI + Manager + GUI
-    runs-on: ubuntu-latest
+  linux:
+    name: Linux native (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Install build dependencies
+      - name: Install native build and codec dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            valac pkg-config cmake ninja-build \
-            qt6-base-dev libglib2.0-dev libjson-glib-dev libsodium-dev zstd \
-            appstream-util desktop-file-utils squashfs-tools
-
-      - name: Setup ccache
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.CCACHE_DIR }}
-          key: ${{ runner.os }}-ccache-${{ hashFiles('**/build.sh') }}
-
-      - name: Build core library + CLI
-        run: ./build.sh core
-
-      - name: Build manager (C++ backend)
-        run: ./build.sh manager
-
-      - name: Build GUI (Qt6)
-        run: ./build.sh gui
-
-      - name: Run tests
+          sudo apt-get install -y build-essential valac pkg-config cmake qt6-base-dev \
+            libglib2.0-dev libjson-glib-dev libsodium-dev zstd gzip bzip2 xz-utils \
+            lz4 brotli 7zip zpaq shellcheck
+      - name: Validate shell scripts
         run: |
-          build/bin/dvx3 --version
-          test -x build/bin/cli_backup_manager
-          echo "✅ All binaries built successfully"
-
-  build-linux-arm64:
-    name: Linux ARM64 (Ubuntu) — Core + CLI + Manager + GUI
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            valac pkg-config cmake ninja-build \
-            qt6-base-dev libglib2.0-dev libjson-glib-dev libsodium-dev zstd \
-            appstream-util desktop-file-utils squashfs-tools
-
-      - name: Build for ARM64 (cross-compile)
-        run: |
-          CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ ./build.sh all
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-arm64-build
-          path: build/
-          if-no-files-found: ignore
-          retention-days: 7
-
-  build-linux-armhf:
-    name: Linux ARMHF (Raspberry Pi Zero, Orange Pi) — Core + CLI only
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install x86_64 cross-toolchain for armhf
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
-            libc6-dev-armel-cross binutils-arm-linux-gnueabihf \
-            valac pkg-config cmake ninja-build zstd libsodium-dev
-
-      - name: Cross-compile for ARMHF (32-bit)
+          bash -n build.sh scripts/run-tests.sh
+          shellcheck build.sh scripts/run-tests.sh install.sh uninstall.sh run_gui.sh
+      - name: Build every component and test real archive round trips
         env:
-          CC: arm-linux-gnueabihf-gcc
-          CXX: arm-linux-gnueabihf-g++
-          VALAC: valac
-        run: |
-          CC=arm-linux-gnueabihf-gcc CXX=arm-linux-gnueabihf-g++ ./build.sh core cli
-
-      - name: Upload ARMHF build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-armhf-build
-          path: |
-            build/
-            !build/gui/*
-          if-no-files-found: ignore
-          retention-days: 14
-
-  build-linux-x86_64-packaging:
-    name: Linux x86_64 — Packaging (DEB/RPM/AppImage)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install packaging tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            valac pkg-config cmake ninja-build qt6-base-dev libglib2.0-dev \
-            libjson-glib-dev libsodium-dev zstd appstream-util \
-            squashfs-tools debhelper rpm python3-pip
-
-      - name: Build all components
-        run: ./build.sh all
-
-      - name: Package as DEB
-        run: |
-          cd build && ../scripts/package-deb.sh
-
-      - name: Package as RPM
-        run: |
-          cd build && ../scripts/package-rpm.sh
-
-      - name: Package as AppImage
-        run: |
-          cd build && ../scripts/package-appimage.sh
-
-      - name: Upload package artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-packages-x86_64
-          path: |
-            packages/*.deb
-            packages/*.rpm
-            packages/*.AppImage
-          if-no-files-found: ignore
-          retention-days: 7
-
-  build-macos-intel:
-    name: macOS Intel — Core + GUI
-    runs-on: macos-latest-xlarge
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install macOS dependencies
-        run: |
-          brew install valac pkg-config cmake ninja-build qt6 base64-cli librsvg appstream-util zstd libsodium
-
-      - name: Build for x86_64-apple-darwin
+          DVX3_REQUIRE_CODECS: none,zstd,gzip,bzip2,xz,lzma,lz4,brotli,7z,zpaq
+        run: ./build.sh all test
+      - name: Render the Qt window offscreen
         env:
-          CMAKE_OSX_ARCHITECTURES: x86_64
-        run: |
-          ./build.sh core manager gui
-
-      - name: Package as DMG (Intel)
-        run: |
-          cd build && ../scripts/package-dmg.sh intel
-
-      - name: Upload macOS Intel artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-intel-build
-          path: |
-            build/
-            packages/*.dmg
-          if-no-files-found: ignore
-          retention-days: 7
-
-  build-macos-silicon:
-    name: macOS Silicon (M1/M2/M3) — Core + GUI
-    runs-on: macos-latest
+          QT_QPA_PLATFORM: offscreen
+        run: build/bin/dvx3-backup-manager --smoke-test
+  macos:
+    # Candidate platforms: these jobs must pass before claiming verified support.
+    name: macOS native (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install macOS dependencies
-        run: |
-          brew install valac pkg-config cmake ninja-build qt6 base64-cli librsvg appstream-util zstd libsodium
-
-      - name: Build for aarch64-apple-darwin (native)
+      - name: Install native dependencies
+        run: brew install vala pkgconf cmake qt glib json-glib libsodium zstd gzip bzip2 xz lz4 brotli sevenzip zpaq
+      - name: Build and test
         env:
-          CMAKE_OSX_ARCHITECTURES: arm64
+          DVX3_REQUIRE_CODECS: none,zstd,gzip,bzip2,xz,lzma,lz4,brotli,7z,zpaq
         run: |
-          ./build.sh core manager gui
-
-      - name: Package as DMG (Apple Silicon)
-        run: |
-          cd build && ../scripts/package-dmg.sh silicon
-
-      - name: Upload macOS Silicon artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-silicon-build
-          path: |
-            build/
-            packages/*.dmg
-          if-no-files-found: ignore
-          retention-days: 7
-
-  build-windows-x64:
-    name: Windows x64 — Core + Manager (MSVC)
-    runs-on: windows-latest
+          qt_prefix="$(brew --prefix qt)"
+          gzip_prefix="$(brew --prefix gzip)"
+          bzip_prefix="$(brew --prefix bzip2)"
+          export CMAKE_PREFIX_PATH="$qt_prefix"
+          export PATH="$gzip_prefix/bin:$bzip_prefix/bin:$PATH"
+          ./build.sh all test
+      - name: Render the Qt window offscreen
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: build/bin/dvx3-backup-manager --smoke-test
+  windows:
+    name: Windows x64 native (MSYS2 UCRT64, candidate)
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: msys2 {0}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Vala toolchain on Windows
-        run: |
-          choco install valac cmake ninja-build zip mingw-w64 --version 12.2.0
-
-      - name: Build core + manager (MSVC)
-        shell: pwsh
-        run: |
-          .\build.sh core manager
-
-      - name: Upload Windows x64 artifacts
-        uses: actions/upload-artifact@v4
+      - uses: msys2/setup-msys2@v2
         with:
-          name: windows-x64-build
-          path: build/
-          if-no-files-found: ignore
-          retention-days: 7
-
-  build-windows-arm64:
-    name: Windows ARM64 — Cross-compile (MinGW-w64 from x64)
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install mingw-w64 for cross-compilation
-        run: |
-          choco install mingw-w64 --version 12.2.0
-
-      - name: Set MinGW-w64 environment variables (ARM64)
-        shell: pwsh
+          msystem: UCRT64
+          update: true
+          install: >-
+            make tar gzip bzip2 xz
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-vala
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-glib2
+            mingw-w64-ucrt-x86_64-json-glib
+            mingw-w64-ucrt-x86_64-libsodium
+            mingw-w64-ucrt-x86_64-zstd
+            mingw-w64-ucrt-x86_64-lz4
+            mingw-w64-ucrt-x86_64-brotli
+            mingw-w64-ucrt-x86_64-7zip
+            mingw-w64-ucrt-x86_64-qt6-base
+      - name: Build and test native binaries
         env:
-          MINGW_PREFIX: "C:/Program Files/mingw-w64/x86_64-ucrt-posix-seh-gcc-12-win32"
-        run: |
-          $env:CROSS_COMPILE = "arm64-w64-mingw32-"
-          $env:CC = "$env:CROSS_COMPILEgcc.exe"
-          $env:CXX = "$env:CROSS_COMPILEg++.exe"
-          Write-Output "Cross-compiling for Windows ARM64..."
-
-      - name: Cross-compile core + manager for Windows ARM64
-        shell: pwsh
+          CC: gcc
+          CXX: g++
+          CMAKE_GENERATOR: Ninja
+          DVX3_REQUIRE_CODECS: none,zstd,gzip,bzip2,xz,lzma,lz4,brotli,7z
+        run: ./build.sh all test
+      - name: Render the Qt window offscreen
         env:
-          CC: arm64-w64-mingw32-gcc
-          CXX: arm64-w64-mingw32-g++
-        run: |
-          ./build.sh core manager
-
-      - name: Upload Windows ARM64 artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-arm64-build
-          path: build/
-          if-no-files-found: ignore
-
-
-# ────────────────────────────────────────────────────────
-# ✅ Matrix Build Summary — All Platforms Supported
-# ────────────────────────────────────────────────────────
-# | Platform          | Architecture | Component        | Status |
-# |-------------------|-------------|-------------------|--------|
-# | Ubuntu x86_64     | x86_64      | Core + Manager+GUI| ✅     |
-# | Ubuntu ARM64      | aarch64     | Core + Manager+GUI| ✅     |
-# | Ubuntu ARMHF      | armhf       | Core + CLI        | ✅     |
-# | macOS Intel       | x86_64      | Core + GUI        | ✅     |
-# | macOS Silicon     | aarch64     | Core + GUI        | ✅     |
-# | Windows MSVC      | x64         | Core + Manager    | ✅     |
-# | Windows MinGW-w64 | ARM64       | Core + Manager    | ✅     |
+          QT_QPA_PLATFORM: offscreen
+        run: build/bin/dvx3-backup-manager.exe --smoke-test

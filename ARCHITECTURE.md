@@ -1,117 +1,100 @@
-# Architecture Overview
+# Architecture
 
-Dvx3 Backup Manager is architected around a **Vala core library** that provides the encryption, compression, and archive management logic. The Qt6 GUI and CLI TUI are thin wrappers around this core.
+The canonical engine is `vala/core/dvx3.vala`. Job persistence, execution,
+history and retention live in `vala/manager/manager.vala`, built into the same
+library. Every frontend uses that engine; no independent C++ backend remains.
 
-## High-Level Architecture Diagram
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      Dvx3 Backup Manager                      │
-├──────────────────┬──────────────────┬────────────────────────┤
-│   Vala Core Lib  │     Qt6 GUI      │       CLI TUI           │
-│ (libdvx3.so)    │  (Qt6 Wrapper)   │  (ANSI Escape Codes)   │
-├──────────────────┼──────────────────┼────────────────────────┤
-│ • Encryption:    │ • File selection │ • Interactive menu      │
-│   Argon2id KDF  │ • Drag & drop    │ • Non-interactive mode  │
-│ • Compression:   │ • Preview        │ • Scripting mode        │
-│   ZSTD           │ • Progress       │                         │
-│ • Archive I/O:   │ • Settings UI    │                         │
-│   streaming tar  │                   │                         │
-└──────────────────┴──────────────────┴────────────────────────┘
-         ▲                    ▲                  ▲
-         └────── C API Binding (valac --capi) ────┘
+```text
+Vala CLI                     Vala manager CLI             Qt6 C++ presentation
+vala/cli/app.vala             vala/manager/app.vala         gui/qt/qtdesktop/main.cpp
+      \                              |                      / dvx3.hpp (RAII only)
+       \                             |                     / generated C API
+        +-------------------- libdvx3 --------------------+
+                vala/core/dvx3.vala + vala/manager/manager.vala
+                              |
+          GIO paths/streams/processes + libsodium + external codecs/tar
 ```
 
-## Core Components
+Vala compiles to C with `valac -C --header --vapi --library`. Native C tools
+compile that generated output; generated C, headers and VAPI are never source
+of truth. `vala/bindings/libsodium.vapi` is a small **source binding**, including
+64-bit lengths appropriate for Windows as well as POSIX.
+`dvx3.hpp` owns C references and translates `GError` to exceptions.
+C++ remains for the Qt interface, a wrapper and ABI tests/examples only.
 
-### `vala/core/dvx3.vala` — The Heart of Dvx3
+## Portable operations and OS boundaries
 
-This is the **only** file that contains business logic:
-- Encryption pipeline (Argon2id → XSalsa20-Poly1305)
-- Archive format specification and I/O
-- Compression via ZSTD streaming
-- Password strength estimation
+GLib chooses native configuration/temp directories. GIO owns file I/O and
+subprocess lifetimes; tools are found on PATH. `DVX3_TAR` can select a compatible
+tar executable, otherwise gtar is preferred when available and tar is the fallback.
+Subprocesses use argv arrays, working directories and explicit file redirection,
+with no `sh -c`, shell pipelines, POSIX file descriptors or waitpid calls.
+Every child exit status is checked. The build handles native OS/CPU detection,
+Windows `.exe`/DLL naming, macOS dylibs and Linux shared objects.
 
-It uses **zero** GTK/GTK4 dependencies. It only depends on `GLib` and `Gio`, which are available on all platforms (Linux, Windows, macOS) via the same GObject introspection mechanism.
+Archive/compression backends are replaceable external tools because these
+algorithms are maintained in mature native implementations. Vala controls
+selection, validation, reversible pipelines, encryption and error handling.
+The extension mechanism accepts local codec profiles; it does not execute
+commands supplied by an archive. See [COMPRESSION.md](COMPRESSION.md).
 
-### C API Bindings (`valac --capi`)
+## Archive pipeline and compatibility
 
-The Vala core library is compiled with:
-```bash
-valac --pkg=GLib --pkg=Gio --capi=dvx3.h:dvx3.c vala/core/dvx3.vala
-```
+Creation stages tar and compressed payload in a private GLib temporary directory,
+then encrypts bounded 1 MiB chunks with Argon2id (2 iterations, 64000 KiB) and
+libsodium XSalsa20-Poly1305 secretbox, using a fresh random salt and nonce per
+chunk. SHA-256 is computed incrementally over the compressed payload.
+The new version-2 JSON header records codec, chunk framing and KDF parameters
+and carries a libsodium authentication tag. The existing 4-byte big-endian
+length + 512-byte zero-padded JSON + nonce/ciphertext framing is retained.
 
-This generates `dvx3.h` and `dvx3.c`, which are then compiled into a shared/static library. This C API is what the Qt6 GUI links against, allowing any language (C/C++, Rust, Go, Python via ctypes/cffi) to use the core logic.
+Output is written privately to a random `.partial` file beside the destination,
+then replaced after success. Failure preserves an existing output. Derived
+keys are wiped. Temporary files and staged output are removed on normal success
+or reported failure; cleanup failures are reported, not ignored.
+Abrupt termination/power loss can leave staging files.
 
-### CLI TUI (`vala/cli/app.vala`)
+Restore bounds and validates metadata, authenticates all encrypted chunks and
+checks available SHA-256 before decompression/extraction. The destination must
+be empty. No restore has permission to overwrite existing files. Extraction
+errors are reported but may leave a partially populated restore directory.
+Archive extraction relies on the installed tar implementation's safety rules;
+this is not a sandbox for malicious archives created by someone who knows the password.
 
-The terminal UI uses **ANSI escape codes** exclusively for rendering:
-- Colors: `\x1b[38;5;N` (256-color mode)
-- Cursor movement: `\x1b[A`, `\x1b[B`
-- Clear screen: `\x1b[2J\x1b[H`
+Legacy headers without version/codec default to zstd and may omit SHA-256/header
+authentication. Legacy compatibility necessarily has weaker metadata guarantees;
+there is no authenticated distinction between an old header and a downgraded new
+one. Malformed archives produced by the previous broken pipeline are not repaired
+by the build refactor. Old readers are not guaranteed to understand new codecs.
 
-This means the same binary works on:
-- Linux xterm/kitty/alacritty/foot/sway-term
-- Windows Terminal 10+ (full ANSI support)
-- macOS iTerm2 / Apple Terminal (with `defaults write com.apple.terminal enableFullAnsiSupport -bool true`)
+**Tradeoff:** private plaintext tar/compressed staging consumes disk and adds I/O;
+this implementation does not claim a zero-plaintext, fully streaming pipeline.
+Pipelines need additional temporary space. Permissions protect those files on
+POSIX; confidentiality against disk forensics requires an encrypted temp volume.
 
-No curses, no ncursesw, no libtinfo — just plain C stdout writes of escape sequences.
+## Frontends and manager
 
-### Qt6 GUI (`gui/qt/qtdesktop/main.cpp`)
+The CLI retains `encrypt` / `decrypt` and adds codec selection/status/version.
+The manager persists jobs/history with GLib KeyFile, uses GLib's user configuration
+directory and never stores passwords. Backup destinations inside a source are
+excluded recursively. Retention only deletes UUID-named archives recorded by the
+manager in their configured directory, and errors are surfaced.
+The new manager format is `jobs.ini` / `history.ini`; the legacy C++ configuration
+and history are not imported automatically. See the migration instructions in
+[BACKUP_MANAGER_GUIDE.md](BACKUP_MANAGER_GUIDE.md).
 
-The GUI is a **thin wrapper** around the Vala core library:
-- It links against `libdvx3.so` (the shared library generated from `valac --capi`)
-- All encryption/compression logic is delegated to the C API
-- Qt handles only UI concerns: file dialogs, progress bars, drag-and-drop
+Qt calls the generated C API through `dvx3.hpp` in a worker thread and delivers
+progress/completion to the UI via signals. There are no fake successes, mock
+progress bars, password-bearing shell commands, or pretend scheduler/settings.
+The window cannot close while an operation is active. Cancellation is not yet
+implemented. The GUI handles create/restore; job administration stays in the
+Vala manager CLI.
 
-This separation means you can:
-1. Build just the core library and CLI on a headless server
-2. Build only the GUI for desktop users
-3. Use the same compiled `libdvx3.so` in both contexts
+## Build and testing
 
-## Cross-Platform Strategy
-
-| Platform | Toolchain | Notes |
-|----------|-----------|-------|
-| Ubuntu x86_64 | native gcc/valac | Reference build |
-| Linux ARM64 (Raspberry Pi) | `aarch64-linux-gnu-gcc` cross-toolchain | Same source, different compiler prefix |
-| Linux ARMHF (Pi Zero) | `arm-linux-gnueabihf-gcc` cross-toolchain | 32-bit target |
-| Windows x64 | MSVC + valac via Choco, or MinGW-w64 | Uses Windows native tooling |
-| Windows ARM64 | MinGW-w64 `aarch64-w64-mingw32-gcc` cross-toolchain | Cross-compiled from x64 host |
-| macOS Intel | XCode clang (native) | Native build on x86_64 hardware |
-| macOS Silicon | XCode clang (native, ARM64) | Native build on Apple Silicon |
-
-The key is that **the same Vala source** compiles everywhere. The only platform-specific things are:
-- The C/C++ compiler prefix (`x86_64-linux-gnu-gcc` vs `arm-linux-gnueabihf-gcc`)
-- The Qt backend (QPlatform::native) handles platform-native file dialogs, drag-and-drop, etc. automatically
-
-## Security Considerations
-
-### Password Strength Estimation
-
-The strength meter estimates Shannon entropy:
-- +1 for length ≥ 12, +1 for length ≥ 16
-- +1 per character class (upper, lower, digit, symbol) → max 4 bonus points
-- Dictionary word detection subtracts ~3–5 bits of estimated entropy
-
-This is a heuristic; true security requires a password manager or cryptographically random passwords.
-
-### Streaming Pipeline
-
-To avoid holding large files in memory:
-```
-source_directory ──[tar]──► /tmp/dvx3-staging/ ──[zstd -T0]──► compressed ──[encrypt]──► archive.dvx3
-```
-
-The staging directory is cleaned up atomically at the end. On failure, partial archives are left in a `.partial` subdirectory.
-
-## Future Work (Roadmap)
-
-- [ ] Add Rust bindings via `bindgen` on top of the C API for high-performance embedded use cases
-- [ ] Implement parallel chunking with `gio::FileOutputStream` + thread pool
-- [ ] Add incremental backup mode (delta encoding between successive snapshots)
-- [ ] Integrate with D-Bus daemon for system-wide scheduled backups (Epico G3 project)
-
-## License
-
-Dvx3 is MIT licensed. The Vala core library, C API bindings, and Qt6 GUI are all under the same license.
+One driver supplies `core/cli/manager/gui/all/clean/test`, delegated by Make and
+the test script. Vala functional tests verify bytes, hidden files, Unicode/quoted
+paths, multi-chunk framing, incorrect passwords, damage/truncation/header tampering,
+legacy framing and job exclusion/persistence/retention. C++ tests verify the ABI.
+CI requires native builds and round trips rather than foreign compiler smoke tests.
+See [BUILD.md](BUILD.md) for actual platform verification status and requirements.

@@ -1,340 +1,263 @@
 /* -*- coding: utf-8 -*- */
-// Dvx3 Backup Manager — CLI TUI (ANSI escape codes, no libtinfo dependency)
-// 
-// Cross-platform design principles:
-//   • Uses only GLib/GObject introspection — zero GTK dependencies
-//   • ANSI escape sequences for terminal rendering (works on xterm, kitty, alacritty, Windows Terminal 10+, iTerm2)
-//   • GLib file I/O uses native backend per platform automatically
-//   • On Windows/macOS: no additional GUI libs needed; falls back to TUI mode
-//
-// Build: valac --pkg=GLib --pkg=Gio app.vala -o cli_backup_manager
 
-#pragma unmanaged  // Windows-compatible calling conventions for C interop
-#pragma managed(push, off)
+/**
+ * dvx3 - Command-line interface for libdvx3
+ *
+ * Simple CLI wrapper for the libdvx3 encryption library
+ */
 
 using GLib;
-using Gio;
+using Dvx3;
 
-namespace Dvx3 {
+/* Color helpers */
+private const string RST = "\x1b[0m";
+private const string BLD = "\x1b[1m";
+private const string GRN = "\x1b[32m";
+private const string CYN = "\x1b[36m";
+private const string YLW = "\x1b[33m";
+private const string RED = "\x1b[31m";
 
-// ───────────────────────────────────────────────────────────────
-// ANSI Escape Code Helpers (Cross-platform terminal rendering)
-// ───────────────────────────────────────────────────────────────
-
-public enum AnsiCode : uint8 {
-    RESET        = 0,
-    BOLD         = 1,
-    DIM          = 2,
-    ITALIC       = 3,
-    UNDERLINE    = 4,
-    BLINK        = 5,
-    REVERSE      = 7,
-    HIDDEN       = 8,
-    STRIKETHROUGH= 9,
-
-    // Colors (256-color mode)
-    FG_BLACK     = 30, FG_RED     = 31, FG_GREEN   = 32, FG_YELLOW  = 33,
-    FG_BLUE      = 34, FG_MAGENTA = 35, FG_CYAN    = 36, FG_WHITE   = 37,
-    BG_BLACK     = 40, BG_RED     = 41, BG_GREEN   = 42, BG_YELLOW  = 43,
-    BG_BLUE      = 44, BG_MAGENTA = 45, BG_CYAN    = 46, BG_WHITE   = 47,
-
-    // Bright colors (90-97)
-    FG_BRIGHT_BLACK = 90, FG_BRIGHT_RED     = 91, FG_BRIGHT_GREEN   = 92,
-    FG_BRIGHT_YELLOW   = 93, FG_BRIGHT_BLUE    = 94, FG_BRIGHT_MAGENTA = 95,
-    FG_BRIGHT_CYAN      = 96, FG_BRIGHT_WHITE  = 97,
-
-    // Foreground with background (e.g., black on red)
-    BOLD_RED   = 1;
-
-    public static string to_string() {{ return ""; }}
+private string colour_wrap (string txt, string col) {
+    return Environment.get_variable ("TERM") != null && Environment.get_variable ("NO_COLOR") == null ? "%s%s%s".printf (col, txt, RST) : txt;
 }
 
-// Helper: ANSI color codes as strings
-public static string ansi_color(uint8 fg) {
-    switch (fg) {{
-        case AnsiCode.FG_BLACK:     return "\x1b[30m";
-        case AnsiCode.FG_RED:       return "\x1b[31m";
-        case AnsiCode.FG_GREEN:     return "\x1b[32m";
-        case AnsiCode.FG_YELLOW:    return "\x1b[33m";
-        case AnsiCode.FG_BLUE:      return "\x1b[34m";
-        case AnsiCode.FG_MAGENTA:   return "\x1b[35m";
-        case AnsiCode.FG_CYAN:      return "\x1b[36m";
-        case AnsiCode.FG_WHITE:     return "\x1b[37m";
-        default:                     return "";
-    }}
+private string format_size (uint64 bytes) {
+    double value = bytes;
+    string[] units = { "B", "KiB", "MiB", "GiB", "TiB" };
+    int idx = 0;
+    while (value >= 1024.0 && idx < units.length - 1) {
+        value /= 1024.0;
+        idx++;
+    }
+    return "%.2f %s".printf (value, units[idx]);
 }
 
-public static string ansi_bright(uint8 fg) {
-    switch (fg) {{
-        case 90: return "\x1b[90m";
-        case 91: return "\x1b[91m";
-        case 92: return "\x1b[92m";
-        case 93: return "\x1b[93m";
-        case 94: return "\x1b[94m";
-        case 95: return "\x1b[95m";
-        case 96: return "\x1b[96m";
-        case 97: return "\x1b[97m";
-        default: return "";
-    }}
+/* Console progress bar */
+private class ConsoleProgress {
+    private string label;
+    private uint64 total_bytes;
+    private const int BAR_WIDTH = 24;
+
+    public ConsoleProgress (string label, uint64 total_bytes) {
+        this.label = label;
+        this.total_bytes = total_bytes;
+    }
+
+    public void update (uint64 processed, uint64 total, uint64 output_bytes) {
+        double pct = total > 0 ? (double)processed / (double)total : 0.0;
+        if (pct > 1.0) pct = 1.0;
+
+        int filled = (int)(pct * BAR_WIDTH);
+        var bar = new StringBuilder ();
+        for (int i = 0; i < BAR_WIDTH; i++) {
+            bar.append (i < filled ? "█" : "░");
+        }
+
+        double overhead_pct = processed > 0
+            ? ((double)output_bytes / (double)processed - 1.0) * 100.0
+            : 0.0;
+
+        GLib.stdout.printf (
+            "\r%s %s %s %3.0f%% │ %s → %s (%.1f%% overhead)     ",
+            colour_wrap (label, CYN),
+            colour_wrap (bar.str, GRN),
+            colour_wrap ("│", CYN),
+            pct * 100.0,
+            format_size (processed),
+            format_size (output_bytes),
+            overhead_pct
+        );
+        GLib.stdout.flush ();
+    }
+
+    public void finish (uint64 processed, uint64 output_bytes) {
+        update (processed, processed, output_bytes);
+        GLib.stdout.printf ("\n");
+    }
 }
 
-// ───────────────────────────────────────────────────────────────
-// TUI Terminal Renderer — ANSI escape sequence based
-// ───────────────────────────────────────────────────────────────
+private uint64 compute_total_size (File dir, string? skip_path) {
+    uint64 total = 0;
+    try {
+        var enumerator = dir.enumerate_children (
+            FileAttribute.STANDARD_NAME + "," +
+            FileAttribute.STANDARD_TYPE + "," +
+            FileAttribute.STANDARD_SIZE,
+            FileQueryInfoFlags.NOFOLLOW_SYMLINKS
+        );
 
-public class TuiTerminal : Object {
-    public string prompt = "dvx3> ";
-    public uint width = 80;
-    public uint height = 24;
-    
-    public TuiTerminal () {{}}
+        FileInfo? info;
+        while ((info = enumerator.next_file ()) != null) {
+            var child = dir.get_child (info.get_name ());
+            var child_path = child.get_path ();
 
-    // Move cursor up by N lines (for progress bars, menus)
-    public void scroll_up(uint n) {{
-        if (n > 0 && stdout.isatty ()) {{
-            stdout.print("\x1b[%dA", n);
-        }}
-    }}
+            if (skip_path != null && child_path == skip_path)
+                continue;
 
-    // Clear screen and move to top-left
-    public void clear() {{
-        if (stdout.isatty ()) {{
-            stdout.print("\x1b[2J\x1b[H");  // Erase screen, cursor to home
-        }}
-    }}
+            if (info.get_file_type () == FileType.DIRECTORY) {
+                total += compute_total_size (child, skip_path);
+            } else if (info.get_file_type () == FileType.REGULAR) {
+                total += info.get_size ();
+            }
+        }
+    } catch (Error e) {
+        // Ignore errors in size calculation
+    }
+    return total;
+}
 
-    // Print a progress bar using ANSI blocks
-    public void print_progress(string label, uint current, uint total) {{
-        if (total == 0) {{ total = 1; }}  // avoid division by zero
-        
-        var pct = (uint)(current * 100.0 / total);
-        var filled_width = (int)(width * pct / 100.0);
+private static int cmd_encrypt(string[] args) throws Error {
+    var ctx = new OptionContext("<folder> -p <pwd> [-o <out>] [-i]");
 
-        print_color("[\x1b[38;5;22m█\x1b[0m".repeat(filled_width) + "░\x1b[38;5;245m".repeat(width - filled_width), 
-                    label, pct / 2.0);
-    }}
+    string? pwd = null;
+    string? out_path = null;
+    bool inplace = false;
+    string codec = "zstd";
 
-    // Print a colored status line
-    public void print_status(string icon, string message) {{
-        var fg = AnsiCode.FG_GREEN;
-        if (message.contains("error") || message.contains("Error")) {{ fg = AnsiCode.FG_RED; }}
-        else if (message.contains("warn") || message.contains("Warning")) {{ fg = AnsiCode.FG_YELLOW; }}
+    OptionEntry[] entries = {
+        { "password", 'p', OptionFlags.NONE, OptionArg.STRING, &pwd, "Password for Argon2 key‑derivation", null },
+        { "output", 'o', OptionFlags.NONE, OptionArg.FILENAME, &out_path, "Path for resulting *.dvx3 file (default: <folder>.dvx3)", null },
+        { "codec", 'c', OptionFlags.NONE, OptionArg.STRING, &codec, "Compression codec (default zstd)", null },
+        { "in-place", 'i', OptionFlags.NONE, OptionArg.NONE, &inplace, "Allow the output file inside source folder (excluded)", null }
+    };
+    ctx.add_main_entries(entries, null);
+    ctx.parse(ref args);
 
-        stdout.print(ansi_color(fg) + icon + " " + message);
-    }}
+    if (args.length != 2 || pwd == null) {
+        GLib.stderr.printf("Usage: %s encrypt <folder> -p <pwd> [-o <out>] [-i]\n", args[0]);
+        return 1;
+    }
 
-    // Print a warning in yellow on blue background
-    public void print_warning(string message) {{
-        stdout.print("\x1b[48;5;236m\x1b[97m"  // light gray bg, white fg (Windows Terminal dark mode friendly)
-                    + "⚠️  WARNING: " + message);
-    }}
+    var src_dir = File.new_for_commandline_arg(args[1]);
+    if (!src_dir.query_exists()) {
+        GLib.stderr.printf("Source folder '%s' does not exist.\n", src_dir.get_path());
+        return 1;
+    }
 
-    public void print_info(string message) {{
-        stdout.print(ansi_color(AnsiCode.FG_CYAN) + "ℹ️  " + message);
-    }}
+    File out_file;
+    if (out_path != null) {
+        var path = out_path.has_suffix(".dvx3") ? out_path : out_path + ".dvx3";
+        out_file = File.new_for_commandline_arg(path);
+    } else {
+        out_file = src_dir.get_parent().get_child(src_dir.get_basename() + ".dvx3");
+    }
 
-    // ─── Menu rendering (simple single-column menu) ─────────────
-    public void render_menu(string[] items, int selected_idx = -1) {{
-        stdout.print("\x1b[4J\x1b[H");  // clear screen
+    var out_file_path = out_file.get_path();
 
-        for (var i = 0; i < items.length; ++i) {{
-            var prefix = (i == selected_idx) ? "\x1b[38;5;22m◉\x1b[0m " : "  ";
-            stdout.print(prefix + items[i]);
-        }}
+    string? exclude_path = null;
+    if (out_file.has_prefix(src_dir)) {
+        if (!inplace) {
+            GLib.stderr.printf("Error: Output file is inside source folder – use -i/--in-place.\n");
+            return 1;
+        }
+        exclude_path = out_file_path;
+        GLib.stdout.printf(colour_wrap("⚠️  In-place mode: excluding output file from archive.\n", YLW));
+    }
 
-        stdout.print("\n\x1b[H");  // return cursor to top-left
-    }}
+    uint64 total_size = compute_total_size(src_dir, exclude_path);
+    var progress = new ConsoleProgress("Encrypt", total_size);
 
-    public void render_select(string label, string value) {{
-        stdout.print(label + "\x1b[38;5;22m" + value);
-    }}
+    Timer timer = new Timer();
 
-    public void print_header(string title) {{
-        stdout.print("\x1b[4J\x1b[H");  // clear
-        stdout.print("\x1b[1;37m" + "═".repeat(width - 4) + "\x1b[0m\n");
-        stdout.print("\x1b[1;97m" + title + "\x1b[0m\n");
-        stdout.print("═\x1b[38;5;22m".repeat(width - 4) + "\x1b[0m\n");
-    }}
+    Dvx3.encrypt_with_codec(
+        src_dir,
+        out_file,
+        pwd,
+        codec,
+        exclude_path,
+        (processed, total, output) => {
+            progress.update(processed, total, output);
+        }
+    );
 
-public: // expose for testing
-    public uint get_width() {{ return width; }}
-};
+    uint64 output_bytes = out_file.query_info(FileAttribute.STANDARD_SIZE, FileQueryInfoFlags.NONE).get_attribute_uint64(FileAttribute.STANDARD_SIZE);
+    progress.finish(total_size, output_bytes);
 
-// ───────────────────────────────────────────────────────────────
-// Main CLI Application
-// ───────────────────────────────────────────────────────────────
+    GLib.stdout.printf("%s\n", colour_wrap("✅ Encrypted backup → " + out_file_path, GRN));
+    GLib.stdout.printf("Time: %.2fs\n", timer.elapsed());
 
-class App : Object {
-    public TuiTerminal terminal = new TuiTerminal ();
+    return 0;
+}
 
-    public App () throws GLib.Error {{
-        terminal.width = get_terminal_width();
-        terminal.height = get_terminal_height();
+private static int cmd_decrypt(string[] args) throws Error {
+    var ctx = new OptionContext("<encrypted.dvx3> -p <pwd> -o <output_dir>");
 
-        // Determine encryption mode from environment or default
-        var env_encryption_mode = GLib.Environment.get_variable("DVX3_ENCRYPTION_MODE");
-        if (!env_encryption_mode.is_null()) {{
-            this.encryption_mode = (EncryptionMode)int.parse(env_encryption_mode);
-        }}
+    string? pwd = null;
+    string? out_dir = null;
 
-        // Determine compression level from environment
-        var env_comp_level = GLib.Environment.get_variable("DVX3_COMPRESSION_LEVEL");
-        if (!env_comp_level.is_null()) {{
-            this.compression_level = (CompressionLevel)int.parse(env_comp_level);
-        }}
-    }}
+    OptionEntry[] entries = {
+        { "password", 'p', OptionFlags.NONE, OptionArg.STRING, &pwd, "Password for Argon2 key‑derivation", null },
+        { "output", 'o', OptionFlags.NONE, OptionArg.FILENAME, &out_dir, "Directory to extract the archive into", null }
+    };
+    ctx.add_main_entries(entries, null);
+    ctx.parse(ref args);
 
-    public EncryptionMode encryption_mode { get; set; default: EncryptionMode.XSALSA20_POLY1305; }
-    public CompressionLevel compression_level { get; set; default: CompressionLevel.DEFAULT; }
+    if (args.length != 2 || pwd == null || out_dir == null) {
+        GLib.stderr.printf("Usage: %s decrypt <encrypted.dvx3> -p <pwd> -o <output_dir>\n", args[0]);
+        return 1;
+    }
 
-    private uint get_terminal_width() {{
-        if (stdout.isatty ()) {{
-            return stdout.get_column_number();
-        }} else {{
-            // Fallback: assume 80 columns for non-tty (script mode)
-            return 80;
-        }}
-    }}
+    var enc_file = File.new_for_commandline_arg(args[1]);
+    if (!enc_file.query_exists()) {
+        GLib.stderr.printf("Encrypted file '%s' does not exist.\n", enc_file.get_path());
+        return 1;
+    }
 
-    private uint get_terminal_height() {{
-        if (stdin.isatty()) {{
-            // Try to detect terminal height via SIGWINCH or /proc/tty/number/size on Linux
-            if (GLib.FileUtils.test_file_exists("/proc/tty/driver/0")) {{
-                try {{
-                    var lines = GLib.File.new_for_path("/proc/tty/driver/0").read_text();
-                    if (!lines.is_null()) {{
-                        var parts = lines.split('\n');
-                        for (var i = 0; i < parts.length; ++i) {{
-                            var line = parts[i];
-                            if (line.contains("tty[") && line.contains(":")) {{
-                                var cols_str = line.split(':')[1].trim();
-                                if (!cols_str.is_empty()) {{ return cols_str.parse_int(); }}
-                            }}
-                        }}
-                    }}
-                }} catch (GLib.Error e) {{}}
-            }}
-        }}
-        // Fallback: assume 24 lines
-        return 24;
-    }}
+    File dst_dir = File.new_for_commandline_arg(out_dir);
 
-    public void run() throws GLib.Error {{
-        var args = new string[]{{}};
-        for (var i = 1; i < Environment.get_args().length; ++i) {{
-            if (!Environment.get_args()[i].contains("--")) {{
-                args.append(Environment.get_args()[i]);
-            }}
-        }}
+    var enc_size = enc_file.query_info(FileAttribute.STANDARD_SIZE, FileQueryInfoFlags.NONE).get_attribute_uint64(FileAttribute.STANDARD_SIZE);
+    var progress = new ConsoleProgress("Decrypt+Extract", enc_size);
 
-        // Non-interactive mode: parse arguments and run operations
-        var non_interactive = false;
-        string? source_path = null;
-        string? password = null;
-        string? output_path = null;
-        bool encrypt = false;
-        bool decrypt = false;
+    Timer timer = new Timer();
 
-        for (var i = 0; i < args.length; ++i) {{
-            var arg = args[i];
+    Dvx3.decrypt(
+        enc_file,
+        dst_dir,
+        pwd,
+        (processed, total, output) => {
+            progress.update(processed, total, output);
+        }
+    );
 
-            if (arg == "--script" || arg == "--batch") {{ non_interactive = true; }}
-            else if (arg == "--encrypt" || arg == "-e") {{ encrypt = true; ++i; source_path = args[++i]; ++i; password = args[++i]; ++i; output_path = args[++i]; }}
-            else if (arg == "--decrypt" || arg == "-d") {{ decrypt = true; ++i; input_path = args[++i]; ++i; password = args[++i]; ++i; output_dir = args[++i]; }}
-            else if (arg == "--version" || arg == "-V") {{ print_version(); return; }}
-        }}
+    uint64 extracted_size = compute_total_size(dst_dir, null);
+    progress.finish(enc_size, extracted_size);
 
-        // Execute non-interactive operations
-        if (encrypt) {{
-            encrypt_directory(source_path, password, output_path);
-        }} else if (decrypt) {{
-            decrypt_archive(input_path, password, output_dir);
-        }} else {{
-            // Interactive TUI mode
-            interactive_mode();
-        }}
-    }}
+    GLib.stdout.printf("%s\n", colour_wrap("✅ Extracted to " + dst_dir.get_path(), GRN));
+    GLib.stdout.printf("Time: %.2fs\n", timer.elapsed());
 
-    private void print_version() throws GLib.Error {{
-        stdout.print("\x1b[38;5;22mDvx3 Backup Manager v1.0.0\x1b[0m\n");
-        stdout.print("  Core library: Vala (GObject/GI bindings)\n");
-        stdout.print("  Encryption:   XSalsa20-Poly1305 + Argon2id\n");
-        stdout.print("  Compression:  ZSTD level %d\n", compression_level);
-        stdout.print("  CLI TUI:      ANSI escape codes (cross-platform)\n");
-        stdout.print("\nUsage:\n  dvx3 encrypt <source> -p <password> -o <archive.dvx3>\n  dvx3 decrypt <archive.dvx3> -p <password> -o <target>\n  dvx3 --script 'encrypt /path -p pass -o out'");
-    }}
+    return 0;
+}
 
-    private void encrypt_directory(string source_path, string password, string output_path) {{
-        if (source_path == null || password == null || output_path == null) {{ return; }}
+public static int main(string[] args) {
+    try {
+        if (args.length == 2 && args[1] == "--version") { print ("dvx3 %s\n", Dvx3.VERSION); return 0; }
+        if (args.length == 2 && args[1] == "--codecs") {
+            foreach (var codec in Dvx3.codec_names ()) print ("%s: %s\n", codec, Dvx3.codec_available (codec) ? "available" : "missing dependency/adapter");
+            return 0;
+        }
+        if (args.length == 2 && (args[1] == "--help" || args[1] == "-h")) {
+            print ("Usage: dvx3 encrypt <folder> -p <password> [-o <archive>] [-c <codec>] [-i]\n       dvx3 decrypt <archive> -p <password> -o <empty-directory>\n       dvx3 --codecs\n"); return 0;
+        }
+        if (args.length < 2) {
+            GLib.stderr.printf("Usage: %s <encrypt|decrypt> [options]\n", args[0]);
+            return 1;
+        }
 
-        try {{
-            var ctx = new Dvx3Context();
+        string[] sub_args = new string[args.length - 1];
+        for (int i = 1; i < args.length; i++)
+            sub_args[i - 1] = args[i];
 
-            var result = ctx.encrypt_directory(source_path, password, output_path);
-
-            if (!result.success) {{
-                print_error("Error during encryption: " + result.error_message);
-                Environment.exit_code(1);
-            }} else {{
-                stdout.print("\x1b[32m✅\x1b[0m  Encrypted backup created: \x1b[97m" + output_path + "\x1b[0m");
-                stdout.print(" (Size: " + result.archive_size.to_string() + ")");
-            }}
-        }} catch (GLib.Error e) {{
-            print_error("Error: " + e.message);
-        }} finally {{
-            Environment.exit_code(0);
-        }}
-    }}
-
-    private void decrypt_archive(string archive_path, string password, string output_dir) {{
-        if (archive_path == null || password == null) {{ return; }}
-
-        try {{
-            var ctx = new Dvx3Context();
-
-            var result = ctx.decrypt_archive(archive_path, password, out var restored_files);
-
-            if (!result.success) {{
-                print_error("Error during decryption: " + result.error_message);
-                Environment.exit_code(1);
-            }} else {{
-                stdout.print("\x1b[32m✅\x1b[0m  Decrypted %d files to \x1b[97m%s\x1b[0m", restored_files.length, output_dir);
-            }}
-        }} catch (GLib.Error e) {{
-            print_error("Error: " + e.message);
-        }} finally {{
-            Environment.exit_code(0);
-        }}
-    }}
-
-    private void interactive_mode() {{
-        // Build menu options
-        var menu_items = new string[]{{"  create       — Create encrypted backup",
-                                      "  restore      — Restore from archive",
-                                      "  list         — List archive contents",
-                                      "  delete       — Remove old backups (retention)",
-                                      "  settings     — Configure encryption/compression",
-                                      "  help         — Show this help message",
-                                      "  exit         — Exit the application"}};
-
-        var selected = 0;
-        var ctx = new Dvx3Context();
-
-        while (true) {{
-            stdout.print("\x1b[H");  // clear screen and return cursor to home
-
-            print_header("🔐 Dvx3 Backup Manager v1.0.0 — CLI TUI (ANSI mode)");
-            stdout.print("  ┌───────────────────────────────────────────────┐");
-            stdout.print("  │ Press Enter or use ↑↓ arrows to navigate     │");
-            stdout.print("  │ Type 'exit' and press Enter to quit          │");
-            stdout.print("  └───────────────────────────────────────────────┘\n");
-
-            terminal.render_menu(menu_items, selected);
-        }}
-    }}
-
-public: // expose for testing
-    public Dvx3Context get_context() {{ return new Dvx3Context(); }}
-}}
-
-#pragma managed(pop)
+        switch (args[1]) {
+            case "encrypt":
+                return cmd_encrypt(sub_args);
+            case "decrypt":
+                return cmd_decrypt(sub_args);
+            default:
+                GLib.stderr.printf("Unknown command '%s'. Use encrypt or decrypt.\n", args[1]);
+                return 1;
+        }
+    } catch (Error e) {
+        GLib.stderr.printf("%s %s\n", colour_wrap("❌", RED), e.message);
+        return 1;
+    }
+}

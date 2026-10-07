@@ -1,294 +1,145 @@
-#!/bin/bash
-# build.sh — Unified cross-platform build script for Dvx3 Backup Manager
-# 
-# Usage: ./build.sh {core|cli|gui|all|clean} [--target=<platform>] [options]
-#
-# Targets:
-#   core      → Build Vala core library (libdvx3) + C API bindings
-#   cli       → Build CLI TUI (ANSI escape codes, no external deps beyond GLib/Gio)
-#   gui       → Build Qt6 GUI wrapper around the Vala core library C API
-#   all       → Build everything
-#   clean     → Remove build artifacts
-#
-# Cross-compilation targets:
-#   --target=linux-x86_64    (default, native on Linux)
-#   --target=linux-arm64      cross-compile for aarch64-linux-gnu
-#   --target=linux-armhf      cross-compile for armv7l-linux-gnueabihf (Raspberry Pi Zero, Orange Pi)
-#   --target=windows-x86_64   build for Windows x64 via MinGW-w64 toolchain
-#   --target=windows-arm64    build for Windows ARM64 via MinGW-w64 cross-compile
-#   --target=macos-intel      build for macOS Intel (x86_64-apple-darwin)
-#   --target=macos-silicon    build for Apple Silicon (aarch64-apple-darwin)
-#
-# Environment variables:
-#   CROSS_COMPILE  → cross-compiler prefix (e.g., aarch64-linux-gnu-)
-#   CC             → C compiler to use
-#   CXX            → C++ compiler to use
-#   VALAC          → Vala compiler path
-#
-
+#!/usr/bin/env bash
+# Native build entry point. Bash 3.2+ (including macOS) and MSYS2 UCRT64.
 set -euo pipefail
-
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly VERSION="1.0.0"
-
-# Colors for output (ANSI escape codes — works on any terminal)
-readonly RED='\x1b[38;5;209m'
-readonly GREEN='\x1b[38;5;64m'
-readonly CYAN='\x1b[38;5;46m'
-readonly YELLOW='\x1b[38;5;220m'
-readonly WHITE_BOLD='\x1b[97m'
-readonly RESET='\x1b[0m'
-
-# Detect current platform and set defaults
-if [[ -f /etc/os-release ]]; then
-    . /etc/os-release
-elif [ -f "/usr/lib/os-release" ]; then
-    . /usr/lib/os-release
-fi
-
-PLATFORM="${TARGET:-$OSTYPE}"
-ARCH="${CROSS_COMPILE_TARGET:-$UNAME_MACHINE:-x86_64}"
-
-# ───────────────────────────────────────────────────────────────
-# Detect cross-compilation toolchain
-# ───────────────────────────────────────────────────────────────
-
-detect_toolchain() {{
-    local target="$1"
-    
-    case "$target" in
-        linux-x86_64|linux-amd64)
-            echo "gcc x86_64-linux-gnu g++-x86_64-linux-gnu"
-            ;;
-        linux-arm64|linux-aarch64)
-            echo "aarch64-linux-gnu-gcc aarch64-linux-gnu-g++"
-            ;;
-        linux-armhf|rpi-zero|orange-pi)
-            echo "arm-linux-gnueabihf-gcc arm-linux-gnueabihf-g++"
-            ;;
-        windows-x86_64|windows-amd64)
-            echo "x86_64-w64-mingw32-gcc x86_64-w64-mingw32-g++"
-            ;;
-        windows-arm64)
-            echo "aarch64-w64-mingw32-gcc aarch64-w64-mingw32-g++"
-            ;;
-        macos-intel|macos-x86_64)
-            echo "clang-15 clang++-15"
-            ;;
-        macos-silicon|macos-arm64)
-            echo "clang-15 clang++-15"
-            ;;
-        *)
-            echo "$UNAME_MACHINE-gcc $UNAME_MACHINE-g++" 2>/dev/null || \
-                echo "gcc g++"
-            ;;
-    esac
-}}
-
-# ───────────────────────────────────────────────────────────────
-# Print colored output helpers
-# ───────────────────────────────────────────────────────────────
-
-log_info() {{ printf "${GREEN}[INFO]${RESET} %s\n" "$1"; }}
-log_success() {{ printf "${GREEN}✅${RESET} ${WHITE_BOLD}$1${RESET}\n" "$1"; }}
-log_error() {{ printf "${RED}❌${RESET} ${WHITE_BOLD}$1${RESET}\n" "$1"; }}
-log_warn()  {{ printf "${YELLOW}⚠️${RESET} ${WHITE_BOLD}$1${RESET}\n" "$1"; }}
-
-# ───────────────────────────────────────────────────────────────
-# Build the Vala core library (C API bindings via valac --capi)
-# ───────────────────────────────────────────────────────────────
-
-build_core() {{
-    local target="$1"
-    
-    log_info "Building core library (libdvx3) for $target..."
-    
-    # Detect toolchain for this target
-    local cc cxx
-    read -r cc cxx <<< "$(detect_toolchain "$target")"
-    
-    export CC="$cc" CXX="$cxx"
-    
-    # For cross-compilation, we need the appropriate sysroot/cross-toolchain
-    case "$target" in
-        linux-arm64)
-            log_info "  Cross-compiler: $cc $cxx (aarch64-linux-gnu)"
-            ;;
-        linux-armhf)
-            log_info "  Cross-compiler: $cc $cxx (arm-linux-gnueabihf for Raspberry Pi Zero/Orange Pi)"
-            ;;
-        *)
-            log_info "  Native build using: $cc"
-            ;;
-    esac
-    
-    # Build Vala core library with C API bindings
-    valac \
-        --pkg=GLib \
-        --pkg=Gio \
-        --capi=dvx3.h:dvx3.c \
-        'vala/core/dvx3.vala' \
-        -o "build/$target/libdvx3.so" \
-        -I"$SCRIPT_DIR/vala/core" \
-        -O2 -DNDEBUG 2>&1 | tee "build/$target/core-build.log" || true
-    
-    # Copy generated C headers/source to output directory
-    cp build/$target/dvx3.h build/$target/dvx3.c 2>/dev/null || true
-    
-    log_success "Core library built for $target: build/$target/libdvx3.so"
-}}
-
-# ───────────────────────────────────────────────────────────────
-# Build CLI TUI (ANSI escape codes — no external deps)
-# ───────────────────────────────────────────────────────────────
-
-build_cli() {{
-    local target="$1"
-    
-    log_info "Building CLI TUI for $target..."
-    
-    # Detect toolchain
-    local cc cxx
-    read -r cc cxx <<< "$(detect_toolchain "$target")"
-    
-    export CC="$cc" CXX="$cxx"
-    
-    valac \
-        --pkg=GLib \
-        --pkg=Gio \
-        'vala/cli/app.vala' \
-        -o "build/$target/cli_backup_manager" \
-        -I"$SCRIPT_DIR/vala/core" \
-        -O2 -DNDEBUG 2>&1 | tee "build/$target/cli-build.log" || true
-    
-    log_success "CLI TUI built for $target: build/$target/cli_backup_manager"
-}}
-
-# ───────────────────────────────────────────────────────────────
-# Build Qt6 GUI (links against the Vala core library C API)
-# ───────────────────────────────────────────────────────────────
-
-build_gui() {{
-    local target="$1"
-    
-    log_info "Building Qt6 GUI for $target..."
-    
-    # Detect toolchain
-    local cc cxx
-    read -r cc cxx <<< "$(detect_toolchain "$target")"
-    
-    export CC="$cc" CXX="$cxx"
-    
-    cmake \
-        -S gui/qt/qtdesktop \
-        -B build/$target/gui-cmake-build \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_C_COMPILER="$cc" \
-        -DCMAKE_CXX_COMPILER="$cxx" \
-        -DCMAKE_INSTALL_PREFIX=$SCRIPT_DIR/build/install 2>&1 | tee "build/$target/gui-build.log" || true
-    
-    cmake --build build/$target/gui-cmake-build --config Release --parallel "$(nproc)"
-    
-    log_success "Qt6 GUI built for $target: build/$target/backup-manager-gui"
-}}
-
-# ───────────────────────────────────────────────────────────────
-# Package everything (DEB/RPM/AppImage)
-# ───────────────────────────────────────────────────────────────
-
-package_all() {{
-    log_info "Creating packages for $target..."
-    
-    # Create a distribution-specific package directory
-    local pkg_dir="build/packages/$target"
-    mkdir -p "$pkg_dir/deb" "$pkg_dir/rpm" "$pkg_dir/appimage"
-    
-    # Package the binaries
-    cp build/$target/cli_backup_manager  "build/packages/$target/cli.dvx3"
-    
-    log_success "Packages created in: build/packages/$target/"
-}}
-
-# ───────────────────────────────────────────────────────────────
-# Main entry point
-# ───────────────────────────────────────────────────────────────
-
-main() {{
-    local target="${TARGET:-linux-x86_64}"
-    
-    log_info "🔨 Dvx3 Build System v$VERSION"
-    log_info "  Target: $target ($(uname -m) / $(uname -s))"
-    log_info "  CC=$CC CXX=$CXX VALAC=$VALAC"
-    
-    # Validate target argument
-    case "$1" in
-        core|cli|gui|all|package-all|clean)
-            : ;;
-        *)
-            echo "Usage: $0 {core|cli|gui|all|clean|package-all} [--target=<platform>]" >&2
-            exit 1
-            ;;
-    esac
-    
-    case "$1" in
-        clean)
-            rm -rf build/*
-            log_success "Cleaned all build artifacts."
-            ;;
-        
-        core)
-            build_core "$target"
-            ;;
-        
-        cli)
-            build_cli "$target"
-            ;;
-        
-        gui)
-            build_gui "$target"
-            ;;
-        
-        all)
-            # Build in order: core → cli → gui (gui depends on core's C API)
-            for plat in linux-x86_64 linux-arm64 macos-silicon windows-x86_64; do
-                log_info "=== Building for $plat ==="
-                build_core "$plat" || true
-                build_cli "$plat" || true
-                # GUI requires Qt6 which is only available on Linux/macOS/Windows x64
-                if [[ "$plat" == linux-x86_64 ]] || [[ "$plat" == macos-silicon ]]; then
-                    build_gui "$plat"
-                fi
-            done
-            
-            # For ARMHF (Raspberry Pi), we only build core + CLI (no GUI)
-            for plat in linux-armhf; do
-                log_info "=== Building cross-compile for $plat ==="
-                build_core "$plat" || true
-                build_cli "$plat" || true
-            done
-            
-            # Windows ARM64 cross-compile
-            if [[ -f "/usr/bin/aarch64-w64-mingw32-gcc" ]]; then
-                log_info "=== Building for Windows ARM64 ==="
-                CC=aarch64-w64-mingw32-gcc CXX=aarch64-w64-mingw32-g++ build_core "windows-arm64" || true
-            fi
-            
-            ;;
-        
-        package-all)
-            # Build everything first, then package
-            ./build.sh all --target="$target"
-            for plat in linux-x86_64 macos-silicon windows-x86_64; do
-                log_info "=== Packaging $plat ==="
-                package_all "$plat"
-            done
-            ;;
-        
-        *)
-            echo "Usage: $0 {core|cli|gui|all|clean|package-all} [--target=<platform>]" >&2
-            exit 1
-            ;;
-    esac
-}}
-
-main "$@"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT"
+fail() { printf 'Build error: %s\n' "$*" >&2; exit 1; }
+need() { command -v "$1" >/dev/null 2>&1 || fail "Required tool missing: $1"; }
+usage() { echo 'Usage: ./build.sh [core|cli|manager|gui|all|clean|test ...] [--target=native|<os>-<arch>]'; }
+case "$(uname -s)" in
+  Linux) OS=linux ;;
+  Darwin) OS=macos ;;
+  MINGW*|MSYS*) OS=windows; [[ ${MSYSTEM:-} == UCRT64 ]] || fail 'Use the MSYS2 UCRT64 shell on Windows' ;;
+  *) fail "Unsupported OS: $(uname -s)" ;;
+esac
+case "$(uname -m)" in
+  x86_64|amd64) ARCH=x86_64 ;;
+  aarch64|arm64) ARCH=arm64 ;;
+  armv7l|armv6l) ARCH=armhf ;;
+  i?86) ARCH=x86 ;;
+  *) fail "Unsupported architecture: $(uname -m)" ;;
+esac
+NATIVE="$OS-$ARCH"
+TARGET="${TARGET:-native}"
+COMMANDS=()
+for arg in "$@"; do
+  case "$arg" in
+    --target=*) TARGET="${arg#*=}" ;;
+    -h|--help) usage; exit 0 ;;
+    core|cli|manager|gui|all|clean|test) COMMANDS+=("$arg") ;;
+    *) usage >&2; fail "Unknown argument: $arg" ;;
+  esac
+done
+[[ $TARGET == native || $TARGET == "$NATIVE" ]] || fail "Target $TARGET differs from native $NATIVE; cross-compilation is not supported"
+[[ -z ${CROSS_COMPILE:-} && -z ${CROSS_COMPILE_TARGET:-} ]] || fail 'Cross-compilation requires a target sysroot and is not supported'
+[[ ${#COMMANDS[@]} -gt 0 ]] || COMMANDS=(all)
+BUILD="$ROOT/build"
+VALAC="${VALAC:-valac}"
+CC="${CC:-cc}"
+CXX="${CXX:-c++}"
+PKG_CONFIG="${PKG_CONFIG:-pkg-config}"
+export CC CXX PKG_CONFIG
+JOBS="${JOBS:-2}"
+[[ $JOBS =~ ^[1-9][0-9]*$ ]] || fail 'JOBS must be a positive integer'
+EXE=''; LIB='libdvx3.so'
+case "$OS" in macos) LIB=libdvx3.dylib ;; windows) EXE=.exe; LIB=libdvx3.dll ;; esac
+CORE_READY=0
+CLI_READY=0
+MANAGER_READY=0
+validate_core() {
+  need "$VALAC"; need "$CC"; need "$PKG_CONFIG"; need ar
+  local vala_api vala_version compiler
+  vala_api="$("$VALAC" --api-version)"
+  [[ $vala_api =~ ^([0-9]+)\.([0-9]+)$ ]] || fail "Invalid Vala API version: $vala_api"
+  (( 10#${BASH_REMATCH[1]} > 0 || 10#${BASH_REMATCH[2]} >= 56 )) || fail 'Vala 0.56+ is required'
+  vala_version="$("$VALAC" --version)"
+  compiler="$("$CC" -dumpmachine)"
+  "$PKG_CONFIG" --print-errors --exists 'glib-2.0 >= 2.66' gio-2.0 json-glib-1.0 libsodium
+  mkdir -p "$BUILD/bin" "$BUILD/lib" "$BUILD/generated" "$BUILD/obj" "$BUILD/tests"
+  printf 'Native %s; %s; %s\n' "$NATIVE" "$vala_version" "$compiler"
+  # The compiler must produce a runnable native binary (catches foreign CC/sysroots).
+  printf 'int main(void) { return 0; }\n' > "$BUILD/obj/native-check.c"
+  "$CC" "$BUILD/obj/native-check.c" -o "$BUILD/obj/native-check$EXE"
+  "$BUILD/obj/native-check$EXE" || fail 'C compiler cannot produce runnable native executables'
+}
+build_core() {
+  [[ $CORE_READY == 0 ]] || return 0
+  validate_core
+  "$VALAC" -C --directory "$BUILD/generated" --basedir "$ROOT/vala" \
+    --library dvx3 --header "$BUILD/generated/dvx3.h" --vapi "$BUILD/generated/dvx3.vapi" \
+    --vapidir "$ROOT/vala/bindings" --pkg libsodium --pkg gio-2.0 --pkg json-glib-1.0 \
+    vala/core/dvx3.vala vala/manager/manager.vala
+  local pkg_flags pkg_output objects=() src obj
+  pkg_output="$("$PKG_CONFIG" --cflags glib-2.0 gio-2.0 json-glib-1.0 libsodium)"
+  read -r -a pkg_flags <<< "$pkg_output"
+  for src in "$BUILD/generated/core/dvx3.c" "$BUILD/generated/manager/manager.c"; do
+    obj="$BUILD/obj/$(basename "${src%.c}").o"
+    "$CC" -O2 -fPIC -I"$BUILD/generated" "${pkg_flags[@]}" -c "$src" -o "$obj"
+    objects+=("$obj")
+  done
+  ar rcs "$BUILD/lib/libdvx3.a" "${objects[@]}"
+  pkg_output="$("$PKG_CONFIG" --libs glib-2.0 gio-2.0 json-glib-1.0 libsodium)"
+  read -r -a pkg_flags <<< "$pkg_output"
+  case "$OS" in
+    macos) "$CC" -dynamiclib -Wl,-install_name,@rpath/libdvx3.dylib "${objects[@]}" "${pkg_flags[@]}" -o "$BUILD/lib/$LIB" ;;
+    windows) "$CC" -shared "${objects[@]}" "${pkg_flags[@]}" -Wl,--out-implib,"$BUILD/lib/libdvx3.dll.a" -o "$BUILD/lib/$LIB"
+      cp "$BUILD/lib/$LIB" "$BUILD/bin/$LIB" ;;
+    linux) "$CC" -shared -Wl,-z,defs "${objects[@]}" "${pkg_flags[@]}" -o "$BUILD/lib/$LIB" ;;
+  esac
+  CORE_READY=1
+}
+vala_app() {
+  local flags pkg_output link_args=() flag
+  pkg_output="$("$PKG_CONFIG" --libs glib-2.0 gio-2.0 json-glib-1.0 libsodium)"
+  read -r -a flags <<< "$pkg_output"
+  for flag in "${flags[@]}"; do link_args+=(-X "$flag"); done
+  "$VALAC" --cc "$CC" --directory "$BUILD/generated" \
+    --vapidir "$BUILD/generated" --pkg dvx3 --pkg gio-2.0 --pkg json-glib-1.0 \
+    -X -I"$BUILD/generated" -X "$BUILD/lib/libdvx3.a" "${link_args[@]}" \
+    "$1" -o "$2"
+}
+build_cli() {
+  [[ $CLI_READY == 0 ]] || return 0
+  build_core
+  vala_app vala/cli/app.vala "$BUILD/bin/dvx3$EXE"
+  CLI_READY=1
+}
+build_manager() {
+  [[ $MANAGER_READY == 0 ]] || return 0
+  build_core
+  vala_app vala/manager/app.vala "$BUILD/bin/backup-manager$EXE"
+  MANAGER_READY=1
+}
+build_gui() {
+  build_core; need cmake; need "$CXX"
+  cmake -S gui/qt/qtdesktop -B "$BUILD/gui" \
+    -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER="$CXX" -DDVX3_BUILD_DIR="$BUILD"
+  cmake --build "$BUILD/gui" --config Release --parallel "$JOBS"
+}
+run_tests() {
+  build_cli; build_manager
+  need "$CXX"; need tar; need zstd; need gzip; need xz
+  vala_app tests/core.vala "$BUILD/tests/core-test$EXE"
+  "$BUILD/tests/core-test$EXE"
+  local flags pkg_output
+  pkg_output="$("$PKG_CONFIG" --cflags --libs glib-2.0 gio-2.0 json-glib-1.0 libsodium)"
+  read -r -a flags <<< "$pkg_output"
+  "$CXX" -std=c++17 -I"$ROOT" -I"$BUILD/generated" tests/binding.cpp \
+    "$BUILD/lib/libdvx3.a" "${flags[@]}" -o "$BUILD/tests/binding-test$EXE"
+  "$BUILD/tests/binding-test$EXE"
+  "$BUILD/bin/dvx3$EXE" --version
+  "$BUILD/bin/backup-manager$EXE" --version
+  "$BUILD/bin/backup-manager$EXE" --help
+  "$ROOT/tests/build-driver.sh"
+}
+for cmd in "${COMMANDS[@]}"; do
+  case "$cmd" in
+    clean) rm -rf "$BUILD"; CORE_READY=0; CLI_READY=0; MANAGER_READY=0 ;;
+    core) build_core ;;
+    cli) build_cli ;;
+    manager) build_manager ;;
+    gui) build_gui ;;
+    all) build_cli; build_manager; build_gui ;;
+    test) run_tests ;;
+  esac
+done

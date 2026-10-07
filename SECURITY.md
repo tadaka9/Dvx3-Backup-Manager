@@ -1,21 +1,13 @@
-# Security Policy
+# Security notes
 
-## Supported Versions
+This checkout is an unreleased development refactor; no supported-release matrix
+or completed independent security audit is asserted.
 
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
+The engine uses libsodium Argon2id and XSalsa20-Poly1305, authenticates new archive
+headers and verifies encrypted payload before extraction. Valid legacy archives
+retain weaker metadata guarantees. Plaintext staging, extraction boundaries and
+password-handling limitations are described in [ARCHITECTURE.md](ARCHITECTURE.md).
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-| 4.0.x   | :white_check_mark: |
-| < 4.0   | :x:                |
-
-## Reporting a Vulnerability
-
-Use this section to tell people how to report a vulnerability.
-
-Tell them where to go, how often they can expect to get an update on a
-reported vulnerability, what to expect if the vulnerability is accepted or
-declined, etc.
+For vulnerability reports, use GitHub private vulnerability reporting if enabled
+for this repository, or contact the maintainer without disclosing passwords,
+private archives or exploit details in a public issue.

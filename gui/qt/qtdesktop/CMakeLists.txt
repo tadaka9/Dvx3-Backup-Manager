@@ -1,26 +1,21 @@
 cmake_minimum_required(VERSION 3.21)
 project(Dvx3BackupManagerQt VERSION 1.0.0 LANGUAGES CXX)
-
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTORCC ON)
-
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Widgets)
-
-qt_add_executable(dvx3-backup-manager
-    main.cpp
-    resources.qrc
-)
-
-target_link_libraries(dvx3-backup-manager PRIVATE Qt6::Core Qt6::Widgets)
-
-target_compile_options(dvx3-backup-manager PRIVATE
-    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
-)
-
-install(TARGETS dvx3-backup-manager
-    BUNDLE DESTINATION .
-    RUNTIME DESTINATION bin
-)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(DVX3_DEPS REQUIRED IMPORTED_TARGET glib-2.0 gio-2.0 json-glib-1.0 libsodium)
+if(NOT DVX3_BUILD_DIR OR NOT EXISTS "${DVX3_BUILD_DIR}/lib/libdvx3.a")
+    message(FATAL_ERROR "Build the canonical Vala core with ./build.sh gui")
+endif()
+add_library(dvx3_core STATIC IMPORTED)
+set_target_properties(dvx3_core PROPERTIES IMPORTED_LOCATION "${DVX3_BUILD_DIR}/lib/libdvx3.a")
+qt_add_executable(dvx3-backup-manager main.cpp)
+set_target_properties(dvx3-backup-manager PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${DVX3_BUILD_DIR}/bin"
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE "${DVX3_BUILD_DIR}/bin")
+target_include_directories(dvx3-backup-manager PRIVATE "${DVX3_BUILD_DIR}/generated" "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+target_link_libraries(dvx3-backup-manager PRIVATE Qt6::Core Qt6::Widgets dvx3_core PkgConfig::DVX3_DEPS)
+target_compile_options(dvx3-backup-manager PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)

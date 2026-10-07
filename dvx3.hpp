@@ -6,8 +6,9 @@
 
 #pragma once
 
-#include "dvx3.h"
+#include <dvx3.h>
 #include <cstdint>
+#include <cstdio>
 #include <string>
 #include <functional>
 #include <stdexcept>
@@ -108,7 +109,8 @@ inline void encrypt(
     const std::string& out_file,
     const std::string& password,
     const std::string& exclude_path = "",
-    ProgressCallback progress = nullptr)
+    ProgressCallback progress = nullptr,
+    const std::string& codec = "zstd")
 {
     File src(src_dir);
     File dst(out_file);
@@ -116,10 +118,11 @@ inline void encrypt(
     GError* error = nullptr;
     detail::ProgressData progress_data{progress};
 
-    dvx3_encrypt(
+    dvx3_encrypt_with_codec(
         src.get(),
         dst.get(),
         password.c_str(),
+        codec.c_str(),
         exclude_path.empty() ? nullptr : exclude_path.c_str(),
         progress ? detail::progress_callback_wrapper : nullptr,
         progress ? static_cast<gpointer>(&progress_data) : nullptr,
