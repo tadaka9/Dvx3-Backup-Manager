@@ -2,6 +2,7 @@ name: Native Vala build and tests
 on:
   push:
     branches: [main, develop]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -15,7 +16,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -27,8 +32,8 @@ jobs:
             lz4 brotli 7zip zpaq shellcheck
       - name: Validate shell scripts
         run: |
-          bash -n build.sh scripts/run-tests.sh
-          shellcheck build.sh scripts/run-tests.sh install.sh uninstall.sh run_gui.sh
+          bash -n build.sh scripts/run-tests.sh scripts/package-build.sh
+          shellcheck build.sh scripts/run-tests.sh scripts/package-build.sh install.sh uninstall.sh run_gui.sh
       - name: Build every component and test real archive round trips
         env:
           DVX3_REQUIRE_CODECS: none,zstd,gzip,bzip2,xz,lzma,lz4,brotli,7z,zpaq
@@ -37,13 +42,27 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: build/bin/dvx3-backup-manager --smoke-test
+      - name: Archive tested native build
+        run: ./scripts/package-build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dvx3-linux-${{ matrix.arch }}
+          path: |
+            build/artifacts/*.tar.gz
+            build/artifacts/*.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
   macos:
-    # Candidate platforms: these jobs must pass before claiming verified support.
     name: macOS native (${{ matrix.runner }})
     strategy:
       fail-fast: false
       matrix:
-        runner: [macos-15, macos-15-intel]
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -63,8 +82,19 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: build/bin/dvx3-backup-manager --smoke-test
+      - name: Archive tested native build
+        run: ./scripts/package-build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dvx3-macos-${{ matrix.arch }}
+          path: |
+            build/artifacts/*.tar.gz
+            build/artifacts/*.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
   windows:
-    name: Windows x64 native (MSYS2 UCRT64, candidate)
+    name: Windows x64 native (MSYS2 UCRT64)
     runs-on: windows-2022
     defaults:
       run:
@@ -101,3 +131,61 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: build/bin/dvx3-backup-manager.exe --smoke-test
+      - name: Archive tested native build
+        run: ./scripts/package-build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dvx3-windows-x86_64
+          path: |
+            build/artifacts/*.tar.gz
+            build/artifacts/*.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+  release:
+    name: Publish tested build archives
+    needs: [linux, macos, windows]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dvx3-*
+          path: dist
+          merge-multiple: true
+      - name: Verify archives and publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BUILD_REF: ${{ github.ref }}
+          BUILD_TAG: ${{ github.ref_name }}
+        run: |
+          cd dist
+          for platform in linux-x86_64 linux-arm64 macos-x86_64 macos-arm64 windows-x86_64; do
+            test -s "dvx3-$platform.tar.gz"
+            sha256sum -c "dvx3-$platform.tar.gz.sha256"
+          done
+          args=()
+          if [[ "$BUILD_REF" == refs/tags/* ]]; then
+            tag="$BUILD_TAG"
+            args+=(--verify-tag)
+            [[ "$tag" != *-* ]] || args+=(--prerelease)
+          else
+            tag="build-$GITHUB_SHA"
+            args+=(--prerelease --target "$GITHUB_SHA")
+          fi
+          cat > release-notes.md <<'EOF'
+          Native build archives for Linux x86_64/ARM64, macOS Intel/ARM64 and Windows x64.
+          All five native build, archive round-trip and GUI smoke-test jobs passed.
+          These bundles require runtime libraries, Qt plugins and archive/codec tools;
+          they are not self-contained installers. See BUILD.md inside each archive.
+          Verify downloads using the accompanying SHA256 checksum files.
+          EOF
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" ./*.tar.gz ./*.sha256 --clobber
+          else
+            gh release create "$tag" "${args[@]}" --title "Dvx3 $tag" \
+              --notes-file release-notes.md ./*.tar.gz ./*.sha256
+          fi

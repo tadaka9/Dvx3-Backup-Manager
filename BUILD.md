@@ -21,7 +21,7 @@ sudo apt-get install build-essential valac pkg-config cmake qt6-base-dev \
 sudo apt-get install lz4 brotli 7zip zpaq shellcheck
 ```
 
-macOS candidate, with Homebrew and Xcode command-line tools:
+macOS, with Homebrew and Xcode command-line tools:
 
 ```sh
 brew install vala pkgconf cmake qt glib json-glib libsodium zstd gzip bzip2 xz \
@@ -31,7 +31,7 @@ export PATH="$(brew --prefix gzip)/bin:$(brew --prefix bzip2)/bin:$PATH"
 ./build.sh all test
 ```
 
-Windows candidate: run inside **MSYS2 UCRT64**, with native UCRT64 GCC, Vala,
+Windows: run inside **MSYS2 UCRT64**, with native UCRT64 GCC, Vala,
 pkgconf, CMake/Ninja, GLib, JSON-GLib, libsodium, Qt6 and desired codecs.
 The exact package list is in `.github/workflows/ci.yml`. Use
 `CC=gcc CXX=g++ CMAKE_GENERATOR=Ninja ./build.sh all test`.
@@ -79,12 +79,14 @@ a runnable native program. Dependency and compiler failures terminate the build.
 
 - **Linux x86_64**: built and tested locally on Pop!_OS 24.04, Vala 0.56.16,
   GCC 13.3, GLib 2.80, JSON-GLib 1.8, libsodium 1.0.18, Qt 6.4.2.
-- Linux ARM64: native `ubuntu-24.04-arm` CI job configured; pending actual run.
-- macOS ARM64 / Intel: native `macos-15` / `macos-15-intel` candidate jobs;
-  pending actual runs.
-- Windows x64: native `windows-2022` / MSYS2 UCRT64 candidate job;
-  pending actual run. ZPAQ/Razor require separately supplied tools/adapters.
+- Linux ARM64: native `ubuntu-24.04-arm` build, tests and Qt smoke test passed.
+- macOS ARM64 / Intel: native `macos-15` / `macos-15-intel` builds and tests passed.
+- Windows x64: native `windows-2022` / MSYS2 UCRT64 build and tests passed.
+  ZPAQ/Razor require separately supplied tools/adapters.
 - ARMHF and Windows ARM64: no tested toolchain/runner; **not declared supported**.
+
+All five jobs passed for [commit f20b705](https://github.com/tadaka9/Dvx3-Backup-Manager/actions/runs/37613343191).
+This verifies the configured native environments, not standalone deployment.
 
 Runner labels follow the [GitHub runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
 The macOS Vala package is [Homebrew `vala`](https://formulae.brew.sh/formula/vala),
@@ -102,3 +104,25 @@ No DEB, RPM, AppImage, DMG, MSI or NSIS packaging is implemented or advertised.
 Vala 0.56.16 emits C qualifier/pointer warnings with GLib 2.80 in this environment;
 these are reported and do not hide failed compilations. Newer native toolchains
 still need their own CI verification.
+
+## Downloadable build and release artifacts
+
+After successful build, tests and GUI startup, each native CI job archives
+`bin/`, the core libraries/bindings, example codec profiles and documentation.
+Download `dvx3-<os>-<arch>` from the workflow run's **Artifacts** section
+(retained for 30 days). The enclosed `.tar.gz` preserves executable permissions
+and has an accompanying `.sha256` checksum.
+
+When all five jobs pass on `main`, CI publishes a commit-labelled prerelease
+`build-<full-commit-sha>` with all five archives and checksum files on the
+[Releases page](https://github.com/tadaka9/Dvx3-Backup-Manager/releases).
+Pushing a `v*` tag builds and publishes the matching named release; tags containing
+`-` are marked prerelease. Pull requests, `develop` and manual runs upload workflow
+artifacts without publishing a release. Only the release job has write permission.
+
+For a local bundle, first run `./build.sh all test`, then
+`./scripts/package-build.sh`; output is in ignored `build/artifacts/`.
+Extract and run the programs in `bin/` with the runtime dependencies installed.
+Bundles do not include system libraries, Qt plugins or codec executables;
+Windows requires the MSYS2 UCRT64 runtime on PATH and macOS the matching
+Homebrew dependencies. These archives are not DEB/RPM/AppImage/DMG/MSI installers.

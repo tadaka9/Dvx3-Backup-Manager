@@ -29,10 +29,17 @@ error handling, binding and offscreen GUI startup are tested. gzip, bzip2, xz/LZ
 zstd, LZ4, Brotli, 7z, ZPAQ and no compression have local round-trip coverage.
 Custom xz -> zstd pipelines are also tested.
 
-Linux ARM64, macOS Intel/ARM64 and Windows x64 have native CI jobs configured and
-remain candidates until those jobs are actually run. ARMHF, Windows ARM64, MSVC
-and cross-compilation are not declared supported. No package builders or
-self-contained release binaries are provided.
+Linux ARM64, macOS Intel/ARM64 and Windows x64 also passed the native build,
+archive tests and GUI smoke tests in [CI](https://github.com/tadaka9/Dvx3-Backup-Manager/actions/runs/37613343191).
+ARMHF, Windows ARM64, MSVC and cross-compilation are not declared supported.
+
+Download native archives and SHA256 checksums from
+[Releases](https://github.com/tadaka9/Dvx3-Backup-Manager/releases) or a successful
+workflow run's Artifacts section. `main` publishes commit-labelled prereleases;
+`v*` tags publish named releases after all five native jobs pass.
+Install the runtime dependencies listed in [BUILD.md](BUILD.md) before running
+the extracted programs. The archives do not bundle system libraries, Qt plugins
+or codec tools.
 
 Razor and repacking chains can integrate through locally supplied profiles/adapters;
 they are unverified without their actual tools. See [COMPRESSION.md](COMPRESSION.md)
