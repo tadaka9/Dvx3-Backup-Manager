@@ -123,6 +123,7 @@ inline void encrypt(
         exclude_path.empty() ? nullptr : exclude_path.c_str(),
         progress ? detail::progress_callback_wrapper : nullptr,
         progress ? static_cast<gpointer>(&progress_data) : nullptr,
+        DVX3_ENCRYPTION_MODE_WITH_INTEGRITY,
         &error
     );
 
@@ -160,6 +161,7 @@ inline void decrypt(
         password.c_str(),
         progress ? detail::progress_callback_wrapper : nullptr,
         progress ? static_cast<gpointer>(&progress_data) : nullptr,
+        DVX3_ENCRYPTION_MODE_WITH_INTEGRITY,
         &error
     );
 

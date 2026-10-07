@@ -31,4 +31,4 @@ Generated C/Vala/Qt artifacts are not source files and must not be committed.
 
 ## CI
 
-`.github/workflows/ci.yml` performs the canonical Linux build and tests the same entry points used locally.
+`.github/workflows/ci.yml` performs the canonical Linux manager build and binary smoke checks.
