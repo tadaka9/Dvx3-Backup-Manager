@@ -36,9 +36,13 @@ cp LICENSE README.md BUILD.md ARCHITECTURE.md COMPRESSION.md BACKUP_MANAGER_GUID
   INSTALL.md CPP_USAGE.md CLEANUP_REPORT.md "$stage/"
 cp assets/brand/readme-hero.svg "$stage/assets/brand/"
 cp gui/qt/qtdesktop/icons/logo.svg "$stage/assets/brand/logo.svg"
+commit="${GITHUB_SHA:-unknown}"
+if command -v git >/dev/null 2>&1; then
+  commit="$(git rev-parse HEAD)"
+fi
 {
   printf 'Platform: %s-%s\n' "$os" "$arch"
-  printf 'Commit: %s\n' "$(git rev-parse HEAD)"
+  printf 'Commit: %s\n' "$commit"
   printf 'Runtime GLib/GIO, JSON-GLib and libsodium versions:\n'
   pkg-config --modversion glib-2.0 gio-2.0 json-glib-1.0 libsodium
 } > "$stage/BUILD-INFO.txt"

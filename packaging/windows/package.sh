@@ -26,5 +26,5 @@ for tool in heat.exe candle.exe light.exe; do [[ -x "$wix_bin/$tool" ]] || { ech
 source_win="$(cygpath -w "$stage")"
 "$wix_bin/heat.exe" dir "$source_win" -nologo -arch x64 -gg -sfrag -srd -sreg -dr INSTALLFOLDER -cg Dvx3Files -var var.SourceDir -out "$work/files.wxs"
 "$wix_bin/candle.exe" -nologo -arch x64 -dSourceDir="$source_win" -out "$work/" packaging/windows/product.wxs "$work/files.wxs"
-"$wix_bin/light.exe" -nologo -ext WixUIExtension -out "$artifacts/DVX3-${version}-windows-x86_64.msi" "$work/product.wixobj" "$work/files.wixobj"
+"$wix_bin/light.exe" -nologo -ext WixUIExtension -pdbout "$work/DVX3.wixpdb" -out "$artifacts/DVX3-${version}-windows-x86_64.msi" "$work/product.wixobj" "$work/files.wixobj"
 [[ -s "$artifacts/DVX3-${version}-windows-x86_64.msi" ]]

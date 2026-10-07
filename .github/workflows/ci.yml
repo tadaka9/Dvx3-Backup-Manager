@@ -211,10 +211,14 @@ jobs:
           Archive codec executables remain system dependencies. MSI and PKG development
           builds are unsigned; macOS app bundles receive ad-hoc signing in CI.
           EOF
+          assets=(
+            ./*.tar.gz ./*.sha256 ./*.deb ./*.rpm ./*.AppImage
+            ./*.app.zip ./*.pkg ./*-portable.zip ./*.msi
+          )
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" ./* --clobber
+            gh release upload "$tag" "${assets[@]}" --clobber
             gh release edit "$tag" --notes-file /tmp/dvx3-release-notes.md
           else
             gh release create "$tag" "${args[@]}" --title "Dvx3 $tag" \
-              --notes-file /tmp/dvx3-release-notes.md ./*
+              --notes-file /tmp/dvx3-release-notes.md "${assets[@]}"
           fi
