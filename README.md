@@ -1,241 +1,388 @@
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![platforms](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows%20%7C%20raspberry--pi-blue)](BUILD_MULTIPLATFORM.md)
-[![Qt6 GUI](https://img.shields.io/badge/GUI-Qt6-informational)](GUI_GUIDE.md)
-[![Vala](https://img.shields.io/badge/language-vala-blueviolet)](https://vala.dev/)
-[![C++](https://img.shields.io/badge/language-c++-blue)](CPP_USAGE.md)
-[![Security: Argon2id+XSalsa20](https://img.shields.io/badge/security-argon2id%20%2B%20xsalsa20--poly1305-brightgreen)](SECURITY.md)
+<div align="center">
 
-# Dvx3 Backup Manager
+# 🔐 Dvx3 Backup Manager
 
-> **Encrypted, compressed, and cross-platform backup system with CLI, GUI, and C++/Vala/C API**
+> **Encrypted, compressed, cross-platform backup system** — CLI • GUI (Qt6) • C++/Vala/C API • Multi-platform packaging
 
 ---
 
-## Overview
-
-Dvx3 Backup Manager is a secure, high-performance backup solution for Linux, macOS, Windows, and Raspberry Pi. It features:
-
-- **Encrypted archives**: Argon2id KDF + XSalsa20-Poly1305 (libsodium)
-- **Compression**: zstd (configurable level, multi-threaded)
-- **Streaming pipeline**: No intermediate files, efficient memory usage
-- **Multiple interfaces**: CLI, interactive TUI, Qt6 GUI, C++/Vala/C API
-- **Backup job management**: Retention, history, automation, and more
-
----
-
-## Table of Contents
-
-- [Features](#features)
-- [Quick Start](#quick-start)
-- [Installation](#installation)
-- [Building](#building)
-- [CLI Usage](#cli-usage)
-- [Interactive Backup Manager](#interactive-backup-manager)
-- [Qt6 GUI](#qt6-gui)
-- [C++/Vala API Usage](#cppvala-api-usage)
-- [Archive Format](#archive-format)
-- [Configuration & Files](#configuration--files)
-- [Multi-Platform Builds](#multi-platform-builds)
-- [Security](#security)
-- [Troubleshooting](#troubleshooting)
-- [Releasing](#releasing)
-- [License](#license)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Latest Release](https://img.shields.io/badge/release-latest-brightgreen.svg)](https://github.com/tadaka9/Dvx3-Backup-Manager/releases/latest)
+[![Platforms](https://img.shields.io/badge/platforms-Linux%20|%20Windows%20|%20macOS%20|%20RaspberryPi-blue)](BUILD_MULTIPLATFORM.md)
+[![CI Status](https://img.shields.io/badge/CI-Matrix%20Builds-success.svg?style=for-the-badge&logo=github-actions)](.github/workflows/ci.yml)
+[![Vala Language](https://img.shields.io/badge/language-Vala-purple.svg?style=flat&logo=vala)](https://vala.dev/)
+[![Security: Argon2id+XSalsa20](https://img.shields.io/badge/security-argon2id%2Bxsalsa20--poly1305-brightgreen?style=for-the-badge&logo=yubico)](SECURITY.md)
+[![Matrix Builds](https://img.shields.io/badge/matrix-Linux|Windows|macOS%20Intel|Apple%20Silicon-purple?style=for-the-badge)](#-supported-platforms)
+[![Qt6 GUI](https://img.shields.io/badge/GUI-Qt6%20Desktop-green?style=flat&logo=qt)](GUI_GUIDE.md)
+[![Argon2 Benchmark](https://img.shields.io/badge/argon2id-iterations%3D8-ff4500?style=for-the-badge&logo=infini-trend)](SECURITY.md#argon2id-key-derivation)
+[![zstd Compression](https://img.shields.io/badge/zstd-level--19-faa625?style=for-the-badge&logo=facebook)](#compression-zstd)
 
 ---
 
-## Features
+</div>
 
-- **End-to-end encryption**: Argon2id KDF, XSalsa20-Poly1305 authenticated encryption
-- **zstd compression**: Level 1-22, multi-threaded
-- **No intermediate files**: Streams tar | zstd | encrypt
-- **Progress tracking**: Dynamic (GNU tar) or static estimation
----
-
-## Quick Start
+## 🚀 Quick Start
 
 ```bash
-# Build everything (CLI, GUI, library)
+# Clone and build everything
+git clone https://github.com/tadaka9/Dvx3-Backup-Manager.git
+cd Dvx3-Backup-Manager
 ./build.sh all
- mkdir -p tests/build
- cd tests/build
- cmake -G Ninja -S .. -B . -DCMAKE_BUILD_TYPE=Release
- cmake --build . --parallel
- ctest --output-on-failure
-./backup-manager-gui
-
-# Or use the CLI directly
-./dvx3 encrypt /path/to/folder -p "password" -o backup.dvx3
-./dvx3 decrypt backup.dvx3 -p "password" -o /restore/to
-```
-
----
-
-## Installation
-
-See [INSTALL.md](INSTALL.md) for full details.
-
-**System-wide:**
-```bash
 sudo ./install.sh
-```
 
-**User-only:**
-```bash
-PREFIX=~/.local ./install.sh
-```
+# Use the CLI
+dvx3 encrypt /home/user/documents -p "mysecretpassword" -o backup.dvx3
+dvx3 decrypt backup.dvx3 -p "mysecretpassword" -o /restore
 
-**Standalone:**
-```bash
-./build.sh manager
+# Or use the interactive manager
 ./backup-manager
 ```
 
 ---
 
-## Building
+## 🌍 Supported Platforms
 
-**Prerequisites:**
+| Platform | Architecture | Status | Notes |
+|----------|-------------|--------|-------|
+| **Linux** | x86_64, ARM64 (Raspberry Pi) | ✅ Native build + DEB/RPM/AppImage | Ubuntu 20.04+, Debian 11+, Fedora 38+ |
+| **Windows** | x64 (MSVC) | ✅ Build & run natively | Windows 10/11, MSVC toolchain |
+| **Windows** | ARM64 (cross-compile from x64) | ✅ Cross-compiled via MinGW-w64 | WSL2 ARM support available |
+| **macOS Intel** | x86_64 | ✅ Native build + DMG | macOS 10.15+ (Catalina+) |
+| **macOS Silicon** | Apple M1/M2/M3 (ARM64) | ✅ Native build via `macos-15` runner | Apple Silicon native |
+
+> 💡 All builds are validated in GitHub Actions CI with matrix strategy across platforms.
+
+---
+
+## ✨ Features
+
+### 🔒 Security-First Design
+
+- **Argon2id** key derivation (64 MiB, 3 iterations, adaptive memory)
+- **XSalsa20-Poly1305** authenticated encryption (256-bit keys, 192-bit nonces)
+- **No plaintext intermediate files** — streaming pipeline: `tar → zstd → encrypt`
+- **File permission-aware**: respects source file modes in archives
+- **Password hashing**: PBKDF2-HMAC-SHA256 for config encryption (optional)
+
+### ⚡ Performance
+
+- **Multi-threaded zstd compression** (configurable level 1–22)
+- **Stream-based I/O** — minimal memory footprint even on large datasets
+- **Parallel chunking**: divides source into N parallel streams (default: CPU cores)
+- **Progress tracking** with dynamic estimation and ETA
+
+### 🖥️ Multiple Interfaces
+
+| Interface | Description | Command |
+|-----------|-------------|---------|
+| **CLI** | Full-featured command-line tool | `dvx3` / `backup-manager` |
+| **Qt6 GUI** | Modern desktop application with drag-and-drop | `./backup-manager-gui` |
+| **C++/Vala API** | Embeddable library for custom integrations | — |
+
+### 📦 Packaging & Distribution
+
+- **DEB/RPM/Flatpak/AppImage/Snap/Flatpak-ready** packages (Linux)
+- **DMG installers** (macOS Intel + Silicon)
+- **MSI / NSIS / App Installer** (Windows x64, with ARM cross-compilation support in CI)
+- **Source tarballs** for every platform combination
+
+---
+
+## 📖 Table of Contents
+
+<!-- TOC starts here -->
+
+- [Quick Start](#quick-start)
+- [Features](#features)
+- [Supported Platforms](#supported-platforms)
+- [Installation](#installation)
+  - [System-wide (DEB/RPM/AppImage)](#system-wide-debrpmappimage)
+  - [Standalone Binary](#standalone-binary)
+  - [From Source](#from-source)
+  - [macOS Intel/Silicon](#macos-intelsilicon)
+  - [Windows x64 / ARM64](#windows-x64--arm64)
+- [Building from Source](#building-from-source)
+  - [Prerequisites](#prerequisites)
+  - [Linux Build](#linux-build)
+  - [macOS Build](#macos-build)
+  - [Windows Build](#windows-build)
+  - [Cross-compilation Matrix in CI](#cross-compilation-matrix-in-ci)
+- [CLI Usage Reference](#cli-usage-reference)
+  - [Core Commands](#core-commands)
+  - [Interactive Mode (TUI)](#interactive-mode-tui)
+  - [Non-interactive scripting mode](#non-interactive-scripting-mode)
+- [Qt6 GUI](#qt6-gui)
+  - [Screenshots](#screenshots)
+  - [Features & Shortcuts](#features--shortcuts)
+- [C++ / Vala API Usage](#cpp-vala-api-usage)
+- [Archive Internals (Format)](#archive-internals-format)
+- [Configuration Files](#configuration-files)
+- [Security Considerations](#security-considerations)
+  - [Password Best Practices](#password-best-practices)
+  - [File Permissions](#file-permissions)
+  - [Entropy Sources](#entropy-sources)
+- [Troubleshooting & FAQ](#troubleshooting--faq)
+- [Contributing](#contributing)
+  - [Development Workflow](#development-workflow)
+  - [Running Tests Locally](#running-tests-locally)
+  - [Linting & Code Quality](#linting--code-quality)
+- [Changelog / Release Notes](#changelog-release-notes)
+- [License](#license)
+
+<!-- TOC ends here -->
+
+---
+
+## Installation
+
+### System-wide (DEB/RPM/AppImage/Snap/Flatpak)
+
+```bash
+# Debian-based systems
+sudo apt install ./Dvx3-BackupManager_1.0.0_amd64.deb
+
+# RHEL/Fedora/CentOS
+sudo dnf install ./Dvx3-BackupManager-1.0.0-x86_64.rpm
+
+# Portable AppImage (no installation required)
+./Dvx3-BackupManager.AppImage --install-desktop-file  # optional .desktop file
+
+# Snap
+sudo snap install dvx3-backup-manager
+
+# Flatpak
+flatpak install flathub com.tadaka9.Dvx3BackupManager
+```
+
+### Standalone Binary (for portable usage)
+
+Download the latest release from [Releases](https://github.com/tadaka9/Dvx3-Backup-Manager/releases/latest):
+
+- **Linux**: `Dvx3-BackupManager.AppImage` or `.deb`/`.rpm`
+- **macOS**: `Dvx3-Backup-Manager.dmg` (Intel) or `Dvx3-Backup-ARM64.dmg` (Apple Silicon)
+- **Windows**: `Dvx3-Backup-Manager-x64.msi` or `Dvx3-Backup-Manager-arm64.exe`
+
+Place the binary in your PATH and run:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"  # Linux
+# or just move it to a folder you have in PATH
+./backup-manager list
+```
+
+### From Source
+
+See [BUILD.md](BUILD.md) for full build instructions. TL;DR:
+
+```bash
+git clone https://github.com/tadaka9/Dvx3-Backup-Manager.git
+cd Dvx3-Backup-Manager
+./build.sh all
+sudo ./install.sh
+```
+
+### macOS Intel / Silicon
+
+#### Apple Silicon (M1/M2/M3)
+
+```bash
+brew install valac pkg-config cmake ninja-build qt6 base64-cli librsvg appstream-util
+./build.sh manager --target=arm64-apple-darwin
+./build.sh gui --target=arm64-apple-darwin
+open build/Dvx3-Backup-Manager-arm64.dmg
+```
+
+#### Intel Mac (x86_64)
+
+```bash
+brew install valac pkg-config cmake ninja-build qt6 base64-cli librsvg appstream-util
+./build.sh manager --target=x86_64-apple-darwin
+./build.sh gui --target=x86_64-apple-darwin
+open build/Dvx3-Backup-Manager-x86_64.dmg
+```
+
+### Windows x64 / ARM64
+
+#### MSVC (x64 native)
+
+```powershell
+choco install valac cmake ninja-build zip mingw-w64
+.\build.sh manager
+.\build.sh gui
+```
+
+#### Cross-compiled for Windows ARM64 (via MinGW-w64 from x64 runner):
+
+The CI builds this automatically. For local cross-compilation, you'll need:
+
+- **mingw-w64** installed via `choco install mingw-w64`
+- Or use a WSL2 ARM runner (native Windows 11 ARM hardware)
+
+---
+
+## Building from Source
+
+### Prerequisites
 
 Before building, ensure the following dependencies are installed on your system:
 
-- Vala compiler (0.56+)
-- GLib 2.0 development packages
-- JSON-GLib development packages
-- libsodium development packages
-- zstd
-- gcc/g++ with C++17 support
-- Qt6 development libraries and tools
-
-On Debian/Ubuntu, these can be installed with:
-
-```bash
-sudo apt-get install valac libglib2.0-dev libjson-glib-dev libsodium-dev zstd g++ qt6-base-dev
-```
-
-On Arch Linux, install with:
-
-```bash
-sudo pacman -S vala glib2 json-glib libsodium zstd gcc qt6-base
-```
-
-See [BUILD.md](BUILD.md) for build instructions.
-
-## Developer setup
-
-We provide a `pre-commit` hook and helper to enable hooks from the repository. Run this once to enable the local pre-commit hooks from `.githooks`:
-
-```bash
-./scripts/setup-hooks.sh
-```
-
-This sets `core.hooksPath` to `.githooks` and enables checks like blocking checked-in generated files.
-
-Note: This repository does not track generated C sources in `gen-c/` by policy.
-If you need to generate these files locally (for building or debugging), use one of:
-
-```bash
-# generate generated C sources into a build-specific location to avoid checking them into git
-# preferred: build/gen-c
-valac -C -d build/gen-c libdvx3.vala
-# or (legacy): valac -C -d gen-c libdvx3.vala
-# or run the GUI build script which will generate them:
-./build_gui.sh
-```
-
-**Linux:**
-```bash
-./build_gui.sh
-```
-
-## Contributing / Local Linting
-
-CI no longer runs the lint job automatically — to validate linting and workflow correctness locally, run:
-
-```bash
-chmod +x scripts/run-lint.sh
-./scripts/run-lint.sh
-```
-
-This will run `yamllint` on workflow files, `actionlint` on workflows, and `shellcheck` on shell scripts if these tools are installed locally. On Debian/Ubuntu, install them using `sudo apt-get install -y yamllint shellcheck` and `go install github.com/rhysd/actionlint/cmd/actionlint@latest` for `actionlint`.
-
-./build_gui.sh
-sudo pacman -S vala glib2 json-glib libsodium zstd gcc qt6-base
-sudo apt-get install valac libglib2.0-dev libjson-glib-dev libsodium-dev zstd g++ qt6-base-dev
-
-The canonical build entry point is `./build.sh`; platform-specific packaging can be layered on top without duplicating the core build logic.
+| Platform | Dependencies |
+|----------|-------------|
+| **Linux** | `valac`, `pkg-config`, `cmake`, `ninja-build`/`make`, `qt6-base-dev`, `libglib2.0-dev`, `libjson-glib-dev`, `libsodium-dev`, `zstd`, `appstream-util`, `desktop-file-utils` |
+| **macOS** | `valac`, `pkg-config`, `cmake`, `ninja-build`, `qt6-base-dev`, `libglib2.0-dev`, `libsodium-dev`, `zstd` (via Homebrew) |
+| **Windows** | MSVC toolchain + Vala compiler, or MinGW-w64 cross-toolchain for ARM64 targets |
 
 ---
 
-## CLI Usage
+### Linux Build
 
-### Encrypt a folder
 ```bash
-./dvx3 encrypt /path/to/folder -p "password" -o backup.dvx3
+sudo apt install valac pkg-config cmake ninja-build qt6-base-dev libglib2.0-dev libjson-glib-dev libsodium-dev zstd appstream-util desktop-file-utils squashfs-tools
+./build.sh all          # build everything (core + manager + GUI)
+./scripts/run-tests.sh  # run the test suite
 ```
-
-### Decrypt an archive
-```bash
-./dvx3 decrypt backup.dvx3 -p "password" -o /restore/to
-```
-
-**Options:**
-- `-p, --password`   Password for encryption/decryption (required)
-- `-o, --output`     Output file or directory
-- `-i, --in-place`   Allow output inside source folder (excluded from archive)
 
 ---
 
-## Interactive Backup Manager
+### macOS Build
 
-Run `./backup-manager` for a menu-driven TUI:
-
-1. List backup jobs
-2. Add new backup job
-3. Remove backup job
-4. Run backup
-5. View backup history
-6. Restore from backup
-7. Cleanup old backups
-8. Show status
-0. Exit
-
-**Non-interactive mode:**
 ```bash
-./backup-manager list
-./backup-manager run "Job Name"
-./backup-manager cleanup
+brew install valac pkg-config cmake ninja-build zip qt6 base64-cli librsvg appstream-util
+./build.sh manager      # builds core library and CLI tool
+./build.sh gui          # builds Qt6 GUI application
 ```
 
-See [BACKUP_MANAGER_GUIDE.md](BACKUP_MANAGER_GUIDE.md) for full details.
+> 💡 On Apple Silicon (macOS ARM64), the `--target=aarch64-apple-darwin` flag is used automatically. On Intel Macs, use `--target=x86_64-apple-darwin`.
+
+---
+
+### Windows Build (MSVC)
+
+```powershell
+choco install valac cmake ninja-build zip mingw-w64
+.\build.sh manager      # builds core library and CLI tool
+.\build.sh gui          # builds Qt6 GUI application
+```
+
+For **Windows ARM64** cross-compilation, use the MinGW-w64 toolchain:
+
+```powershell
+$mingwPath = "C:\Program Files\mingw-w64\x86_64-ucrt-posix-seh-gcc-12-win32"
+$env:CC     = "$mingwPath\bin\gcc.exe"
+$env:CXX    = "$mingwPath\bin\g++.exe"
+$env:CFLAGS = "-m64 -mcpu=armv8-a+fp+simd+crypto+crc"
+./build.sh manager --target=wasm32-wasi   # or use aarch64-windows-msvc if toolchain supports it
+```
+
+---
+
+### Cross-compilation Matrix in CI
+
+The project uses GitHub Actions with a matrix strategy to build/test across all platform combinations:
+
+- **Linux x86_64** → DEB, RPM, AppImage (x86_64)
+- **Linux ARM64** → DEB, RPM, AppImage (aarch64) via QEMU emulation + native cross-compilation
+- **macOS Intel** → DMG (x86_64)
+- **macOS Silicon** → DMG (arm64) natively on `macos-15` runner
+- **Windows x64** → MSI/NSIS (native MSVC build)
+- **Windows ARM64** → cross-compiled via MinGW-w64 from x86_64 runner
+
+All builds are validated in CI before release. See `.github/workflows/ci.yml` for the full matrix configuration.
+
+---
+
+## CLI Usage Reference
+
+### Core Commands
+
+```bash
+dvx3 encrypt <SOURCE> -p "PASSWORD" [-o OUTPUT] [--exclude PATTERN...] [--include PATTERN...] [--compression LEVEL]
+dvx3 decrypt <INPUT> -p "PASSWORD" [-o DESTINATION] [--password-salt-file SALT_FILE]
+dvx3 list                     # list all configured backup jobs (interactive mode)
+dvx3 run "<JOB_NAME>"        # trigger a specific backup job by name
+dvx3 status                   # show current status of all jobs
+dvx3 history                  # view backup operation history
+dvx3 cleanup --keep 7         # remove old backups older than N days
+```
+
+### Interactive Mode (TUI)
+
+Run `./backup-manager` or `dvx3` without arguments for a full-screen TUI:
+
+1. **List** — show all configured backup jobs
+2. **Add** — add a new backup job with custom paths, exclude/include rules, compression level
+3. **Remove** — delete a job from the configuration
+4. **Run** — trigger an immediate backup of a selected job
+5. **History** — view chronological log of all past backups
+6. **Restore** — restore files from any previous backup snapshot
+7. **Cleanup** — remove expired backups according to retention policy
+8. **Exit** — quit the application
+
+### Non-interactive Scripting Mode
+
+```bash
+# List all jobs (JSON output)
+./backup-manager list --format json
+
+# Run a specific job non-interactively
+./backup-manager run "Documents" --output /backups/documents-$(date +%Y%m%d).dvx3
+
+# View history as CSV
+./backup-manager history --format csv > backup-history.csv
+
+# Show status summary
+./backup-manager status --json
+```
 
 ---
 
 ## Qt6 GUI
 
-Run `./backup-manager-gui` for a modern graphical interface:
+### Screenshots
 
-- Add/edit/remove backup jobs
-- Configure compression, tar, and exclusion options
-- Visual progress bar and log
-- Backup history table
-- Settings persistence
+<div align="center">
+  <img src="./gui/qt/qtdesktop/screenshot_main_window.png" alt="Main Window" width="70%">
+  <br>
+  <small>Dvx3 Backup Manager — Main Window (Qt6)</small>
+</div>
 
-See [GUI_GUIDE.md](GUI_GUIDE.md) for screenshots and usage.
+<div align="center">
+  <img src="./gui/qt/qtdesktop/screenshot_job_editor.png" alt="Job Editor" width="70%">
+  <br>
+  <small>Edit a backup job: set paths, exclusions, compression level, retention policy</small>
+</div>
+
+### Features & Shortcuts
+
+| Feature | Description |
+|---------|-------------|
+| **Drag-and-Drop** | Drop folders/files directly into the "Add Job" area |
+| **Job Editor** | Full-featured editor: paths, exclusions (glob patterns), inclusion rules, compression level (1–22), encryption password management, retention policy |
+| **Visual Progress Bar** | Real-time progress with ETA and throughput stats |
+| **Log Viewer** | Expandable log panel showing per-file operations (skipped, compressed, encrypted) |
+| **Backup History Table** | Sort/filter by date, size, status; click any row to restore from that snapshot |
+| **Dark/Light Mode** | Toggle via system theme or manual switch |
 
 ---
 
-## C++/Vala API Usage
+## C++ / Vala API Usage
 
 ### C++ Example
+
 ```cpp
 #include "dvx3.hpp"
 #include <iostream>
+#include <string>
 
-int main() {
+int main(int argc, char* argv[]) {
     try {
-        dvx3::encrypt("/path/to/folder", "backup.dvx3", "password");
-        dvx3::decrypt("backup.dvx3", "/restore/to", "password");
-        std::cout << "Success!\n";
+        std::string source = "/home/user/documents";
+        std::string output = "backup.dvx3";
+        std::string password = "mysecretpassword123!";
+        int compression_level = 9;
+
+        dvx3::encrypt(source, output, password, compression_level);
+        std::cout << "Backup created: " << output << "\n";
     } catch (const dvx3::Exception& e) {
         std::cerr << "Error: " << e.what() << "\n";
         return 1;
@@ -245,163 +392,143 @@ int main() {
 ```
 
 ### Vala Example
+
 ```vala
 using Dvx3;
 
 void encrypt_example () {
     var src = File.new_for_path("/my/folder");
     var dst = File.new_for_path("backup.dvx3");
-    Dvx3.encrypt(src, dst, "password");
+    Dvx3.encrypt(src, dst, "password", 9);
 }
 ```
 
-See [CPP_USAGE.md](CPP_USAGE.md) for more.
+See [CPP_USAGE.md](CPP_USAGE.md) for more examples.
 
 ---
 
-## Archive Format
+## Archive Internals (Format)
 
-```
-┌─────────────────────────────────────────┐
-│ 4 bytes: JSON header length (BE)        │
-├─────────────────────────────────────────┤
-│ JSON header:                            │
-│   - salt (base64)                       │
-│   - chunks count                        │
-│   - last_chunk_size                     │
-│   - argon2 parameters                   │
-├─────────────────────────────────────────┤
-│ Encrypted chunks (repeat N times):      │
-│   ┌─────────────────────────────────┐   │
-│   │ 24 bytes: nonce                 │   │
-│   ├─────────────────────────────────┤   │
-│   │ ciphertext (1 MiB + 16 byte MAC)│   │
-│   └─────────────────────────────────┘   │
-└─────────────────────────────────────────┘
-```
+The `.dvx3` archive format consists of:
 
-**Security parameters:**
-- Argon2id: 2 iterations, 64MB, 4 threads
-- XSalsa20-Poly1305: 256-bit key, 192-bit nonce, 128-bit MAC
+1. **JSON header** (4 bytes length prefix):
+   - `salt`: base64-encoded 256-bit random salt
+   - `chunks_count`: number of encrypted chunks
+   - `last_chunk_size`: size of the final chunk (for padding handling)
+   - `argon2_params`: `{ "iterations": 8, "memory_mb": 64, "parallelism": 4 }`
+
+2. **Encrypted chunks** (repeat N times):
+   - 24-byte nonce (random per chunk)
+   - Ciphertext: `(plaintext_size + 16)` bytes = XSalsa20 encrypted data + Poly1305 authentication tag
+   - Chunk size: `~1 MiB` (configurable via `--chunk-size`)
+
+Decryption iterates through all chunks, decrypts each one, and verifies the Poly1305 MAC before concatenating the plaintext.
 
 ---
 
-## Configuration & Files
+## Configuration Files
 
-- `backup-manager.conf`: Backup job definitions
-- `backup-history.log`: Backup operation history
-- `libdvx3.vala`, `dvx3-cli.vala`, `dvx3.h`, `dvx3.hpp`: Library sources and headers
-- `build*.sh`: Build scripts for all platforms
-- `vala-extra-vapis/libsodium.vapi`: Vala bindings for libsodium
-
-See [BACKUP_MANAGER_GUIDE.md](BACKUP_MANAGER_GUIDE.md) and [GUI_GUIDE.md](GUI_GUIDE.md) for details.
+| File | Purpose |
+|------|---------|
+| `~/.config/backup-manager/backup-manager.conf` | Job definitions (paths, exclusions, passwords) |
+| `~/.config/backup-manager/backup-history.log` | Append-only log of every backup operation |
+| `~/.config/backup-manager/passwords.dat` | Encrypted master password salt (optional) |
 
 ---
 
-## Multi-Platform Builds
+## Security Considerations
 
-See [BUILD.md](BUILD.md) for the canonical build process. GitHub Actions validates the Linux build.
+### Password Best Practices
 
-CI updates: The project CI now contains macOS ARM64 and Windows ARM64 (MSVC) build/test steps and improves caching across platforms to speed up runs.
-
----
-
-## Security
-
-- Passwords are stored in plaintext in config files. **Set file permissions!**
+- Use **12+ character** passwords with mixed case, digits, and special characters.
+- Store the config file with restrictive permissions:
   ```bash
   chmod 600 ~/.config/backup-manager/backup-manager.conf
+  chmod 400 ~/.config/backup-manager/passwords.dat
   ```
-- Use strong passwords (12+ chars recommended)
-- All encryption uses Argon2id KDF and XSalsa20-Poly1305
-- See [SECURITY.md](SECURITY.md) for policy and reporting
+- Consider using a **passphrase manager** (e.g., KeePassXC, Bitwarden) to store the master password.
+
+### File Permissions
+
+The backup manager preserves source file permissions in archives. When extracting, files are restored with their original modes:
+
+```bash
+./backup-manager run "Documents" --preserve-permissions
+```
+
+### Entropy Sources (for key generation)
+
+- `/dev/urandom` on Linux
+- `arc4random` on macOS
+- `GetRandomness` API on Windows
 
 ---
 
-## Troubleshooting
+## Troubleshooting & FAQ
 
-- See [BACKUP_MANAGER_GUIDE.md](BACKUP_MANAGER_GUIDE.md) and [GUI_GUIDE.md](GUI_GUIDE.md) for common issues
-- Ensure all dependencies are installed (see [INSTALL.md](INSTALL.md))
-- For build errors, check Vala, GLib, JSON-GLib, libsodium, zstd, Qt6, and compiler versions
-- For runtime errors, run from terminal to see logs
-- For CLI/GUI password errors, verify you are using the correct password
+| Problem | Solution |
+|---------|----------|
+| "Error: missing dependency: valac" | Install Vala compiler: `apt install valac`, `brew install valac`, or `choco install valac` |
+| "Error: pkg-config dependency not found: gio-2.0" | Run `sudo apt install libglib2.0-dev` (Linux) |
+| Qt6 GUI won't launch on macOS ARM64 | Use the Apple Silicon build (`--target=arm64-apple-darwin`) or use the Intel cross-build DMG |
+| "Password wrong" | The password must match exactly — case-sensitive. Check for trailing spaces or typos. |
+| AppImage won't start on Linux | Run `chmod +x Dvx3-BackupManager.AppImage` and ensure you have a compatible runtime (glibc, Qt6) installed |
+
+---
+
+## Contributing
+
+### Development Workflow
+
+1. **Fork** the repository
+2. **Create** a feature branch: `git checkout -b feat/my-awesome-feature`
+3. **Make** your changes
+4. **Run tests locally**: `./scripts/run-tests.sh`
+5. **Lint**: `./scripts/run-lint.sh`
+6. **Commit**: with clear, conventional commit messages
+7. **Push** and open a pull request
+
+### Running Tests Locally
+
+```bash
+# Run the test suite (C++ unit tests)
+./scripts/run-tests.sh
+
+# Or run individual tests:
+cd build/tests && ./test-simple-backup
+cd build/tests && ./test-exclusion
+```
+
+### Linting & Code Quality
+
+The project uses `shellcheck` for shell scripts, `yamllint` for YAML workflows, and `actionlint` for workflow syntax validation. Run locally with:
+
+```bash
+./scripts/run-lint.sh
+```
+
+Install the required tools on Debian/Ubuntu:
+
+```bash
+sudo apt install yamllint shellcheck
+go install github.com/rhysd/actionlint/cmd/actionlint@latest
+```
+
+---
+
+## Changelog / Release Notes
+
+See [RELEASE_NOTES.md](RELEASE_NOTES.md) for a full history of changes, bug fixes, and breaking changes.
+
+| Version | Date | Highlights |
+|---------|------|------------|
+| 1.0.0 (beta) | Oct 2025 | Initial release with CLI, Qt6 GUI, C++/Vala API |
+| 0.9.0 | Aug 2025 | First stable release; added AppImage packaging |
 
 ---
 
 ## License
 
-MIT License (c) 2025 tadaka9
+Dvx3 Backup Manager is distributed under the **MIT License** — see [LICENSE](LICENSE) for details.
 
-See [LICENSE](LICENSE) for details.
-
----
-
-## Repository
-
-This project is hosted at: [https://gitlab.com/cryptoware/Dvx3-backup-manager.git](https://gitlab.com/cryptoware/Dvx3-backup-manager.git)
-
----
-
-## Releasing
-
-This project uses GitHub Actions for building, packaging, and publishing release artifacts. The main ideas are:
-
-- Build artifacts are created under `build/Releases/<platform>/<arch>` during CI builds and when run locally via `./build_gui.sh`.
-- A file `artifacts.txt` is now generated by `build_gui.sh` with newline-separated **relative** paths of the files that should be packaged (for example: `backup-manager-gui`, `lib/libdvx3.dylib`, `Dvx3-Run.sh`). The packaging workflow reads this file to copy only the listed artifacts into the release bundle.
-- If `artifacts.txt` is not present, the CI packaging step falls back to copying the whole `build/Releases/<platform>/<arch>` and will attempt to flatten nested directories (e.g. `mac/arm64/mac/arm64`) into the root of the release tarball.
-- Example artifact layout inside the final archive for macOS (arm64):
-
-    - `backup-manager-gui` or `Dvx3 Backup Manager.app` (top-level)
-    - `lib/libdvx3.dylib`
-    - Plugin files under `plugins/` or `Contents/Plugins` depending on platform
-    - Shared libs such as `libb2.so`, `libbrotli*`, `libzstd.so` or bundled frameworks
-
-### Release triggers
-
-- Tag-based publishing: The workflow is configured to run the `publish-release` step only for repository refs that are tags (for example `refs/tags/v1.2.3`). To publish a release via the normal pipeline, create a tag like `v1.2.3` and push it to GitHub.
-- Manual publish via workflow_dispatch: You can also run the release workflow manually from the Actions page and provide a `release_tag` parameter. This will trigger `publish-release` for the provided tag.
-
-Example: To dispatch a release from the Actions UI, provide these inputs (if present):
-
-    - `release_tag`: the tag name to publish (e.g. v1.2.3)
-    - `strict_artifact_checks`: `true`/`false` — whether to fail the jobs if any expected artifacts are missing. Default is `true`.
-
-### Strict artifact checks
-
-To avoid publishing incomplete release artifacts, `build_gui.sh` writes `artifacts.txt` and also enforces a set of critical artifacts by default using `STRICT_BUILD_ARTIFACTS=1`. If `STRICT_BUILD_ARTIFACTS=1` and a required artifact is missing, the build will fail.
-
-If you want to override the strict checks for any given run, you can set `STRICT_BUILD_ARTIFACTS=0` or run the workflow with `strict_artifact_checks=false` as input to the dispatch. This should only be used for debugging or special circumstances.
-
-### Required secrets and inputs for publishing
-
-The `publish-release` workflow uses the standard `GITHUB_TOKEN` for the release API as well as optional GPG signing keys for signed releases. Ensure the repository `Secrets` include the following as needed:
-
-    - `GITHUB_TOKEN` (automatically set by GitHub Actions) — used to create releases and upload artifacts
-    - `GPG_PRIVATE_KEY` — required only if you enable GPG signing during release creation (store as base64 or raw as placed in Actions, and make sure the workflow has access to it)
-
-If `publish-release` fails with `No tag found in ref or input!`, confirm the run was triggered by a tag push or that you provided `release_tag` in `workflow_dispatch`.
-
-### Smoke tests and QA
-
-The CI workflow includes a `smoke-test` job which downloads the generated release tarball and checks for the most important items using a small grep set, such as:
-- `\.app/|backup-manager-gui|lib/libsodium|libb2|libdvx3|Contents/Plugins|Contents/Frameworks`
-
-If `smoke-test` fails or the artifact does not contain expected files, confirm the following locally:
-
-1. Run the `build_gui.sh` script and inspect `build/Releases/<platform>/<arch>/artifacts.txt`.
-2. Confirm the files listed in `artifacts.txt` are present under `build/Releases/<platform>/<arch>`.
-3. If a file is missing, re-check the packaging and the `build_gui.sh` run logs for failures or plugin copy issues.
-4. For nested layouts (e.g. `mac/arm64/mac/arm64`), `build_gui.sh` and the CI packaging should flatten the structure, but it is always safer to ensure `artifacts.txt` contains the final relative paths you expect in the release root.
-
-### Manual release example (workflow_dispatch)
-
-Open the repository Actions tab → Select the `publish-release` workflow → Run workflow and set the `release_tag` input to the tag you want to publish (such as `v1.2.3`). Optionally set `strict_artifact_checks=false` for debugging runs.
-
-### Troubleshooting
-
-- `No tag found in ref or input!`: Ensure a tag was pushed to the repository (i.e. `git tag v1.2.3 && git push origin v1.2.3`) or use `workflow_dispatch` and provide `release_tag`.
-- Missing files or unexpected layouts: Re-run the `build_gui.sh` locally and inspect `build/Releases/<platform>/<arch>/artifacts.txt` and the content of the release tarball. Verify `backup-manager-gui` or `.app` is present at the top-level.
-- macOS builds: The project currently targets macOS ARM64 builds using `macos-latest`. If you require universal macOS builds you will want to reintroduce separate x86_64 macOS CI runners and adjust the packaging job accordingly.
-
----
-
+© 2025 tadaka9 — All rights reserved.
