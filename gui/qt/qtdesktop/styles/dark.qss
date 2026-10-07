@@ -1,0 +1,23 @@
+/* Dark theme for Dvx3 Backup Manager */
+QWidget{background:#1e1e1e;color:#ffffff;font-family:'Inter', sans-serif;}
+QLabel,QLineEdit,QPushButton,QProgressBar,QTableWidget::item,QSpinBox,QTextEdit{color:white;background-color:transparent;border:none;margin:0;padding:0;}
+QPushButton{border-radius:6px;padding:8px 16px;font-size:14px;min-height:32px;}
+QPushButton:hover:!pressed{background:#2ea048;}
+QPushButton:pressed{background:#2d7a3c;}
+QTableWidget,QTreeWidget,QListView,QComboBox,QTabWidget::pane,QGroupBox,QScrollArea{background-color:#1e1e1e;color:white;border:none;margin-top:6px;}
+QTableWidget,QTreeWidget,QListView{border:1px solid #2a2a2c;}
+QTableWidget::item,QTreeView::item,QLISTVIEW#qptr{padding:6px 8px;height:34px;min-height:34px;background-color:#202022;border:none;color:#ffffff;}
+QTableWidget::item:selected,QTreeView::item:selected,QLISTVIEW#qptr:selected,QTabWidget::pane QTabBar::tab{background-color:#1f4680;color:white;padding-left:32px;}
+QHeaderView::section{background-color:#2a2a2e;color:#dddddd;font-weight:normal;border:none;padding:5px 8px;background:#2a2a2c;}
+QScrollBar:vertical,QScrollBar:horizontal{width:12px;height:12px;background:#141416;border-radius:6px;}
+QScrollBar::handle:vertical,QScrollBar::handle:horizontal{background:#3fb95e;border-radius:4px;min-height:24px;min-width:24px;margin:2px 0;}
+QScrollBar::add-line,QScrollBar::sub-line{height:0;width:0;}
+QScrollBar::add-page,QScrollBar::sub-page{background:none;}
+QLineEdit,QTextEdit{border-radius:6px;padding:8px 12px;font-size:13px;border:2px solid transparent;background:#2a2a2e;color:white;selection-background-color:#3fb95e;}
+QLineEdit:focus,QTextEdit:focus{border:2px solid #3fb95e;}
+QGroupBox{font-weight:bold;color:#ffffff;margin-top:0;padding:12px 14px;border:none;background:none;}
+QGroupBox::title{subcontrol-origin:margin;subcontrol-position:center;margin-bottom:-6px;color:#3fb95e;font-size:18px;}
+QComboBox,QSpinBox{background:#2a2a2e;color:white;font-size:13px;padding:6px 10px;border-radius:4px;border:1px solid #333;}
+QComboBox::drop-down,QComboBox::down-arrow,QSpinBox::up-button,QSpinBox::down-button{image:none;background:none;}
+QCheckBox{color:#ffffff;font-size:13px;}
+QCheckBox::indicator{width:20px;height:20px;border-radius:50%;background-color:#3fb95e;margin-right:8px;}

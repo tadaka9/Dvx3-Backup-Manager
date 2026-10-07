@@ -1,0 +1,40 @@
+# Build outputs
+/build/
+**/build/
+*.o
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.AppImage
+*.dmg
+
+# Generated Vala / Qt
+/gen-c/
+*.vala.c
+*.moc
+moc_*.cpp
+qrc_*.cpp
+
+# Release/package staging
+/Releases/
+/Dvx3BackupManager.AppDir/
+*.tar.gz
+*.zip
+
+# Local tooling
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Local test/runtime output
+ci-test-output/
+*.log
+*.bak
+*.backup

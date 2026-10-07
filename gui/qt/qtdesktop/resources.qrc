@@ -1,0 +1,8 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/">
+        <file>icons/logo.svg</file>
+        <file>styles/dark.qss</file>
+        <file>icons/about-logo.svg</file>
+    </qresource>
+</RCC>
