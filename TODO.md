@@ -9,6 +9,7 @@
 - Reduce plaintext disk staging after portable backends have equivalent error guarantees.
 - Strengthen extraction isolation and authenticated framing in a future archive version.
 - Define platform metadata restoration guarantees (ACLs, symlinks, ownership, Windows paths).
-- Implement actual packaging scripts/dependency bundling before advertising release packages.
+- Configure Windows Authenticode and Apple Developer ID signing/notarization secrets.
+- Add native ARM64 AppImage when the deployment toolchain publishes a verified binary.
 - Add native ARMHF / Windows ARM64 runners only with testable toolchains.
 - Define scheduler integration; no daemon is currently implemented.

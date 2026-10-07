@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=DVX3 Backup Manager
+Comment=Create and restore local encrypted backups
+Exec=dvx3-backup-manager
+Icon=io.github.tadaka9.dvx3
+Terminal=false
+Categories=Utility;Archiving;Security;
+Keywords=backup;encryption;archive;
+StartupNotify=true

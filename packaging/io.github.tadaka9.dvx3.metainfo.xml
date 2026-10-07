@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.tadaka9.dvx3</id>
+  <name>DVX3 Backup Manager</name>
+  <summary>Create and restore local encrypted backups</summary>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <description><p>DVX3 creates authenticated, compressed backup archives on your own machine.</p></description>
+  <launchable type="desktop-id">io.github.tadaka9.dvx3.desktop</launchable>
+  <url type="homepage">https://github.com/tadaka9/Dvx3-Backup-Manager</url>
+  <provides><binary>dvx3-backup-manager</binary></provides>
+  <content_rating type="oars-1.1"/>
+</component>

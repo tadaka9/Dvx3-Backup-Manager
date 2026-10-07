@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleName</key><string>DVX3 Backup Manager</string>
+  <key>CFBundleDisplayName</key><string>DVX3 Backup Manager</string>
+  <key>CFBundleIdentifier</key><string>io.github.tadaka9.dvx3</string>
+  <key>CFBundleExecutable</key><string>DVX3 Backup Manager</string>
+  <key>CFBundleIconFile</key><string>DVX3</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>@VERSION@</string>
+  <key>CFBundleVersion</key><string>@VERSION@</string>
+  <key>NSHighResolutionCapable</key><true/>
+</dict></plist>

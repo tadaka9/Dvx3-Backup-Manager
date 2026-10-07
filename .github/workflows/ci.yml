@@ -29,11 +29,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential valac pkg-config cmake qt6-base-dev \
             libglib2.0-dev libjson-glib-dev libsodium-dev zstd gzip bzip2 xz-utils \
-            lz4 brotli 7zip zpaq shellcheck
+            lz4 brotli 7zip zpaq shellcheck rpm curl
       - name: Validate shell scripts
         run: |
-          bash -n build.sh scripts/run-tests.sh scripts/package-build.sh
-          shellcheck build.sh scripts/run-tests.sh scripts/package-build.sh install.sh uninstall.sh run_gui.sh
+          bash -n build.sh scripts/run-tests.sh scripts/package-build.sh packaging/linux/package.sh packaging/macos/package.sh packaging/windows/package.sh
+          shellcheck build.sh scripts/run-tests.sh scripts/package-build.sh packaging/linux/package.sh packaging/macos/package.sh packaging/windows/package.sh install.sh uninstall.sh run_gui.sh
       - name: Build every component and test real archive round trips
         env:
           DVX3_REQUIRE_CODECS: none,zstd,gzip,bzip2,xz,lzma,lz4,brotli,7z,zpaq
@@ -44,12 +44,22 @@ jobs:
         run: build/bin/dvx3-backup-manager --smoke-test
       - name: Archive tested native build
         run: ./scripts/package-build.sh
+      - name: Build DEB and RPM installers
+        run: ./packaging/linux/package.sh deb rpm
+      - name: Build AppImage
+        if: matrix.arch == 'x86_64'
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+        run: |
+          mkdir -p build/tools
+          curl -fL https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -o build/tools/linuxdeploy
+          curl -fL https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage -o build/tools/linuxdeploy-plugin-qt
+          chmod +x build/tools/linuxdeploy build/tools/linuxdeploy-plugin-qt
+          PATH="$PWD/build/tools:$PATH" ./packaging/linux/package.sh appimage
       - uses: actions/upload-artifact@v4
         with:
           name: dvx3-linux-${{ matrix.arch }}
-          path: |
-            build/artifacts/*.tar.gz
-            build/artifacts/*.sha256
+          path: build/artifacts/*
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
@@ -67,7 +77,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install native dependencies
-        run: brew install vala pkgconf cmake qt glib json-glib libsodium zstd gzip bzip2 xz lz4 brotli sevenzip zpaq
+        run: brew install vala pkgconf cmake qt glib json-glib libsodium zstd gzip bzip2 xz lz4 brotli sevenzip zpaq dylibbundler
       - name: Build and test
         env:
           DVX3_REQUIRE_CODECS: none,zstd,gzip,bzip2,xz,lzma,lz4,brotli,7z,zpaq
@@ -84,12 +94,14 @@ jobs:
         run: build/bin/dvx3-backup-manager --smoke-test
       - name: Archive tested native build
         run: ./scripts/package-build.sh
+      - name: Build macOS app bundle and PKG
+        run: |
+          export PATH="$(brew --prefix qt)/bin:$PATH"
+          ./packaging/macos/package.sh
       - uses: actions/upload-artifact@v4
         with:
           name: dvx3-macos-${{ matrix.arch }}
-          path: |
-            build/artifacts/*.tar.gz
-            build/artifacts/*.sha256
+          path: build/artifacts/*
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
@@ -133,12 +145,12 @@ jobs:
         run: build/bin/dvx3-backup-manager.exe --smoke-test
       - name: Archive tested native build
         run: ./scripts/package-build.sh
+      - name: Build portable ZIP and MSI
+        run: ./packaging/windows/package.sh
       - uses: actions/upload-artifact@v4
         with:
           name: dvx3-windows-x86_64
-          path: |
-            build/artifacts/*.tar.gz
-            build/artifacts/*.sha256
+          path: build/artifacts/*
           if-no-files-found: error
           compression-level: 0
           retention-days: 30

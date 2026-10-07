@@ -58,20 +58,20 @@ native build archives and matching SHA-256 checksums. Builds from `main` are
 commit-labelled prereleases; `v*` tags produce named releases after all native
 jobs pass.
 
-| Platform | Native CI environment | Archive |
+| Platform | Native CI environment | Distribution formats |
 | --- | --- | --- |
-| Linux x86-64 | Ubuntu 24.04 | `dvx3-linux-x86_64.tar.gz` |
-| Linux ARM64 | Ubuntu 24.04 ARM | `dvx3-linux-arm64.tar.gz` |
-| macOS Apple Silicon | macOS 15 ARM64 | `dvx3-macos-arm64.tar.gz` |
-| macOS Intel | macOS 15 Intel | `dvx3-macos-x86_64.tar.gz` |
-| Windows x64 | Windows 2022, MSYS2 UCRT64 | `dvx3-windows-x86_64.tar.gz` |
+| Linux x86-64 | Ubuntu 24.04 | DEB, RPM, AppImage, developer tarball |
+| Linux ARM64 | Ubuntu 24.04 ARM | DEB, RPM, developer tarball |
+| macOS Apple Silicon | macOS 15 ARM64 | `.app.zip`, PKG, developer tarball |
+| macOS Intel | macOS 15 Intel | `.app.zip`, PKG, developer tarball |
+| Windows x64 | Windows 2022, MSYS2 UCRT64 | portable ZIP, MSI, developer tarball |
 
-Each archive contains the CLI, manager, Qt app and Vala core library/bindings.
-Install the [runtime dependencies](BUILD.md#dependencies) before running them:
-these are **native build bundles**, not self-contained installers. In
-particular, Windows requires the MSYS2 UCRT64 runtime on `PATH`, and the
-selected compression executable must be installed. The project does not
-publish DEB, RPM, AppImage, DMG or MSI packages.
+The portable Windows ZIP, AppImage and macOS app bundle deploy their Qt runtime.
+DEB/RPM use native package dependencies. Developer tarballs retain the unbundled
+libraries and bindings. Compression tools are intentionally external and must be
+installed for the selected codec. Current MSI and PKG artifacts are unsigned or
+ad-hoc signed development releases; Windows SmartScreen and macOS Gatekeeper may
+warn until project signing certificates and notarization are configured.
 
 ## Compression and extensions
 

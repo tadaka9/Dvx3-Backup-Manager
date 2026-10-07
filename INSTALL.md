@@ -14,5 +14,10 @@ PREFIX="$HOME/.local" ./uninstall.sh
 The default prefix is `/usr/local` and needs the appropriate filesystem permissions.
 No automatic privilege escalation is performed. The GUI and runtime dependencies
 are not bundled. Uninstall preserves user configuration and archives.
-On Windows use MSYS2 UCRT64 and build/bin directly; this installer is POSIX-only.
-No DEB/RPM/AppImage/DMG/MSI/NSIS packaging is implemented.
+For end users, CI publishes DEB, RPM and AppImage on Linux; a portable ZIP and
+MSI on Windows x64; and zipped app bundles plus PKG installers on macOS Intel and
+Apple Silicon. The POSIX script above remains intended for development.
+
+Compression programs remain external. Install the tools needed by the selected
+codec. Current MSI and PKG development artifacts have no commercial signing
+identity, so the operating system may show a trust warning.

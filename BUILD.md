@@ -98,8 +98,16 @@ list so missing required codecs cause failure rather than a skipped test.
 `dvx3 --codecs` reports tool/profile availability, which is not a self-test.
 See [COMPRESSION.md](COMPRESSION.md) for verified codecs and extension contracts.
 
-No DEB, RPM, AppImage, DMG, MSI or NSIS packaging is implemented or advertised.
-`install.sh` is a POSIX development installer, not a package builder.
+Native installer scripts live under `packaging/`. Linux produces DEB/RPM on
+x86-64 and ARM64, plus AppImage on x86-64. Windows x64 produces a portable ZIP
+and MSI. macOS Intel/ARM64 produces a zipped `.app` and PKG. `install.sh`
+remains a POSIX development installer.
+
+The packaging tools are validated explicitly: `dpkg-deb` and `rpmbuild` on
+Linux, linuxdeploy plus its Qt plugin for AppImage, `windeployqt` and WiX 3 on
+Windows, and `macdeployqt`, dylibbundler, iconutil and productbuild on macOS.
+AppImage is limited to x86-64 because the official linuxdeploy binary used by CI
+is published for x86-64. Codec executables are not bundled.
 
 Vala 0.56.16 emits C qualifier/pointer warnings with GLib 2.80 in this environment;
 these are reported and do not hide failed compilations. Newer native toolchains
@@ -123,6 +131,6 @@ artifacts without publishing a release. Only the release job has write permissio
 For a local bundle, first run `./build.sh all test`, then
 `./scripts/package-build.sh`; output is in ignored `build/artifacts/`.
 Extract and run the programs in `bin/` with the runtime dependencies installed.
-Bundles do not include system libraries, Qt plugins or codec executables;
-Windows requires the MSYS2 UCRT64 runtime on PATH and macOS the matching
-Homebrew dependencies. These archives are not DEB/RPM/AppImage/DMG/MSI installers.
+Developer tarballs do not include system libraries, Qt plugins or codec tools.
+Use the platform installer artifacts for end-user deployment. MSI/PKG artifacts
+are not publicly code-signed or notarized until project certificates are supplied.

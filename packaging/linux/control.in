@@ -1,0 +1,11 @@
+Package: dvx3
+Version: @VERSION@
+Architecture: @ARCH@
+Maintainer: DVX3 Project <dvx3@dvx3.local>
+Section: utils
+Priority: optional
+Depends: libglib2.0-0t64 | libglib2.0-0, libjson-glib-1.0-0, libsodium23, libqt6core6, libqt6gui6, libqt6widgets6, tar
+Recommends: zstd
+Description: local encrypted backup manager
+ DVX3 creates authenticated, compressed backup archives with a Vala engine,
+ command-line interface and Qt desktop application.
