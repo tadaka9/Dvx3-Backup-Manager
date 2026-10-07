@@ -1,21 +1,249 @@
-name: CI
+name: CI - Multi-Platform Build & Test
+
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
 
 jobs:
-  linux:
+  # =============================================================================
+  # Windows x64 (MSVC)
+  # =============================================================================
+  windows-x64-msvc:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup MSVC toolchain
+        uses: ilammy/msvc-dev-cmd@v3
+        with:
+          arch: x64
+
+      - name: Install dependencies (choco)
+        run: |
+          choco install -y valac pkg-config cmake ninja-build zip
+
+      - name: Build core and manager
+        run: ./build.sh manager
+
+      - name: Build Qt6 GUI
+        run: ./build.sh gui
+
+      - name: Run tests (Windows)
+        run: ./scripts/run-tests.sh
+
+  # =============================================================================
+  # Windows x64 (MinGW-w64 cross-compilation for ARM64)
+  # =============================================================================
+  windows-x64-mingw-arm64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies (choco)
+        run: |
+          choco install -y valac pkg-config cmake ninja-build zip mingw-w64
+
+      - name: Setup MinGW-w64 for ARM64 cross-compilation
+        run: |
+          $mingwPath = "C:\Program Files\mingw-w64\x86_64-12.2.0-release-posix-seh-gcc-12-win32\bin"
+          $env:"CC_x64_arm64" = "$mingwPath\gcc.exe"
+          $env:"CXX_x64_arm64" = "$mingwPath\g++.exe"
+          $env:CFLAGS = "-m64 -mcpu=armv8-a+fp+simd+crypto+crc"
+          $env:CXXFLAGS = "-m64 -mcpu=armv8-a+fp+simd+crypto+crc"
+
+      - name: Build manager for Windows ARM64 (cross-compiled)
+        run: |
+          ./build.sh manager --target=wasm32-wasi
+          # Note: For actual WSL2 ARM64 support, we'd need a dedicated runner
+          # or use a cross-compilation toolchain like wasmtime/emsys
+
+      - name: Build Qt6 GUI (Windows)
+        run: ./build.sh gui
+
+  # =============================================================================
+  # Linux x64 (native build + packaging: DEB, RPM, AppImage)
+  # =============================================================================
+  linux-packaging-x64:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential valac pkg-config cmake qt6-base-dev \
-            libglib2.0-dev libjson-glib-dev libsodium-dev zstd
-      - name: Build core and manager
+          sudo apt-get install -y build-essential valac pkg-config cmake \
+            qt6-base-dev libglib2.0-dev libjson-glib-dev libsodium-dev \
+            zstd libxapp-dev librsvg-2-dev appstream-util \
+            debhelper devscripts quilt rpmbuild file desktop-file-utils \
+            appimage-builder squashfs-tools
+
+      - name: Build core and manager (native x86_64)
         run: ./build.sh manager
+
       - name: Build Qt6 GUI
         run: ./build.sh gui
-      - name: Tests
+
+      - name: Run tests
         run: ./scripts/run-tests.sh
+
+      # --- DEB Packaging ---
+      - name: Create Debian package
+        run: |
+          mkdir -p /tmp/deb-build
+          cp build/manager/bin/* /tmp/deb-build/usr/local/bin/
+          cp README.md LICENSE /tmp/deb-build/DEBIAN/
+          echo "deb [arch=amd64] file:///tmp/deb-packages /local" > /tmp/deb-build/DEBIAN/control
+          chmod +x /tmp/deb-build/usr/local/bin/*
+
+      # --- RPM Packaging ---
+      - name: Create RPM package
+        run: |
+          mkdir -p rpmbuild/BUILD rpmbuild/RPMS rpmbuild/SPECS rpmbuild/SOURCES
+          cd rpmbuild
+          cat > SPECS/dvx3-backup-manager.spec << 'EOF'
+Name:           dvx3-backup-manager
+Version:        1.0.0
+Release:        %{{dist}}
+Summary:        A modern, secure backup manager for Linux/Windows/macOS
+License:        MIT
+URL:            https://github.com/tadaka9/Dvx3-Backup-Manager
+Source0:        https://github.com/tadaka9/Dvx3-Backup-Manager/releases/download/v%{version}/dvx3-backup-manager-%{version}.tar.gz
+BuildArch:      x86_64
+BuildRequires:  valac pkg-config cmake
+BuildRoot:      %{_tmppath}/%{name}-%{version}-build
+%description
+A modern, secure backup manager built with Vala.
+%prep
+%setup -q
+%build
+%install
+mkdir -p %{buildroot}%{_bindir}
+cp build/manager/bin/* %{buildroot}%{_bindir}/
+cp README.md LICENSE %{buildroot}%{_docdir}%{name}/
+%files
+%{_bindir}/*
+%{_docdir}%{name}/README*
+%changelog
+EOF
+
+      # --- AppImage Packaging ---
+      - name: Build AppImage
+        uses: appimage-builder/appimage-builder@v3.5.0
+        with:
+          spec_file: |
+            apps/manager.desktop:
+              desktop-file: |
+                [Desktop Entry]
+                Name=Dvx3 Backup Manager
+                Comment=A modern, secure backup manager
+                Exec=/app/dvx3-backup-manager
+                Icon=app-image.png
+                Terminal=false
+                Type=Application
+                Categories=System;Utilities;
+
+  # =============================================================================
+  # macOS x86_64 (Intel)
+  # =============================================================================
+  macos-intel:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies (Homebrew)
+        run: |
+          brew install valac pkg-config cmake ninja-build zip \
+            qt6 base64-cli
+
+      - name: Build core and manager
+        run: ./build.sh manager
+
+      - name: Build Qt6 GUI
+        run: ./build.sh gui
+
+      - name: Run tests (macOS)
+        run: ./scripts/run-tests.sh
+
+  # =============================================================================
+  # macOS ARM64 (Apple Silicon) - via cross-compile from x86_64 runner
+  # Note: For native Apple Silicon builds, use macos-15 runner directly.
+  # Here we demonstrate a hybrid approach using Rosetta + cross-toolchain.
+  # =============================================================================
+  macos-silicon-cross:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies (Homebrew)
+        run: |
+          brew install valac pkg-config cmake ninja-build zip \
+            qt6 base64-cli crossbuild
+
+      - name: Build for macOS x86_64 (native on Apple Silicon via Rosetta)
+        run: ./build.sh manager --target=x86_64-apple-darwin
+
+      - name: Build Qt6 GUI (macOS Intel target)
+        run: ./build.sh gui --target=x86_64-apple-darwin
+
+  # =============================================================================
+  # macOS ARM64 (Apple Silicon native build)
+  # =============================================================================
+  macos-silicon-native:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies (Homebrew on Apple Silicon)
+        run: |
+          brew install valac pkg-config cmake ninja-build zip \
+            qt6 base64-cli
+
+      - name: Build core and manager (native ARM64)
+        run: ./build.sh manager --target=aarch64-apple-darwin
+
+      - name: Build Qt6 GUI
+        run: ./build.sh gui --target=aarch64-apple-darwin
+
+      - name: Run tests (macOS Silicon)
+        run: ./scripts/run-tests.sh
+
+  # =============================================================================
+  # Summary / Artifact generation
+  # =============================================================================
+  summary-artifacts:
+    needs: [windows-x64-msvc, linux-packaging-x64, macos-intel, macos-silicon-native]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifacts from previous jobs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: 'artifacts-*'
+          merge-multiple: true
+
+      - name: Upload all built binaries and packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-builds
+          path: |
+            artifacts-windows-msvc/
+            artifacts-linux-deb-rpm-appimage/
+            artifacts-macos-intel/
+            artifacts-macos-silicon/
+          if-no-files-found: skip
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v$(echo ${{ github.sha }} | head -c 8)
+          generate_release_notes: true
+          files: |
+            artifacts-windows-msvc/*.exe
+            artifacts-linux-deb-rpm-appimage/*.deb *.rpm *.AppImage
+            artifacts-macos-intel/*.dmg
+            artifacts-macos-silicon/*.dmg
+
+permissions:
+  contents: write
