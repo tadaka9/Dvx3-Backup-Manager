@@ -1,7 +1,33 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#1e1e1e"/>
-  <circle cx="256" cy="256" r="200" fill="#3fb95e" opacity="0.2"/>
-  <path d="M256 80 L352 240 L256 360 L160 240 Z" fill="#3fb95e"/>
-  <text x="256" y="280" text-anchor="middle" font-family="Arial, sans-serif" font-size="48" fill="#ffffff">Dvx3</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">DVX3 Backup Manager</title>
+  <desc id="desc">A luminous D surrounding three stacked backup layers.</desc>
+  <defs>
+    <linearGradient id="surface" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#152b40"/>
+      <stop offset="1" stop-color="#081622"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#a1f3c9"/>
+      <stop offset=".48" stop-color="#43dcb8"/>
+      <stop offset="1" stop-color="#1aa6b7"/>
+    </linearGradient>
+    <radialGradient id="glow">
+      <stop offset="0" stop-color="#31d7ae" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#31d7ae" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="tile">
+      <rect x="12" y="12" width="488" height="488" rx="112"/>
+    </clipPath>
+  </defs>
+  <rect x="12" y="12" width="488" height="488" rx="112" fill="url(#surface)"/>
+  <rect x="12.75" y="12.75" width="486.5" height="486.5" rx="111.25" fill="none" stroke="#82e8ce" stroke-opacity=".24" stroke-width="1.5"/>
+  <circle cx="353" cy="170" r="235" fill="url(#glow)" clip-path="url(#tile)"/>
+  <path d="M132 106c0-9 7-16 16-16h96c111 0 183 71 183 166S355 422 244 422h-96c-9 0-16-7-16-16V106Zm75 57v186h36c69 0 109-35 109-93s-40-93-109-93h-36Z"
+        fill="url(#mark)" fill-rule="evenodd"/>
+  <g fill="#d9fff0">
+    <rect x="226" y="206" width="86" height="16" rx="8" opacity=".95"/>
+    <rect x="226" y="248" width="100" height="16" rx="8" opacity=".78"/>
+    <rect x="226" y="290" width="86" height="16" rx="8" opacity=".60"/>
+  </g>
 </svg>

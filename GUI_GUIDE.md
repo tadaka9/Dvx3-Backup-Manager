@@ -3,6 +3,9 @@
 Build `./build.sh gui` and launch `./run_gui.sh`. Qt provides file dialogs and
 progress presentation; archive operations run in the canonical Vala engine on a
 worker thread. The C++ layer has no independent encryption/compression/job backend.
+The window and taskbar use an embedded app icon. Its editable vector source is
+`gui/qt/qtdesktop/icons/logo.svg`; the matching PNG is included as a Qt resource.
+Windows builds also embed an ICO in the executable for Explorer.
 
 Choose Create or Restore, source, destination and password. Creation offers the
 codecs whose local tools/profile dependencies are detected; zstd is the default.
@@ -22,3 +25,5 @@ QT_QPA_PLATFORM=offscreen build/bin/dvx3-backup-manager --smoke-test
 This constructs/renders the real window; it does not substitute for manual desktop
 interaction testing. Local Linux compilation and offscreen startup were verified;
 other platform GUI support depends on the native CI results listed in BUILD.md.
+Set `DVX3_SMOKE_IMAGE=/path/to/preview.png` with the smoke test to save its
+rendered window for visual inspection.

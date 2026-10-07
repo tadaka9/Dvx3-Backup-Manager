@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 360" role="img" aria-labelledby="title desc">
+  <title id="title">DVX3 Backup Manager</title>
+  <desc id="desc">Private backups, your keys, your machine. The DVX3 logo is a D formed around three backup layers.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#11283b"/>
+      <stop offset=".55" stop-color="#0b1b2a"/>
+      <stop offset="1" stop-color="#07131e"/>
+    </linearGradient>
+    <linearGradient id="iconSurface" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#152b40"/>
+      <stop offset="1" stop-color="#081622"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#a1f3c9"/>
+      <stop offset=".48" stop-color="#43dcb8"/>
+      <stop offset="1" stop-color="#1aa6b7"/>
+    </linearGradient>
+    <radialGradient id="halo">
+      <stop offset="0" stop-color="#2acba7" stop-opacity=".21"/>
+      <stop offset="1" stop-color="#2acba7" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="rounded"><rect width="1440" height="360" rx="34"/></clipPath>
+  </defs>
+  <g clip-path="url(#rounded)">
+    <rect width="1440" height="360" fill="url(#background)"/>
+    <circle cx="1195" cy="166" r="380" fill="url(#halo)"/>
+    <g fill="none" stroke="#57dec0" stroke-opacity=".11" stroke-width="1.5">
+      <path d="M1010-80c115 52 232 68 340 62s176 13 258 57"/>
+      <path d="M989-30c123 53 241 73 352 65s189 12 270 59"/>
+      <path d="M970 21c133 58 249 75 363 72s197 16 278 60"/>
+      <path d="M952 72c139 64 254 78 374 75s202 22 283 66"/>
+      <path d="M934 124c148 67 264 82 386 81s210 25 294 69"/>
+      <path d="M918 176c155 69 276 85 401 84s216 27 300 75"/>
+      <path d="M903 227c161 75 283 88 412 87s220 34 307 79"/>
+    </g>
+    <path d="M343 72v216" stroke="#8cebd1" stroke-opacity=".22"/>
+    <g transform="translate(64 62) scale(.46)">
+      <rect x="12" y="12" width="488" height="488" rx="112" fill="url(#iconSurface)"/>
+      <rect x="12.75" y="12.75" width="486.5" height="486.5" rx="111.25" fill="none" stroke="#82e8ce" stroke-opacity=".3" stroke-width="1.5"/>
+      <path d="M132 106c0-9 7-16 16-16h96c111 0 183 71 183 166S355 422 244 422h-96c-9 0-16-7-16-16V106Zm75 57v186h36c69 0 109-35 109-93s-40-93-109-93h-36Z"
+            fill="url(#mark)" fill-rule="evenodd"/>
+      <g fill="#d9fff0">
+        <rect x="226" y="206" width="86" height="16" rx="8" opacity=".95"/>
+        <rect x="226" y="248" width="100" height="16" rx="8" opacity=".78"/>
+        <rect x="226" y="290" width="86" height="16" rx="8" opacity=".60"/>
+      </g>
+    </g>
+    <g font-family="Inter, Segoe UI, DejaVu Sans, sans-serif">
+      <text x="389" y="159" fill="#f4fff9" font-size="91" font-weight="800" letter-spacing="5">DVX3</text>
+      <text x="394" y="214" fill="#83e5cb" font-size="32" font-weight="600" letter-spacing="7">BACKUP MANAGER</text>
+      <text x="394" y="273" fill="#c8dadb" font-size="27" font-weight="400">Your backups. Your keys. Your machine.</text>
+    </g>
+    <path d="M0 359h1440" stroke="#56dcb9" stroke-opacity=".5" stroke-width="2"/>
+  </g>
+</svg>

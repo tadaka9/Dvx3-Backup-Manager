@@ -23,7 +23,7 @@ for file in "build/bin/dvx3$exe" "build/bin/backup-manager$exe"   "build/bin/dvx
   [[ -s $file ]] || { printf 'Missing build output: %s (run ./build.sh all test first)\n' "$file" >&2; exit 1; }
 done
 rm -rf "$stage"
-mkdir -p "$stage/bin" "$stage/lib" "$stage/include" "$stage/share/dvx3" "$artifacts"
+mkdir -p "$stage/bin" "$stage/lib" "$stage/include" "$stage/share/dvx3" "$stage/assets/brand" "$artifacts"
 cp "build/bin/dvx3$exe" "build/bin/backup-manager$exe"   "build/bin/dvx3-backup-manager$exe" "$stage/bin/"
 cp "build/lib/$library" build/lib/libdvx3.a "$stage/lib/"
 if [[ $os == windows ]]; then
@@ -32,7 +32,10 @@ if [[ $os == windows ]]; then
 fi
 cp build/generated/dvx3.h dvx3.hpp "$stage/include/"
 cp build/generated/dvx3.vapi config/codecs.example.ini "$stage/share/dvx3/"
-cp LICENSE BUILD.md ARCHITECTURE.md COMPRESSION.md BACKUP_MANAGER_GUIDE.md GUI_GUIDE.md "$stage/"
+cp LICENSE README.md BUILD.md ARCHITECTURE.md COMPRESSION.md BACKUP_MANAGER_GUIDE.md GUI_GUIDE.md \
+  INSTALL.md CPP_USAGE.md CLEANUP_REPORT.md "$stage/"
+cp assets/brand/readme-hero.svg "$stage/assets/brand/"
+cp gui/qt/qtdesktop/icons/logo.svg "$stage/assets/brand/logo.svg"
 {
   printf 'Platform: %s-%s\n' "$os" "$arch"
   printf 'Commit: %s\n' "$(git rev-parse HEAD)"

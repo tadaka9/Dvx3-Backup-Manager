@@ -5,10 +5,15 @@
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QFileDialog>
+#include <QFont>
 #include <QFormLayout>
+#include <QFrame>
+#include <QHBoxLayout>
+#include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QPixmap>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QThread>
@@ -51,8 +56,35 @@ class Window : public QWidget {
     Operation* operation = nullptr;
 public:
     Window() {
-        setWindowTitle("Dvx3 Backup Manager");
+        setWindowTitle("DVX3 Backup Manager");
         auto* layout = new QVBoxLayout(this);
+        auto* brand = new QHBoxLayout;
+        brand->setSpacing(16);
+        auto* mark = new QLabel;
+        mark->setPixmap(QPixmap(":/brand/logo.png").scaled(
+            72, 72, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        brand->addWidget(mark);
+        auto* brandText = new QVBoxLayout;
+        brandText->setSpacing(0);
+        auto* title = new QLabel("DVX3");
+        QFont titleFont = title->font();
+        titleFont.setPointSize(21);
+        titleFont.setBold(true);
+        title->setFont(titleFont);
+        brandText->addWidget(title);
+        auto* subtitle = new QLabel("BACKUP MANAGER");
+        QFont subtitleFont = subtitle->font();
+        subtitleFont.setPointSize(9);
+        subtitleFont.setBold(true);
+        subtitleFont.setLetterSpacing(QFont::AbsoluteSpacing, 1.6);
+        subtitle->setFont(subtitleFont);
+        brandText->addWidget(subtitle);
+        brand->addLayout(brandText);
+        brand->addStretch();
+        layout->addLayout(brand);
+        auto* divider = new QFrame;
+        divider->setFrameShape(QFrame::HLine);
+        layout->addWidget(divider);
         auto* form = new QFormLayout;
         mode = new QComboBox; mode->addItems({"Create backup", "Restore backup"});
         source = new QLineEdit; destination = new QLineEdit;
@@ -108,7 +140,7 @@ public:
             });
             operation->start();
         });
-        resize(650, 350);
+        resize(650, 430);
     }
 protected:
     void closeEvent(QCloseEvent* event) override {
@@ -118,12 +150,16 @@ protected:
 };
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
+    app.setWindowIcon(QIcon(":/brand/logo.png"));
     if (app.arguments().contains("--version")) { qInfo("Dvx3 %s", DVX3_VERSION); return 0; }
     Window window; window.show();
     if (app.arguments().contains("--smoke-test")) {
         // Construct and render the real window without blocking automated runners.
         app.processEvents();
-        window.grab();
+        auto frame = window.grab();
+        if (frame.isNull()) return 1;
+        const QString screenshot = qEnvironmentVariable("DVX3_SMOKE_IMAGE");
+        if (!screenshot.isEmpty() && !frame.save(screenshot)) return 1;
         return 0;
     }
     return app.exec();
