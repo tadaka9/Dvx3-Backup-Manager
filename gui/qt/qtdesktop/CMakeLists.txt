@@ -17,9 +17,7 @@ qt_add_executable(dvx3-backup-manager main.cpp resources.qrc)
 if(WIN32)
     enable_language(RC)
     set(DVX3_WINDOWS_ICON "${CMAKE_CURRENT_SOURCE_DIR}/icons/logo.ico")
-    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/icons/app-icon.rc.in
-                    "${CMAKE_CURRENT_BINARY_DIR}/app-icon.rc"
-                    @ONLY)
+    configure_file(app-icon.rc.in "${CMAKE_CURRENT_BINARY_DIR}/app-icon.rc" @ONLY)
     target_sources(dvx3-backup-manager PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/app-icon.rc")
 endif()
 set_target_properties(dvx3-backup-manager PROPERTIES
