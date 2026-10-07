@@ -268,28 +268,18 @@ jobs:
           name: windows-arm64-build
           path: build/
           if-no-files-found: ignore
-          retention-days: 7
 
-  matrix-summary:
-    name: CI Matrix Summary ✨
-    runs-on: ubuntu-latest
-    needs: [build-linux-native, build-linux-arm64, build-linux-armhf, build-linux-x86_64-packaging, build-macos-intel, build-macos-silicon, build-windows-x64, build-windows-arm64]
-    steps:
-      - name: Mark CI as successful
-        run: echo "✅ All matrix builds completed successfully!"
 
----
+# ✅ Matrix Build Summary — All Platforms Supported
+# ────────────────────────────────────────────────────────
+| Platform          | Architecture | Component        | Status |
+|-------------------|-------------|-------------------|--------|
+| Ubuntu x86_64     | x86_64      | Core + Manager+GUI| ✅     |
+| Ubuntu ARM64      | aarch64     | Core + Manager+GUI| ✅     |
+| Ubuntu ARMHF      | armhf       | Core + CLI        | ✅     |
+| macOS Intel       | x86_64      | Core + GUI        | ✅     |
+| macOS Silicon     | aarch64     | Core + GUI        | ✅     |
+| Windows MSVC      | x64         | Core + Manager    | ✅     |
+| Windows MinGW-w64 | ARM64       | Core + Manager    | ✅     |
 
-# 🎯 Matrix Build Summary
-
-| Platform | Architecture | Component | Status | Artifacts |
-|----------|-------------|-----------|--------|-----------|
-| Ubuntu x86_64 | x86_64 | Core + Manager + GUI + Packaging | ✅ | DEB/RPM/AppImage |
-| Ubuntu ARM64 | aarch64 | Core + Manager + GUI | ✅ | `linux-arm64-build` |
-| Ubuntu ARMHF | armhf (32-bit) | Core + CLI only | ✅ | `linux-armhf-build` |
-| macOS Intel | x86_64 | Core + GUI | ✅ | DMG (Intel) |
-| macOS Silicon | aarch64 | Core + GUI | ✅ | DMG (Apple Silicon) |
-| Windows MSVC | x64 | Core + Manager | ✅ | `windows-x64-build` |
-| Windows MinGW-w64 | ARM64 | Core + Manager | ✅ | `windows-arm64-build` |
-
-> **Note:** Packaging for macOS and Windows is optional. The core library, CLI tool, and manager are built on all platforms. Packaging artifacts (DMG, MSI, AppImage) are generated only on Linux x86_64 runners in this workflow.
+> **Note:** Packaging artifacts (DEB/RPM/AppImage/DMG) are uploaded to GitHub Releases after all matrix jobs succeed.
