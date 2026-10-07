@@ -155,7 +155,7 @@ jobs:
           compression-level: 0
           retention-days: 30
   release:
-    name: Publish tested build archives
+    name: Publish tested builds and installers
     needs: [linux, macos, windows]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-24.04
@@ -167,7 +167,7 @@ jobs:
           pattern: dvx3-*
           path: dist
           merge-multiple: true
-      - name: Verify archives and publish release assets
+      - name: Verify and publish every release asset
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -179,6 +179,18 @@ jobs:
             test -s "dvx3-$platform.tar.gz"
             sha256sum -c "dvx3-$platform.tar.gz.sha256"
           done
+          shopt -s nullglob
+          for pattern in \
+            'dvx3_*_amd64.deb' 'dvx3_*_arm64.deb' \
+            'dvx3-*.x86_64.rpm' 'dvx3-*.aarch64.rpm' \
+            'DVX3-*-x86_64.AppImage' \
+            'DVX3-*-windows-x86_64-portable.zip' 'DVX3-*-windows-x86_64.msi' \
+            'DVX3-*-macos-x86_64.app.zip' 'DVX3-*-macos-x86_64.pkg' \
+            'DVX3-*-macos-arm64.app.zip' 'DVX3-*-macos-arm64.pkg'; do
+            match=( $pattern )
+            test "${#match[@]}" -eq 1
+            test -s "${match[0]}"
+          done
           args=()
           if [[ "$BUILD_REF" == refs/tags/* ]]; then
             tag="$BUILD_TAG"
@@ -188,16 +200,21 @@ jobs:
             tag="build-$GITHUB_SHA"
             args+=(--prerelease --target "$GITHUB_SHA")
           fi
-          cat > release-notes.md <<'EOF'
-          Native build archives for Linux x86_64/ARM64, macOS Intel/ARM64 and Windows x64.
+          cat > /tmp/dvx3-release-notes.md <<'EOF'
+          Native, tested DVX3 builds for Linux x86_64/ARM64, macOS Intel/ARM64 and Windows x64.
+
+          Installers: DEB and RPM for Linux x86_64/ARM64, AppImage for Linux x86_64,
+          portable ZIP and MSI for Windows x64, and app ZIP plus PKG for both macOS architectures.
+          Developer tarballs and their SHA256 checksum files are also included.
+
           All five native build, archive round-trip and GUI smoke-test jobs passed.
-          These bundles require runtime libraries, Qt plugins and archive/codec tools;
-          they are not self-contained installers. See BUILD.md inside each archive.
-          Verify downloads using the accompanying SHA256 checksum files.
+          Archive codec executables remain system dependencies. MSI and PKG development
+          builds are unsigned; macOS app bundles receive ad-hoc signing in CI.
           EOF
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" ./*.tar.gz ./*.sha256 --clobber
+            gh release upload "$tag" ./* --clobber
+            gh release edit "$tag" --notes-file /tmp/dvx3-release-notes.md
           else
             gh release create "$tag" "${args[@]}" --title "Dvx3 $tag" \
-              --notes-file release-notes.md ./*.tar.gz ./*.sha256
+              --notes-file /tmp/dvx3-release-notes.md ./*
           fi
