@@ -28,22 +28,6 @@
 #include <QCloseEvent>
 #include <QFrame>
 #include <QScrollBar>
-#include <QRandomGenerator>
-
-// ============================================================================
-// Forward declarations
-// ============================================================================
-
-class BackupManagerWindow;  // Main window class (defined at end)
-class WelcomePage;
-class DashboardPage;
-class CreateBackupPage;
-class RestorePage;
-class SchedulePage;
-class SettingsPage;
-class AboutPage;
-
-enum class EncryptionOp { Create, Decrypt };
 
 // ============================================================================
 // Welcome Page
@@ -63,8 +47,7 @@ public:
 
         QLabel* subtitle = new QLabel(
             "A privacy-first, local-only backup solution.\n\n"
-            "🔐 AES-GCM encryption · 🔄 ChaCha20 streams · ⚡ ZSTD compression\n"
-            "📦 No external dependencies · 🏠 Local-first design", this);
+            "🔐 AES-GCM encryption · 🔄 ChaCha20 streams · ⚡ ZSTD compression", this);
         subtitle->setStyleSheet(R"(QLabel{font-size:16px;color:#aaaaaa;line-height:1.5;margin-top:16px;})");
         layout->addWidget(subtitle, 0, Qt::AlignCenter | Qt::AlignTop);
 
@@ -103,8 +86,7 @@ public:
         layout->addWidget(title);
 
         QLabel* subtitle = new QLabel(
-            "No backups yet. Create your first encrypted backup to see statistics here.\n\n"
-            "This page will show: total backups, storage usage, oldest/newest archives, and encryption strength.", this);
+            "No backups yet. Create your first encrypted backup to see statistics here.", this);
         subtitle->setStyleSheet(R"(QLabel{color:#aaaaaa;font-size:14px;line-height:1.5;})");
         layout->addWidget(subtitle, 0, Qt::AlignCenter | Qt::AlignTop);
 
@@ -114,9 +96,6 @@ public:
         m_recentTable->setHorizontalHeaderLabels({"#", "Operation", "Status", "Details", "Time"});
         m_recentTable->setStyleSheet(R"(QTableWidget{background-color:#202020;border:1px solid #404040;} QTableWidget::item{padding:6px;} QTableWidget::item:selected{background-color:#1f4680;color:white;padding-left:32px;} QHeaderView::section{background-color:#2a2a2e;color:#dddddd;font-weight:normal;border:none;padding:5px 8px;})");
 
-        QTableWidgetItem* dummy = new QTableWidgetItem(QString::number(QDateTime::currentMSecsSinceEpoch() / 1000));
-        m_recentTable->setItem(0, 0, dummy);
-
         layout->addWidget(m_recentTable, 1);
     }
 
@@ -125,38 +104,35 @@ signals:
 
 private slots:
     void addRecentOperation(const QString& op, const QString& status, const QString& details = "", int progress = 0) {
-        auto* row = new QTableWidgetItem();
-        row->setTextAlignment(Qt::AlignCenter);
         m_recentTable->insertRow(m_recentTable->rowCount());
 
-        m_recentTable->setItem(m_recentTable->rowCount() - 1, 0, row);
+        auto* rowItem = new QTableWidgetItem(op);
+        rowItem->setTextAlignment(Qt::AlignCenter);
+        m_recentTable->setItem(m_recentTable->currentIndex().row(), 0, rowItem);
 
-        auto* opItem = new QTableWidgetItem(op);
-        opItem->setForeground(QColor(98, 158, 218)); // #62a2da (blue)
-        m_recentTable->setItem(m_recentTable->rowCount() - 1, 1, opItem);
-
-        auto* statusItem = new QTableWidgetItem(status);
+        auto* opItem = new QTableWidgetItem(status);
         if (status.startsWith("✅")) {
-            statusItem->setForeground(QColor(63, 185, 94)); // #3fb95e green
+            opItem->setForeground(QColor(63, 185, 94)); // green
         } else if (status.startsWith("❌")) {
-            statusItem->setForeground(QColor(220, 53, 69)); // red
+            opItem->setForeground(QColor(220, 53, 69)); // red
         } else if (status.startsWith("🔄")) {
-            statusItem->setForeground(QColor(245, 158, 11)); // #f59e0b yellow
+            opItem->setForeground(QColor(245, 158, 11)); // yellow
         }
-        m_recentTable->setItem(m_recentTable->rowCount() - 1, 2, statusItem);
+        m_recentTable->setItem(m_recentTable->currentIndex().row(), 1, opItem);
 
         auto* detailItem = new QTableWidgetItem(details);
         detailItem->setTextAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
-        m_recentTable->setItem(m_recentTable->rowCount() - 1, 3, detailItem);
+        m_recentTable->setItem(m_recentTable->currentIndex().row(), 2, detailItem);
 
         if (progress > 0) {
             auto* pb = new QProgressBar();
             pb->setValue(progress);
             pb->setMaximum(100);
-            m_recentTable->setCellWidget(m_recentTable->rowCount() - 1, 3, pb);
+            pb->setTextVisible(true);
+            m_recentTable->setCellWidget(m_recentTable->currentIndex().row(), 2, pb);
         }
 
-        int rowIdx = m_recentTable->rowCount() - 1;
+        // Auto-scroll to bottom
         QScrollBar* vBar = m_recentTable->verticalScrollBar();
         if (vBar && vBar->maximum() > 0) {
             vBar->setValue(vBar->maximum());
@@ -175,9 +151,9 @@ class CreateBackupPage : public QWidget {
     Q_OBJECT
 public:
     explicit CreateBackupPage(QWidget *parent = nullptr) : QWidget(parent),
-        m_encryptBtn(new QPushButton("🔐 Create Encrypted Backup", this)),
-        m_restoreBtn(new QPushButton("🔄 Restore from Archive", this)),
-        m_progressBar(new QProgressBar(this)) {
+        m_sourcePathInput(new QLineEdit(this)),
+        m_passwordInput(new QLineEdit(this)),
+        m_strengthBar(new QProgressBar(this)) {
         setupUI();
     }
 
@@ -217,7 +193,7 @@ private:
 
         QPushButton* btnBrowse = new QPushButton("📁 Browse...", this);
         btnBrowse->setStyleSheet(R"(QPushButton{background:#3fb95e;color:white;font-weight:bold;padding:6px 14px;border-radius:4px;font-size:12px;border:none;cursor:pointer;} QPushButton:hover{background:#2ea048;})");
-        connect(btnBrowse, &QPushButton::clicked, [this]() {
+        connect(btnBrowse, &QPushButton::clicked, this, [this]() {
             QString path = QFileDialog::getExistingDirectory(this, "Select source folder", QDir::homePath(), QFileDialog::ShowDirsOnly);
             if (!path.isEmpty()) {
                 m_sourcePathInput->setText(path);
@@ -245,14 +221,13 @@ private:
         m_passwordInput->setStyleSheet(R"(QLineEdit{font-size:14px;background:#2a2a2a;color:white;border:1px solid #3fb95e;padding:8px 12px;border-radius:6px;min-height:34px;} QLineEdit:focus{border:2px solid #3fb95e;})");
         pLayout->addWidget(m_passwordInput, 0);
 
-        // Password strength meter
-        QLabel* strengthLabel = new QLabel("Password strength:", this);
+        // Password strength meter — no longer unused!
         m_strengthBar = new QProgressBar(this);
         m_strengthBar->setRange(0, 4);
         m_strengthBar->setValue(0);
         m_strengthBar->setTextVisible(true);
         m_strengthBar->setFormat("%{value} of %{max} — %{text}");
-        m_strengthBar->setStyleSheet(R"(QProgressBar{background-color:#333333;border:none;border-radius:4px;font-size:10px;color:#dddddd;} QProgressBar::chunk{border-radius:4px;} QProgressBar::chunk[0]{background-color:#dc2626;} QProgressBar::chunk[1]{background-color:#f59e0b;} QProgressBar::chunk[2]{background-color:#3fb95e;} QProgressBar::chunk[3]{background-color:#06b6d4;})");
+        m_strengthBar->setStyleSheet(R"(QProgressBar{background-color:#333333;border:none;border-radius:4px;font-size:10px;color:#dddddd;} QProgressBar::chunk[0]{background-color:#dc2626;} QProgressBar::chunk[1]{background-color:#f59e0b;} QProgressBar::chunk[2]{background-color:#3fb95e;} QProgressBar::chunk[3]{background-color:#06b6d4;})");
         pLayout->addWidget(m_strengthBar, 0);
 
         connect(m_passwordInput, &QLineEdit::textChanged, this, [this](const QString& txt) {
@@ -270,7 +245,7 @@ private:
 
         QPushButton* btnGenerate = new QPushButton("🎲 Generate random password (12-64 chars)", this);
         btnGenerate->setStyleSheet(R"(QPushButton{background:transparent;color:#3fb95e;font-weight:bold;padding:6px 14px;border-radius:4px;font-size:12px;border:none;cursor:pointer;border-bottom:2px solid #3fb95e;} QPushButton:hover{background:#2a3d44;})");
-        connect(btnGenerate, &QPushButton::clicked, [this]() {
+        connect(btnGenerate, &QPushButton::clicked, this, [this]() {
             QString pass = generateRandomPassword(16);
             m_passwordInput->setText(pass);
             updateStrengthBar(calculatePasswordStrength(pass));
@@ -322,7 +297,7 @@ private:
             }
 
             // In production: launch CLI here via QProcess or D-Bus
-            QString cmd = QString("cd %1 && ./cli_backup_manager --create --source \"%2\" --password \"%3\""
+            QString cmd = QString("cd \"%1\" && ./cli_backup_manager --create --source \"%2\" --password \"%3\""
                                  .arg(QDir::currentPath(), source, password));
 
             QMessageBox::information(this, "Backup Started",
@@ -375,7 +350,7 @@ private:
 
         QPushButton* btnBrowseRestore = new QPushButton("📁 Browse...", this);
         btnBrowseRestore->setStyleSheet(R"(QPushButton{background:#3fb95e;color:white;font-weight:bold;padding:6px 14px;border-radius:4px;font-size:12px;border:none;cursor:pointer;} QPushButton:hover{background:#2ea048;})");
-        connect(btnBrowseRestore, &QPushButton::clicked, [this]() {
+        connect(btnBrowseRestore, &QPushButton::clicked, this, [this]() {
             QString path = QFileDialog::getOpenFileName(this, "Select .dvx3 archive", QDir::homePath(), "Dvx3 Archives (*.dvx3);;All Files (*)");
             if (!path.isEmpty()) m_restorePathInput->setText(path);
         });
@@ -387,7 +362,7 @@ private:
 
         m_restoreBtn = new QPushButton("🔄 Restore Now", this);
         m_restoreBtn->setEnabled(false);
-        connect(m_restoreBtn, &QPushButton::clicked, [this]() {
+        connect(m_restoreBtn, &QPushButton::clicked, this, [this]() {
             QString archivePath = m_restorePathInput->text().trimmed();
             if (archivePath.isEmpty()) {
                 QMessageBox::warning(this, "Missing Archive", "Please select a .dvx3 archive file first.");
@@ -399,7 +374,7 @@ private:
                 return;
             }
 
-            QString cmd = QString("cd %1 && ./cli_backup_manager --restore --archive \"%2\" --password \"%3\""
+            QString cmd = QString("cd \"%1\" && ./cli_backup_manager --restore --archive \"%2\" --password \"%3\""
                                  .arg(QDir::currentPath(), archivePath, password));
 
             QMessageBox::information(this, "Restore Started",
@@ -412,37 +387,36 @@ private:
                         .arg(calculatePasswordStrength(password))
                         .arg(cmd));
 
-            // Simulate progress
-            auto* pb = new QProgressBar(this);
+            // Simulate restore progress
+            QProgressBar* pb = new QProgressBar(this);
             pb->setValue(0);
             pb->setRange(0, 100);
             pb->setTextVisible(true);
             pb->setStyleSheet(R"(QProgressBar{background:#28282a;border-radius:4px;height:6px;} QProgressBar::chunk{background-color:#3fb95e;border-radius:4px;})");
 
-            QPushButton* stopBtn = new QPushButton("⏹️ Stop", this);
-            connect(stopBtn, &QPushButton::clicked, [pb](){ pb->setValue(0); });
+            QPushButton* stopRestoreBtn = new QPushButton("⏹️ Stop", this);
+            stopRestoreBtn->setStyleSheet(R"(QPushButton{background:#dc2626;color:white;padding:6px 12px;border-radius:4px;font-size:12px;} QPushButton:hover{background:#b91c1c;})");
 
             auto* box = new QGroupBox("Restore Progress");
             auto* blayout = new QVBoxLayout(box);
-            blayout->addWidget(new QLabel("Decrypting and extracting..."));
             blayout->addWidget(pb, 1);
-            blayout->addWidget(stopBtn);
+            blayout->addWidget(new QLabel("Decrypting archive..."), 0);
+            blayout->addWidget(stopRestoreBtn);
 
             mainLayout->insertWidget(mainLayout->indexOf(container) + 1, box);
         });
 
-        rLayout->addStretch();
+        rLayout->addWidget(m_restoreBtn, 0);
         mainLayout->addWidget(restoreGroup, 0);
     }
 
 private:
     QLineEdit* m_sourcePathInput;
     QLineEdit* m_passwordInput;
-    QLineEdit* m_restorePathInput;
     QProgressBar* m_strengthBar;
     QPushButton* m_encryptBtn;
+    QLineEdit* m_restorePathInput;
     QPushButton* m_restoreBtn;
-    QProgressBar* m_progressBar;
 
     int calculatePasswordStrength(const QString& password) {
         int score = 0;
@@ -464,36 +438,35 @@ private:
         return std::min(4, score);
     }
 
+    void updateStrengthBar(int strength) {
+        if (m_strengthBar) m_strengthBar->setValue(strength);
+    }
+
     QString generateRandomPassword(int length = 16) {
         static const char chars[] = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%^&*()-_=+[]{}|;:'\",.<>/?";
         QString password;
-        auto gen = QRandomGenerator::systemRandom();
+        // Use a simple LCG-based PRNG that works on all platforms (no QRandomGenerator dependency)
+        srand(static_cast<unsigned>(QDateTime::currentMSecsSinceEpoch()));
         for (int i = 0; i < length; ++i) {
-            int idx = static_cast<int>(gen.generate()) % sizeof(chars);
-            password += chars[idx];
+            int idx = rand() % sizeof(chars);
+            password += QString::fromLatin1(chars[idx]);
         }
         return password;
     }
 
-    void updateStrengthBar(int strength) {
-        if (strength == 0) m_strengthBar->setValue(0);
-        else if (strength == 1) m_strengthBar->setValue(1);
-        else if (strength == 2) m_strengthBar->setValue(2);
-        else if (strength == 3) m_strengthBar->setValue(3);
-        else m_strengthBar->setValue(4);
-    }
+public: // exposed for testing
+    QProgressBar* strengthBar() const { return m_strengthBar; }
 };
 
 // ============================================================================
-// Restore Page (full wizard UI)
+// Restore Page
 // ============================================================================
 
 class RestorePage : public QWidget {
     Q_OBJECT
 public:
     explicit RestorePage(QWidget *parent = nullptr) : QWidget(parent),
-        m_backupFileLabel(new QLabel("", this)),
-        m_restorePasswordInput(new QLineEdit(this)) {
+        m_backupFileLabel(new QLabel("", this)) {
         setupUI();
     }
 
@@ -501,29 +474,25 @@ signals:
     void browseArchiveTriggered();
     void restoreOperationStarted(const QString& password);
 
-private slots:
-    void onBrowseRestore() { emit browseArchiveTriggered(); }
-    void onRestoreClicked() { emit restoreOperationStarted(m_restorePasswordInput->text()); }
-
 private:
     void setupUI() {
         auto* layout = new QVBoxLayout(this);
         layout->setContentsMargins(20, 20, 20, 20);
         layout->setSpacing(15);
 
-        QLabel* title = new QLabel("🔄 Restore from Archive", this);
+        QLabel* title = new QLabel("🔓 Restore Encrypted Archive", this);
         title->setStyleSheet(R"(QLabel{font-size:24px;font-weight:bold;color:#ffffff;padding:8px 0;})");
         layout->addWidget(title);
 
         auto* container = new QFrame();
-        container->setStyleSheet(R"(QFrame{background-color:#1e1e1e;border-radius:8px;padding:20px;} QLabel,QLineEdit,QPushButton,QProgressBar{color:white;background-color:transparent;border:none;margin:0;padding:0;})");
+        container->setStyleSheet(R"(QFrame{background-color:#1e1e1e;border-radius:8px;padding:20px;} QLabel,QLineEdit,QPushButton,QProgressBar,QTableWidget::item{color:white;background-color:transparent;border:none;margin:0;padding:0;})");
         layout->addWidget(container, 1);
 
         auto* mainLayout = new QVBoxLayout(container);
         mainLayout->setSpacing(15);
 
-        // --- Step 1: Select archive ---
-        QGroupBox* step1Group = new QGroupBox("Step 1 — Archive File", this);
+        // --- Step 1: Select Archive ---
+        QGroupBox* step1Group = new QGroupBox("Step 1 — Select Archive", this);
         auto* s1Layout = new QVBoxLayout(step1Group);
         s1Layout->setSpacing(8);
 
@@ -537,7 +506,7 @@ private:
 
         QPushButton* btnBrowse = new QPushButton("📁 Browse...", this);
         btnBrowse->setStyleSheet(R"(QPushButton{background:#3fb95e;color:white;font-weight:bold;padding:6px 14px;border-radius:4px;font-size:12px;border:none;cursor:pointer;} QPushButton:hover{background:#2ea048;})");
-        connect(btnBrowse, &QPushButton::clicked, [this]() {
+        connect(btnBrowse, &QPushButton::clicked, this, [this]() {
             QString selected = QFileDialog::getOpenFileName(this, "Select Dvx3 Archive", QDir::homePath(), "Dvx3 Archives (*.dvx3);;All Files (*)");
             if (!selected.isEmpty()) {
                 m_backupFileLabel->setText(QFileInfo(selected).fileName());
@@ -563,7 +532,7 @@ private:
 
         QPushButton* btnGenerate = new QPushButton("🎲 Try random password (last used)", this);
         btnGenerate->setStyleSheet(R"(QPushButton{background:transparent;color:#3fb95e;font-weight:bold;padding:6px 14px;border-radius:4px;font-size:12px;border:none;cursor:pointer;border-bottom:2px solid #3fb95e;} QPushButton:hover{background:#2a3d44;})");
-        connect(btnGenerate, &QPushButton::clicked, [this]() {
+        connect(btnGenerate, &QPushButton::clicked, this, [this]() {
             m_restorePasswordInput->setText(generateRandomPassword(16));
         });
         s2Layout->addWidget(btnGenerate);
@@ -571,7 +540,7 @@ private:
         // --- Step 3: Restore button ---
         QPushButton* btnRestore = new QPushButton("🚀 Restore Now", this);
         btnRestore->setStyleSheet(R"(QPushButton{background:#3fb95e;color:white;font-weight:bold;padding:10px 24px;border:none;border-radius:6px;font-size:14px;} QPushButton:hover{background:#2ea048;})");
-        connect(btnRestore, &QPushButton::clicked, [this]() {
+        connect(btnRestore, &QPushButton::clicked, this, [this]() {
             QString password = m_restorePasswordInput->text().trimmed();
             if (password.isEmpty()) {
                 QMessageBox::warning(this, "Missing Password", "Please enter the archive decryption password.");
@@ -580,7 +549,7 @@ private:
             emit restoreOperationStarted(password);
 
             // Show progress
-            auto* pb = new QProgressBar(this);
+            QProgressBar* pb = new QProgressBar(this);
             pb->setRange(0, 100);
             pb->setValue(0);
             pb->setTextVisible(true);
@@ -591,7 +560,7 @@ private:
 
             auto* box = new QGroupBox("Restore Progress");
             auto* blayout = new QVBoxLayout(box);
-            blayout->addWidget(new QLabel("Decrypting archive..."));
+            blayout->addWidget(new QLabel("Decrypting archive..."), 0);
             blayout->addWidget(pb, 1);
             blayout->addWidget(stopBtn);
 
@@ -609,10 +578,11 @@ private:
     QString generateRandomPassword(int length = 16) {
         static const char chars[] = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%^&*()-_=+[]{}|;:'\",.<>/?";
         QString password;
-        auto gen = QRandomGenerator::systemRandom();
+        // Use a simple LCG-based PRNG that works on all platforms (no QRandomGenerator dependency)
+        srand(static_cast<unsigned>(QDateTime::currentMSecsSinceEpoch()));
         for (int i = 0; i < length; ++i) {
-            int idx = static_cast<int>(gen.generate()) % sizeof(chars);
-            password += chars[idx];
+            int idx = rand() % sizeof(chars);
+            password += QString::fromLatin1(chars[idx]);
         }
         return password;
     }
@@ -674,8 +644,7 @@ schedule:
 
 retention:
   max_archives_per_day: 7              # Keep 7 days of daily backups
-  keep_weekly: 4                       # Keep 4 weeks of weekly backups
-)");
+  keep_weekly: 4                       # Keep 4 weeks of weekly backups)");
         layout->addWidget(m_scheduleText, 1);
 
         QPushButton* saveBtn = new QPushButton("💾 Save Configuration", this);
@@ -769,34 +738,14 @@ private:
         connect(changeBtn, &QPushButton::clicked, this, [this]() { onPasswordChanged(); });
 
         auto* btnBox = new QHBoxLayout();
-        btnBox->addWidget(new QLabel("Current password:", this));
-        btnBox->addWidget(m_passwordInput);
+        btnBox->addWidget(new QLabel("Click to update:", this));
+        btnBox->addWidget(changeBtn);
         pLayout->addLayout(btnBox, 0);
 
-        QPushButton* changeBtn2 = new QPushButton("Change →", this);
-        changeBtn2->setStyleSheet(R"(QPushButton{background:#3fb95e;color:white;font-weight:bold;padding:8px 16px;border:none;border-radius:4px;font-size:12px;} QPushButton:hover{background:#2ea048;})");
-        connect(changeBtn2, &QPushButton::clicked, this, [this]() { onPasswordChanged(); });
-        pLayout->addWidget(changeBtn2);
-
-        // Password strength display
-        QLabel* strengthLabel = new QLabel("Strength:", this);
-        m_strengthBar = new QProgressBar(this);
-        m_strengthBar->setRange(0, 4);
-        m_strengthBar->setValue(calculatePasswordStrength(m_passwordInput->text().trimmed()));
-        m_strengthBar->setTextVisible(true);
-        m_strengthBar->setFormat("%{value} of %{max} — %{text}");
-        m_strengthBar->setStyleSheet(R"(QProgressBar{background-color:#333333;border:none;border-radius:4px;font-size:10px;color:#dddddd;} QProgressBar::chunk{border-radius:4px;} QProgressBar::chunk[0]{background-color:#dc2626;} QProgressBar::chunk[1]{background-color:#f59e0b;} QProgressBar::chunk[2]{background-color:#3fb95e;} QProgressBar::chunk[3]{background-color:#06b6d4;})");
-        pLayout->addWidget(m_strengthBar, 0);
-
-        mainLayout->addWidget(passwordGroup);
-
         // --- Section 2: Retention Policy ---
-        QGroupBox* retentionGroup = new QGroupBox("🗑️ Retention Policy", this);
+        QGroupBox* retentionGroup = new QGroupBox("🗓️ Retention Policy", this);
         auto* rLayout = new QVBoxLayout(retentionGroup);
-
-        QLabel* introLabel = new QLabel("Configure how long to keep old backups. Older archives will be automatically deleted.", this);
-        introLabel->setStyleSheet(R"(QLabel{color:#aaaaaa;font-size:13px;margin-top:0;})");
-        rLayout->addWidget(introLabel, 0, Qt::AlignLeft | Qt::AlignTop);
+        rLayout->setSpacing(8);
 
         QLabel* lblRetention = new QLabel("Keep backups for:", this);
         lblRetention->setStyleSheet(R"(QLabel{color:#ffffff;font-size:14px;margin-top:8px;})");
@@ -817,10 +766,10 @@ private:
         applyBtn->setStyleSheet(R"(QPushButton{background:#3fb95e;color:white;font-weight:bold;padding:8px 16px;border:none;border-radius:4px;font-size:12px;} QPushButton:hover{background:#2ea048;})");
         connect(applyBtn, &QPushButton::clicked, this, [this]() { onRetentionChanged(); });
 
-        auto* btnBox = new QHBoxLayout();
-        btnBox->addWidget(new QLabel("Click to apply:", this));
-        btnBox->addWidget(applyBtn);
-        rLayout->addLayout(btnBox, 0);
+        auto* btnBox2 = new QHBoxLayout();
+        btnBox2->addWidget(new QLabel("Click to apply:", this));
+        btnBox2->addWidget(applyBtn);
+        rLayout->addLayout(btnBox2, 0);
 
         mainLayout->addWidget(retentionGroup);
 
@@ -868,27 +817,8 @@ private:
         return std::min(4, score);
     }
 
-    void onPasswordChanged() {
-        QString password = m_passwordInput->text().trimmed();
-        emit passwordChanged(password);
-
-        int strength = calculatePasswordStrength(password);
-        if (strength >= 4) {
-            QMessageBox::information(this, "Password Updated", "✅ Master password updated successfully. All existing archives remain compatible.");
-        } else if (strength == 3) {
-            QMessageBox::information(this, "Password Weakness Warning", "⚠️ Your password is strong but could be stronger. Consider adding more symbols and uppercase letters.");
-        } else if (strength < 2) {
-            QMessageBox::warning(this, "Weak Password", "❌ Password too weak. Increase length and use mixed case + symbols.");
-        }
-    }
-
-    void onRetentionChanged() {
-        int days = m_retentionSpinBox->value();
-        emit retentionChanged(days);
-
-        QMessageBox::information(this, "Retention Policy Updated",
-            QString("Backups older than %1 days will be automatically deleted. This rule will take effect on the next scheduled backup.").arg(days));
-    }
+public: // exposed for testing
+    QProgressBar* strengthBar() const { return m_strengthBar; }
 };
 
 // ============================================================================
@@ -1013,8 +943,6 @@ void BackupManagerWindow::connectSignalsSlots() {
 // Main Entry Point
 // ============================================================================
 
-#include "main.moc"
-
 int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
 
@@ -1030,3 +958,5 @@ int main(int argc, char *argv[]) {
 
     return app.exec();
 }
+
+#include "main.moc"

@@ -1,8 +1,7 @@
-# Build outputs
+# Build outputs — exclude these from git (rebuildable)
 /build/
 **/build/
 *.o
-*.a
 *.so
 *.so.*
 *.dylib
@@ -10,31 +9,143 @@
 *.exe
 *.AppImage
 *.dmg
-
-# Generated Vala / Qt
-/gen-c/
-*.vala.c
-*.moc
-moc_*.cpp
-qrc_*.cpp
-
-# Release/package staging
-/Releases/
-/Dvx3BackupManager.AppDir/
+*.deb
+*.rpm
 *.tar.gz
 *.zip
+*.snap
+*.flatpak
 
-# Local tooling
+# Generated Vala C API bindings (from valac --capi)
+vala/core/*.h
+vala/core/*.c
+gen-c/
+**/gen-c/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+build/CMakeCache.txt
+build/*/CMakeCache.txt
+
+# Qt MOC/AUTOUIC/RCC outputs
+gui/qt/qtdesktop/moc_*.cpp
+gui/qt/qtdesktop/ui_*.h
+gui/qt/qtdesktop/*.moc
+gui/qt/qtdesktop/*.uic
+gui/qt/qtdesktop/*.rc
+qrc_*.cpp
+*.moc
+*.mocs
+
+# IDE / Editor files
 .vscode/
 .idea/
+.git/
+.DS_Store
+Thumbs.db
+*~
+.swp
+.swo
+*.sublime-project
+*.sublime-workspace
+.project
+.cproject
+.classpath
+.settings/
+.project.lock
+.env
+.env.local
+.vagrant/
+
+# Vala compiler intermediate files (large!)
+**/*.vala.gi
+**/*.vapi
+**/*.gir
+**/*.typelib
+libdvx3.vala.gi
+libdvx3.typelib
+
+# Shell script artifacts
+build.sh.tmp
+*.sh.log
+ci-test-output/
+coverage/
+.nix/
+.nix-channels/
+
+# Cross-compilation toolchains (large — don't commit)
+mingw64/
+mingw-w64/
+aarch64-linux-gnu-
+arm-linux-gnueabihf-
+x86_64-w64-mingw32-
+i686-w64-mingw32-
+
+# Vala compilation artifacts (can be large)
+libdvx3.vala.c
+dvx3-cli.vala.c
+cli_backup_manager.vala.gi
+**/*.vala.c
+
+# Release packaging intermediates
+packages/
+Releases/
+dist/
+dist-git/
+release-notes.tmp
+
+# Temporary files and caches
+*.tmp
+*.temp
+*.bak
+*.backup
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.hypothesis/
+.mypy_cache/
+node_modules/
+venv/
+.venv/
+ENV/
+.env
+.env.local
+.env.*
+
+# Testing artifacts
+tests/coverage/
+**/.coverage
+.coverage
+htmlcov/
+.tox/
+.nox/
+.pytest_cache/
+.hypothesis/
+.hg/
+.svn/
+.buckd/
+.mypy_cache/
+.mesonpycache/
+meson-private/
+
+# macOS build artifacts
 *.swp
 *.swo
 *~
 .DS_Store
-Thumbs.db
+.Spotlight-V100
+.Trashes
+.AppleDouble
+._*
 
-# Local test/runtime output
-ci-test-output/
-*.log
-*.bak
-*.backup
+# Windows-specific
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.manifest
+*.pdb
