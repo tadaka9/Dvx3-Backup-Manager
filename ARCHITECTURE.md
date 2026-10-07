@@ -27,7 +27,8 @@ C++ remains for the Qt interface, a wrapper and ABI tests/examples only.
 GLib chooses native configuration/temp directories. GIO owns file I/O and
 subprocess lifetimes; tools are found on PATH. `DVX3_TAR` can select a compatible
 tar executable, otherwise gtar is preferred when available and tar is the fallback.
-Subprocesses use argv arrays, working directories and explicit file redirection,
+Subprocesses use argv arrays, working directories and portable GIO pipes with
+concurrent, bounded-memory streaming between files and stdin/stdout,
 with no `sh -c`, shell pipelines, POSIX file descriptors or waitpid calls.
 Every child exit status is checked. The build handles native OS/CPU detection,
 Windows `.exe`/DLL naming, macOS dylibs and Linux shared objects.

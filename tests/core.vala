@@ -18,7 +18,13 @@ private void roundtrip (string codec) {
         FileUtils.set_contents (src.get_child (".hidden").get_path (), "hidden data");
         // More than two chunks, with an incomplete final chunk; deterministic byte content.
         var large = new uint8[2200003];
-        for (int i = 0; i < large.length; i++) large[i] = (uint8)(i * 17 + i / 251);
+        // Incompressible input exercises simultaneous stdin/stdout beyond pipe
+        // capacity, rather than letting a tiny compressed result hide deadlocks.
+        uint32 state = 0x12345678;
+        for (int i = 0; i < large.length; i++) {
+            state ^= state << 13; state ^= state >> 17; state ^= state << 5;
+            large[i] = (uint8)state;
+        }
         src.get_child ("binary").replace_contents (large, null, false, FileCreateFlags.PRIVATE, null);
         var archive = root.get_child (codec + ".dvx3");
         Dvx3.encrypt_with_codec (src, archive, "test password", codec);

@@ -22,11 +22,45 @@ namespace Dvx3 {
     }
 
     internal void run (string[] argv, string? cwd = null, string? input = null, string? output = null) throws Error {
-        var launcher = new SubprocessLauncher (SubprocessFlags.NONE);
+        // File redirection on SubprocessLauncher is Unix-only. GIO pipes work on
+        // Windows too; drain stdout concurrently so neither pipe can deadlock.
+        InputStream? source = input == null ? null : File.new_for_path (input).read ();
+        OutputStream? destination = output == null ? null : File.new_for_path (output).replace (
+            null, false, FileCreateFlags.PRIVATE);
+        var flags = SubprocessFlags.NONE;
+        if (source != null) flags |= SubprocessFlags.STDIN_PIPE;
+        if (destination != null) flags |= SubprocessFlags.STDOUT_PIPE;
+        var launcher = new SubprocessLauncher (flags);
         if (cwd != null) launcher.set_cwd (cwd);
-        if (input != null) launcher.set_stdin_file_path (input);
-        if (output != null) launcher.set_stdout_file_path (output);
         var process = launcher.spawnv (argv);
+        Thread<Error?>? reader = null;
+        if (destination != null) {
+            reader = new Thread<Error?> ("dvx3-codec-output", () => {
+                try {
+                    destination.splice (process.get_stdout_pipe (),
+                        OutputStreamSpliceFlags.CLOSE_SOURCE | OutputStreamSpliceFlags.CLOSE_TARGET);
+                    return null;
+                } catch (Error e) {
+                    process.force_exit ();
+                    return e;
+                }
+            });
+        }
+        Error? input_error = null;
+        if (source != null) {
+            try {
+                process.get_stdin_pipe ().splice (source,
+                    OutputStreamSpliceFlags.CLOSE_SOURCE | OutputStreamSpliceFlags.CLOSE_TARGET);
+            } catch (Error e) {
+                input_error = e;
+                process.force_exit ();
+            }
+        }
+        Error? output_error = reader == null ? null : reader.join ();
+        // Reap the child even when stream I/O fails, and preserve that I/O error.
+        process.wait ();
+        if (input_error != null) throw input_error;
+        if (output_error != null) throw output_error;
         process.wait_check ();
     }
 
