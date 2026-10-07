@@ -2,9 +2,9 @@ name: CI — Cross-Platform Build Matrix
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
@@ -282,5 +282,3 @@ jobs:
 # | macOS Silicon     | aarch64     | Core + GUI        | ✅     |
 # | Windows MSVC      | x64         | Core + Manager    | ✅     |
 # | Windows MinGW-w64 | ARM64       | Core + Manager    | ✅     |
-
-> **Note:** Packaging artifacts (DEB/RPM/AppImage/DMG) are uploaded to GitHub Releases after all matrix jobs succeed.
