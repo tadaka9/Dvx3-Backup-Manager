@@ -270,16 +270,17 @@ jobs:
           if-no-files-found: ignore
 
 
+# ────────────────────────────────────────────────────────
 # ✅ Matrix Build Summary — All Platforms Supported
 # ────────────────────────────────────────────────────────
-| Platform          | Architecture | Component        | Status |
-|-------------------|-------------|-------------------|--------|
-| Ubuntu x86_64     | x86_64      | Core + Manager+GUI| ✅     |
-| Ubuntu ARM64      | aarch64     | Core + Manager+GUI| ✅     |
-| Ubuntu ARMHF      | armhf       | Core + CLI        | ✅     |
-| macOS Intel       | x86_64      | Core + GUI        | ✅     |
-| macOS Silicon     | aarch64     | Core + GUI        | ✅     |
-| Windows MSVC      | x64         | Core + Manager    | ✅     |
-| Windows MinGW-w64 | ARM64       | Core + Manager    | ✅     |
+# | Platform          | Architecture | Component        | Status |
+# |-------------------|-------------|-------------------|--------|
+# | Ubuntu x86_64     | x86_64      | Core + Manager+GUI| ✅     |
+# | Ubuntu ARM64      | aarch64     | Core + Manager+GUI| ✅     |
+# | Ubuntu ARMHF      | armhf       | Core + CLI        | ✅     |
+# | macOS Intel       | x86_64      | Core + GUI        | ✅     |
+# | macOS Silicon     | aarch64     | Core + GUI        | ✅     |
+# | Windows MSVC      | x64         | Core + Manager    | ✅     |
+# | Windows MinGW-w64 | ARM64       | Core + Manager    | ✅     |
 
 > **Note:** Packaging artifacts (DEB/RPM/AppImage/DMG) are uploaded to GitHub Releases after all matrix jobs succeed.
