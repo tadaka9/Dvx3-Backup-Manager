@@ -2,7 +2,7 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Product Id="*" Name="DVX3 Backup Manager" Language="1033" Version="1.0.0"
            Manufacturer="DVX3 Project" UpgradeCode="59C8E1E0-7094-48C7-82AA-F29F95547E08">
-    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine"/>
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64"/>
     <MajorUpgrade DowngradeErrorMessage="A newer version of DVX3 is already installed."/>
     <MediaTemplate EmbedCab="yes"/>
     <Directory Id="TARGETDIR" Name="SourceDir">
