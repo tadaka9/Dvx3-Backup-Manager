@@ -49,20 +49,21 @@ coverage/
 .coverage
 htmlcov/
 
-# Test artifacts (optional)
-test-results/
-output/
+# macOS
+.mvn/
+target/
 
-# Environment files
+# Node / npm (if any JS tools are used)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Python virtual environments
 .env
-.env.local
-*.pem
-*.key
+.venv/
+venv/
+ENV/
 
-# Logs
-logs/
-*.log
-
-# IDE workspace
-.vscode/settings.json
-.idea/workspace.xml
+# OS generated files
+*.orig
+*~
