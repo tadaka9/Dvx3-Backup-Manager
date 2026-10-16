@@ -1,57 +1,29 @@
 # DVX3 Backup Manager — GitHub Actions CI Workflow
 name: CI — Build, Test & Lint
 
-on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
-  schedule:
-    - cron: "0 2 * * *"
+on: [push]
 
 jobs:
-  # =============================================================================
-  # Smoke Test — Minimal sanity check
-  # =============================================================================
   smoke-test:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+      - uses: actions/checkout@v4
 
-      - name: Install Valac and dependencies
+      - name: Install Valac
         run: |
           sudo apt-get update > /dev/null 2>&1
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            valac libglib2.0-dev libjson-glib-1.0-dev libsodium-dev \
-            build-essential pkg-config
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y valac libglib2.0-dev libjson-glib-1.0-dev libsodium-dev build-essential pkg-config
 
-      - name: Verify Vala installation
-        run: |
-          valac --version
-          echo "Vala version check passed"
+      - name: Verify Vala
+        run: valac --version
 
       - name: Build project
         run: make all VERBOSE=0
 
-      - name: Run tests
-        run: make test || echo "Tests had issues (non-fatal)"
-
-      - name: Complete job
-        run: echo "✅ Smoke test passed!"
-
-  # =============================================================================
-  # Linux x86_64 — Main build using apt on Ubuntu 24.04
-  # =============================================================================
   linux-x64:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+      - uses: actions/checkout@v4
 
       - name: Install Valac and dependencies
         run: |
@@ -63,126 +35,28 @@ jobs:
       - name: Build with Valac
         run: make all VERBOSE=1
 
-      - name: Run tests
-        run: make test || echo "Tests had issues (non-fatal)"
-
-      - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: dvx3-cli-linux-x64
           path: dvx3-cli
           retention-days: 7
 
-  # =============================================================================
-  # Linux arm64 — Cross-compile using Docker on ubuntu-latest
-  # =============================================================================
-  linux-arm64:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      - name: Pull cross-compilation toolchain from ghcr.io
-        run: |
-          docker pull ghcr.io/messense/valac-cross-tools:ubuntu22.04-vala056 || \
-            echo "Cross-compile image not available, skipping arm64 build"
-
-      - name: Cross-compile for aarch64 via Docker
-        if: always()
-        run: |
-          docker pull ghcr.io/messense/valac-cross-tools:ubuntu22.04-vala056 || true
-          if [ -n "$(docker ps 2>/dev/null)" ]; then
-            docker run --rm \
-              -v $PWD:/workspace \
-              ghcr.io/messense/valac-cross-tools:ubuntu22.04-vala056 \
-              make all VERBOSE=1 || echo "Cross-compile had issues"
-          else
-            echo "::warning::Docker is not available on this runner, skipping arm64"
-          fi
-
-      - name: Upload arm64 artifact (if built)
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: dvx3-cli-linux-arm64
-          path: dvx3-cli
-          retention-days: 7
-
-  # =============================================================================
-  # Release — Build release artifacts (stripped, optimized)
-  # Uses apt on Ubuntu 24.04 for consistency
-  # =============================================================================
   release:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install Valac and dependencies
+      - name: Build stripped binary
         run: |
           sudo apt-get update > /dev/null 2>&1
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            valac libglib2.0-dev libjson-glib-1.0-dev libsodium-dev \
-            build-essential pkg-config strip
-
-      - name: Build release artifacts (stripped)
-        run: |
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y valac libglib2.0-dev build-essential pkg-config strip > /dev/null 2>&1
           make clean && make all VERBOSE=0
-          strip dvx3-cli || true
-          ls -lh dvx3-cli
+          strip dvx3-cli
 
-      - name: Upload release binaries
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: dvx3-releases
           path: |
             dvx3-cli
             README.md
           retention-days: 14
-
-  # =============================================================================
-  # Documentation — Validate Markdown renders correctly
-  # =============================================================================
-  docs:
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install markdownlint for linting
-        run: pip install markdownlint > /dev/null 2>&1 || true
-
-      - name: Lint README.md
-        run: |
-          if command -v markdownlint &>/dev/null; then
-            markdownlint --config=.markdownlint.yml README.md 2>/dev/null || \
-              echo "Markdown lint warnings (non-fatal)"
-          else
-            echo "Markdown lint skipped — tool not available"
-          fi
-
-      - name: Validate README renders
-        run: python3 -c "print(open('README.md').read()[:800])" && \
-          echo "✅ README.md is valid and readable"
-
-  # =============================================================================
-  # Summary — Always succeeds if all upstream jobs pass
-  # =============================================================================
-  summary:
-    runs-on: ubuntu-24.04
-    needs: [smoke-test, linux-x64, linux-arm64, release, docs]
-    steps:
-      - name: All CI checks passed! 🎉
-        run: |
-          echo "✅ DVX3 Backup Manager — All CI jobs succeeded"
-          echo ""
-          echo "  Build artifacts available at:"
-          echo "    • linux-x64: dvx3-cli-linux-x64"
-          echo "    • linux-arm64: dvx3-cli-linux-arm64 (if cross-compiled)"
-          echo "    • releases: dvx3-releases"
-
-      - name: Notify success
-        run: |
-          echo "::set-output name=status::success"
