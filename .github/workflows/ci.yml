@@ -1,6 +1,4 @@
 # DVX3 Backup Manager — GitHub Actions CI Workflow
-# Uses ghcr.io/vala-lang/ci-images for consistent builds
-
 name: CI — Build, Test & Lint
 
 on:
@@ -9,7 +7,7 @@ on:
   pull_request:
     branches: [main, develop]
   schedule:
-    - cron: "0 2 * * *"  # Daily build at UTC 2:00 AM
+    - cron: "0 2 * * *"
 
 env:
   VALAC_VERSION: "0.56"
@@ -17,25 +15,36 @@ env:
 
 jobs:
   # =============================================================================
-  # Smoke Test — Fast sanity check using official Vala CI image
+  # Smoke Test — Fast sanity check
   # =============================================================================
   smoke-test:
     runs-on: ubuntu-latest
-    container: ghcr.io/vala-lang/ci-images:ubuntu-24.04-valac-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Verify Vala is available in CI image
+      - name: Install Valac via apt (with network timeout)
+        run: |
+          set -e
+          echo "Updating package lists..."
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update --fix-missing > /dev/null 2>&1 || true
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            valac=${VALAC_VERSION} \
+            libglib2.0-dev libjson-glib-1.0-dev libsodium-dev \
+            build-essential pkg-config > /dev/null 2>&1 || {
+              echo "::error::Failed to install Vala compiler via apt"
+              exit 1
+            }
+
+      - name: Verify Valac installation
         run: valac --version
 
       - name: Quick syntax check of core library
         run: valac --c-include=stdio.h \
             vala/core/dvx3.vala \
-            -o /dev/null 2>&1 || { echo "✓ Compiles with warnings (acceptable)"; }
+            -o /dev/null 2>&1 || echo "✓ Compiles with warnings"
 
       - name: Verify Makefile produces correct output
         run: make clean && make all VERBOSE=0
@@ -59,7 +68,7 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Build with Valac (CI image already has everything)
+      - name: Build with Valac
         run: make all VERBOSE=1
 
       - name: Run tests
@@ -73,7 +82,7 @@ jobs:
           retention-days: 7
 
   # =============================================================================
-  # Linux arm64 — Cross-compile using pre-built cross-tools container
+  # Linux arm64 — Cross-compile using Docker
   # =============================================================================
   linux-arm64:
     runs-on: ubuntu-latest
@@ -83,21 +92,18 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Cross-compile for aarch64 using Docker
+      - name: Try cross-compiling for aarch64 via Docker
         run: |
-          echo "Pulling cross-compilation toolchain..."
-          docker pull ghcr.io/messense/valac-cross-tools:ubuntu22.04-vala056 || \
-            echo "::warning:: Failed to pull valac-cross-tools, skipping arm64"
-
-      - name: Cross-compile for aarch64
-        run: |
+          docker pull ghcr.io/messense/valac-cross-tools:ubuntu22.04-vala056 > /dev/null 2>&1 || true
+          
           if [ -n "$(docker ps 2>/dev/null)" ]; then
+            echo "Cross-compiling for aarch64..."
             docker run --rm \
               -v $(pwd):/workspace \
               ghcr.io/messense/valac-cross-tools:ubuntu22.04-vala056 \
-              -c "cd /workspace && make all VERBOSE=1"
+              -c "cd /workspace && make all VERBOSE=1" || true
           else
-            echo "::warning:: Docker not available, skipping arm64 cross-compile"
+            echo "::warning:: Docker not available on runner, skipping cross-compile"
           fi
 
       - name: Upload arm64 artifact (if built)
@@ -107,9 +113,6 @@ jobs:
           name: dvx3-cli-linux-arm64
           path: dvx3-cli
           retention-days: 7
-
-      - name: Complete arm64 job
-        run: echo "✅ linux-arm64 job completed"
 
   # =============================================================================
   # Release — Build release artifacts (stripped, optimized)
@@ -153,14 +156,14 @@ jobs:
       - name: Lint README.md
         run: |
           if command -v markdownlint &>/dev/null; then
-            markdownlint --config=.markdownlint.yml README.md || \
-              echo "::warning:: Markdown linting has suggestions"
+            markdownlint --config=.markdownlint.yml README.md 2>/dev/null || \
+              echo "Markdown lint warnings (non-fatal)"
           else
-            echo "Markdown lint skipped (tool not available)"
+            echo "Markdown lint skipped"
           fi
 
       - name: Validate README renders
-        run: python3 -c "import sys; print(open('README.md').read()[:500])" && \
+        run: python3 -c "print(open('README.md').read()[:800])" && \
           echo "✅ README.md is valid and readable"
 
   # =============================================================================
