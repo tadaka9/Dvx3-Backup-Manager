@@ -31,9 +31,12 @@ all: dvx3-cli
 dvx3-core.o: vala/core/dvx3.vala
 	$(VALAC) $(VALAC_FLAGS) -c $< -o $@
 
-dvx3-cli: cli/main.vala vala/core/dvx3.vala vala/core/incremental.vala
-	$(VALAC) $(VALAC_FLAGS) cli/main.vala \
-		-Ivala/core \
+dvx3-cli: cli/main.vala vala/core/dvx3.vala vala/core/incremental.vala cli/incremental.vala
+	$(VALAC) $(VALAC_FLAGS) \
+		cli/main.vala \
+		vala/core/dvx3.vala \
+		vala/core/incremental.vala \
+		cli/incremental.vala \
 		-DGDK_BACKEND=x11 -DGTK_SOURCE=4 \
 		-o $@
 
@@ -43,8 +46,10 @@ test: dvx3-cli-test
 	mkdir -p /tmp/dvx3-test-src/subdir/nested
 	echo "Nested file content" > /tmp/dvx3-test-src/subdir/nested/deep.txt
 
-	$(VALAC) $(VALAC_FLAGS) cli/main.vala vala/core/dvx3.vala \
+	$(VALAC) $(VALAC_FLAGS) cli/main.vala \
+		vala/core/dvx3.vala \
 		vala/core/incremental.vala \
+		cli/incremental.vala \
 		-DGDK_BACKEND=x11 -DGTK_SOURCE=4 -o dvx3-cli-test
 
 	./dvx3-cli-test /tmp/dvx3-test-src --parallel=1 2>&1 || true
@@ -58,7 +63,7 @@ install: all
 
 clean:
 	rm -f vala/core/dvx3.vala.gi vala/core/dvx3.vapi cli/main.vala.gi \
-		vala/core/incremental.vala.gi
+		vala/core/incremental.vala.gi cli/incremental.vala.gi
 	rm -f dvx3-cli dvx3-cli-test *.o
 	rm -rf build/ install/
 
