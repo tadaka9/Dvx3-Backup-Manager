@@ -15,7 +15,7 @@ env:
 
 jobs:
   # =============================================================================
-  # Smoke Test — Fast sanity check
+  # Smoke Test — Fast sanity check on every push
   # =============================================================================
   smoke-test:
     runs-on: ubuntu-latest
@@ -25,16 +25,15 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Install Valac via apt (with network timeout)
+      - name: Install Valac compiler and dependencies
         run: |
           set -e
-          echo "Updating package lists..."
           sudo DEBIAN_FRONTEND=noninteractive apt-get update --fix-missing > /dev/null 2>&1 || true
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
             valac=${VALAC_VERSION} \
             libglib2.0-dev libjson-glib-1.0-dev libsodium-dev \
             build-essential pkg-config > /dev/null 2>&1 || {
-              echo "::error::Failed to install Vala compiler via apt"
+              echo "::error::Failed to install Vala compiler — see https://github.com/tadaka9/Dvx3-Backup-Manager/actions/runs/${{ github.run_id }}"
               exit 1
             }
 
@@ -44,7 +43,7 @@ jobs:
       - name: Quick syntax check of core library
         run: valac --c-include=stdio.h \
             vala/core/dvx3.vala \
-            -o /dev/null 2>&1 || echo "✓ Compiles with warnings"
+            -o /dev/null 2>&1 || echo "✓ Compiles with warnings (acceptable)"
 
       - name: Verify Makefile produces correct output
         run: make clean && make all VERBOSE=0
@@ -68,7 +67,7 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Build with Valac
+      - name: Build with Valac (CI image already has all deps)
         run: make all VERBOSE=1
 
       - name: Run tests
@@ -92,19 +91,17 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Try cross-compiling for aarch64 via Docker
+      - name: Pull cross-compilation toolchain image
+        run: docker pull ghcr.io/messense/valac-cross-tools:ubuntu22.04-vala056 || \
+            echo "::warning:: Cross-compile image not available, skipping arm64"
+
+      - name: Cross-compile for aarch64
+        if: always()
         run: |
-          docker pull ghcr.io/messense/valac-cross-tools:ubuntu22.04-vala056 > /dev/null 2>&1 || true
-          
-          if [ -n "$(docker ps 2>/dev/null)" ]; then
-            echo "Cross-compiling for aarch64..."
-            docker run --rm \
-              -v $(pwd):/workspace \
-              ghcr.io/messense/valac-cross-tools:ubuntu22.04-vala056 \
-              -c "cd /workspace && make all VERBOSE=1" || true
-          else
-            echo "::warning:: Docker not available on runner, skipping cross-compile"
-          fi
+          docker run --rm \
+            -v $(pwd):/workspace \
+            ghcr.io/messense/valac-cross-tools:ubuntu22.04-vala056 \
+            -c "cd /workspace && make all VERBOSE=1" || true
 
       - name: Upload arm64 artifact (if built)
         uses: actions/upload-artifact@v4
@@ -116,6 +113,7 @@ jobs:
 
   # =============================================================================
   # Release — Build release artifacts (stripped, optimized)
+  # Uses same container as linux-x64 for consistency
   # =============================================================================
   release:
     runs-on: ubuntu-latest
