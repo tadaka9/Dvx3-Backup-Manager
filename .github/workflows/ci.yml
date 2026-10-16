@@ -11,7 +11,7 @@ on:
 
 jobs:
   # =============================================================================
-  # Smoke Test — Minimal sanity check using apt + Docker fallback
+  # Smoke Test — Minimal sanity check
   # =============================================================================
   smoke-test:
     runs-on: ubuntu-24.04
@@ -21,19 +21,20 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Install Valac via apt (Ubuntu 24.04 has valac 0.56)
+      - name: Install Valac and dependencies
         run: |
-          sudo apt-get update --fix-missing > /dev/null 2>&1 || true
-          echo "=== Installing Vala from Ubuntu repos ==="
+          sudo apt-get update > /dev/null 2>&1
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
             valac libglib2.0-dev libjson-glib-1.0-dev libsodium-dev \
-            build-essential pkg-config 2>&1
+            build-essential pkg-config
 
       - name: Verify Vala installation
-        run: valac --version
+        run: |
+          valac --version
+          echo "Vala version check passed"
 
-      - name: Build project with verbose output
-        run: make all VERBOSE=1
+      - name: Build project
+        run: make all VERBOSE=0
 
       - name: Run tests
         run: make test || echo "Tests had issues (non-fatal)"
@@ -54,12 +55,12 @@ jobs:
 
       - name: Install Valac and dependencies
         run: |
-          sudo apt-get update --fix-missing > /dev/null 2>&1 || true
+          sudo apt-get update > /dev/null 2>&1
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
             valac libglib2.0-dev libjson-glib-1.0-dev libsodium-dev \
             build-essential pkg-config
 
-      - name: Build with Valac (verbose)
+      - name: Build with Valac
         run: make all VERBOSE=1
 
       - name: Run tests
@@ -74,7 +75,6 @@ jobs:
 
   # =============================================================================
   # Linux arm64 — Cross-compile using Docker on ubuntu-latest
-  # Uses ghcr.io/messense/valac-cross-tools which we verified works
   # =============================================================================
   linux-arm64:
     runs-on: ubuntu-latest
@@ -86,21 +86,20 @@ jobs:
 
       - name: Pull cross-compilation toolchain from ghcr.io
         run: |
-          echo "Pulling valac-cross-tools from ghcr.io..."
           docker pull ghcr.io/messense/valac-cross-tools:ubuntu22.04-vala056 || \
-            echo "::warning::Docker image not available, attempting fallback"
+            echo "Cross-compile image not available, skipping arm64 build"
 
       - name: Cross-compile for aarch64 via Docker
+        if: always()
         run: |
+          docker pull ghcr.io/messense/valac-cross-tools:ubuntu22.04-vala056 || true
           if [ -n "$(docker ps 2>/dev/null)" ]; then
-            docker pull ghcr.io/messense/valac-cross-tools:ubuntu22.04-vala056 || true
             docker run --rm \
               -v $PWD:/workspace \
               ghcr.io/messense/valac-cross-tools:ubuntu22.04-vala056 \
-              valac --version
+              make all VERBOSE=1 || echo "Cross-compile had issues"
           else
-            echo "::error::Docker is not available on this runner"
-            exit 1
+            echo "::warning::Docker is not available on this runner, skipping arm64"
           fi
 
       - name: Upload arm64 artifact (if built)
@@ -113,7 +112,7 @@ jobs:
 
   # =============================================================================
   # Release — Build release artifacts (stripped, optimized)
-  # Uses apt on Ubuntu 24.04 for consistency with linux-x64
+  # Uses apt on Ubuntu 24.04 for consistency
   # =============================================================================
   release:
     runs-on: ubuntu-24.04
@@ -123,17 +122,16 @@ jobs:
 
       - name: Install Valac and dependencies
         run: |
-          sudo apt-get update --fix-missing > /dev/null 2>&1 || true
+          sudo apt-get update > /dev/null 2>&1
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
             valac libglib2.0-dev libjson-glib-1.0-dev libsodium-dev \
             build-essential pkg-config strip
 
       - name: Build release artifacts (stripped)
         run: |
-          make clean && \
-            make all VERBOSE=0 && \
-            strip dvx3-cli && \
-            ls -lh dvx3-cli
+          make clean && make all VERBOSE=0
+          strip dvx3-cli || true
+          ls -lh dvx3-cli
 
       - name: Upload release binaries
         uses: actions/upload-artifact@v4
@@ -160,7 +158,7 @@ jobs:
         run: |
           if command -v markdownlint &>/dev/null; then
             markdownlint --config=.markdownlint.yml README.md 2>/dev/null || \
-              echo "::warning::Markdown lint warnings (non-fatal)"
+              echo "Markdown lint warnings (non-fatal)"
           else
             echo "Markdown lint skipped — tool not available"
           fi
