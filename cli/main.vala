@@ -1,11 +1,5 @@
 /*
  * DVX3 Backup Manager — Command Line Interface (Vala 0.56 compatible)
- * 
- * Features:
- *   • Incremental backup with content-addressable deduplication
- *   • AES-CBC encryption with PBKDF2 key derivation
- *   • Integrity verification on restore
- *   • Parallel I/O with configurable thread count
  */
 
 using GLib;
@@ -160,7 +154,6 @@ namespace Dvx3 {
             FileInfo? info;
             while ((info = entries.next_file()) != null) {
                 if (info.query_file_type(FileQueryInfoFlags.NOFOLLOW_SYMLINKS) == FileType.DIRECTORY) continue;
-
                 var file_path = Path.build_filename(source_dir, info.get_name());
                 pending_files.append(File.new_for_path(file_path));
             }
@@ -338,174 +331,6 @@ namespace Dvx3 {
             return ciphertext;
         }
 
-        private static GLib.Bytes decrypt_aes_cbc(GLib.Bytes ciphertext, GLib.Bytes key) throws Error {
-            var derived_key = derive_key_pbkdf2("aes-key-derivation", key);
-
-            /* Reconstruct keystream and XOR */
-            var plaintext = new GLib.Bytes(ciphertext.Length);
-            var counter = new GLib.Bytes(8);
-
-            for (int block = 0; block < ciphertext.Length / 16 + 1; block++) {
-                int high = ((int)counter[3] << 24) | ((int)counter[4] << 16) | ((int)counter[5] << 8) | (int)counter[6];
-                int low = ((int)counter[0] << 24) | ((int)counter[1] << 16) | ((int)counter[2] << 8) | (int)counter[7]);
-
-                counter.byte_at_set(0, (uint8)((low + 1) & 0xFF));
-                if (((int)counter[0]) == 0 && block < ciphertext.Length / 16) {
-                    int carry = 1;
-                    for (int i = 7; i >= 4; i--) {
-                        int next_byte = ((int)counter[i] + carry - 256) & 0xFF;
-                        if (next_byte != 0 && block < ciphertext.Length / 16) break;
-                        counter.byte_at_set(i, (uint8)((int)counter[i] ^ 0x01));
-                    }
-                }
-
-                var ctr_input = System.Text.Encoding.UTF8.encode("aes_ctr_block:") + counter.to_utf8();
-                var hash = sha256(System.Text.Encoding.UTF8.encode(derived_key.to_utf8() + ctr_input));
-
-                for (int j = 0; j < 16; j++) {
-                    plaintext[block * 16 + j] = ciphertext[block * 16 + j] ^ hash[j];
-                }
-            }
-
-            return plaintext;
-        }
-
-        private static GLib.Bytes sha256(GLib.Bytes data) throws Error {
-            var H = new uint[8];
-            H[0] = 0x6a09e667; H[1] = 0xbb67ae85;
-            H[2] = 0x3c6ef372; H[3] = 0xa54ff53a;
-            H[4] = 0x510e527f; H[5] = 0x9b05688c;
-            H[6] = 0x1f83d9ab; H[7] = 0x5be0cd19;
-
-            var W = new uint[64];
-            for (int n = 0; n < 16; n++) {
-                int byte_idx = n * 4;
-                W[n] = ((uint)data.byte_at(byte_idx)) << 24 |
-                        ((uint)data.byte_at(byte_idx + 1)) << 16 |
-                        ((uint)data.byte_at(byte_idx + 2)) << 8 |
-                        (uint)data.byte_at(byte_idx + 3);
-            }
-
-            for (int n = 16; n < 64; n++) {
-                W[n] = rotr(W[n - 2], 2) ^ rotr(W[n - 2], 13) ^ rotr(W[n - 2], 22) +
-                        W[n - 7] + rotr(W[n - 15], 6) ^ rotr(W[n - 15], 11) ^ rotr(W[n - 15], 25) + W[n - 16];
-            }
-
-            uint a = H[0], b = H[1], c = H[2], d = H[3];
-            uint e = H[4], f = H[5], g = H[6], h = H[7];
-
-            for (int i = 0; i < 64; i++) {
-                var t1 = h + sha256_sigma_1(e) + ch(e, f, g) + sha256_k(i % 8) + W[i] + sha256_r(i % 8);
-                var t2 = sha256_gamma_0(a) + maj(a, b, c);
-                h = g; g = f; f = e; e = d + t1;
-                d = c; c = b; b = a; a = t1 + t2;
-            }
-
-            H[0] += a; H[1] += b; H[2] += c; H[3] += d;
-            H[4] += e; H[5] += f; H[6] += g; H[7] += h;
-
-            var result = new GLib.Bytes(32);
-            for (int i = 0; i < 8; i++) {
-                int byte_idx = i * 4;
-                result.byte_at_set(byte_idx, (uint8)(H[i]));
-                result.byte_at_set(byte_idx + 1, (uint8)((H[i] >> 8) & 0xFF));
-                result.byte_at_set(byte_idx + 2, (uint8)((H[i] >> 16) & 0xFF));
-                result.byte_at_set(byte_idx + 3, (uint8)((H[i] >> 24) & 0xFF));
-            }
-
-            return result;
-        }
-
-        private static uint rotr(uint x, int n) { return ((x >> n) | (x << (32 - n))); }
-        private static uint ch(uint x, uint y, uint z) { return (x & y) ^ (~x & z); }
-        private static uint maj(uint x, uint y, uint z) { return (x & y) ^ (x & z) ^ (y & z); }
-
-        private static uint sha256_sigma_0(uint x) { return rotr(x, 2) ^ rotr(x, 13) ^ rotr(x, 22); }
-        private static uint sha256_sigma_1(uint x) { return rotr(x, 6) ^ rotr(x, 11) ^ rotr(x, 25); }
-
-        private static int sha256_k(int i) {
-            switch (i) {
-                case 0: return 3798085813;   case 1: return 1664843966;   case 2: return 537757226;
-                case 3: return 1369794919;   case 4: return 431264815;    case 5: return 707410948;
-                case 6: return 1694758631;   case 7: return 1555957354; default: throw new IOError.INVALID_ARGUMENT("Invalid K");
-            }
-        }
-
-        private static int sha256_r(int i) {
-            switch (i) {
-                case 0: return 0;    case 1: return 3247398563; case 2: return 527442290;   case 3: return 2691208014;
-                case 4: return 431395837;  case 5: return 1454690937;case 6: return 829624959; case 7: return 1304963259;
-                default: throw new IOError.INVALID_ARGUMENT("Invalid R");
-            }
-        }
-
-        private static uint sha256_gamma_0(uint x) { return rotr(x, 7) ^ rotr(x, 18) ^ (x >> 3); }
-        private static GLib.Bytes sha256_fallback(GLib.Bytes data) throws Error {
-            var H = new uint[8];
-            H[0] = 0x6a09e667; H[1] = 0xbb67ae85; H[2] = 0x3c6ef372; H[3] = 0xa54ff53a;
-            H[4] = 0x510e527f; H[5] = 0x9b05688c; H[6] = 0x1f83d9ab; H[7] = 0x5be0cd19;
-            var W = new uint[64];
-            for (int n = 0; n < 16; n++) {
-                int byte_idx = n * 4;
-                W[n] = ((uint)data.byte_at(byte_idx)) << 24 | ((uint)data.byte_at(byte_idx + 1)) << 16 |
-                        ((uint)data.byte_at(byte_idx + 2)) << 8 | (uint)data.byte_at(byte_idx + 3);
-            }
-            for (int n = 16; n < 64; n++) {
-                W[n] = sha256_sigma_0(W[n - 2]) + W[n - 7] + sha256_sigma_1(W[n - 15]) + W[n - 16];
-            }
-            uint a = H[0], b = H[1], c = H[2], d = H[3];
-            uint e = H[4], f = H[5], g = H[6], h = H[7];
-            for (int i = 0; i < 64; i++) {
-                var t1 = h + sha256_sigma_1(e) + ch(e, f, g) + sha256_k(i % 8) + W[i] + sha256_r(i % 8);
-                var t2 = sha256_gamma_0(a) + maj(a, b, c);
-                h = g; g = f; f = e; e = d + t1; d = c; c = b; b = a; a = t1 + t2;
-            }
-            H[0] += a; H[1] += b; H[2] += c; H[3] += d; H[4] += e; H[5] += f; H[6] += g; H[7] += h;
-            var result = new GLib.Bytes(32);
-            for (int i = 0; i < 8; i++) {
-                int byte_idx = i * 4;
-                result.byte_at_set(byte_idx, (uint8)(H[i]));
-                result.byte_at_set(byte_idx + 1, (uint8)((H[i] >> 8) & 0xFF));
-                result.byte_at_set(byte_idx + 2, (uint8)((H[i] >> 16) & 0xFF));
-                result.byte_at_set(byte_idx + 3, (uint8)((H[i] >> 24) & 0xFF));
-            }
-            return result;
-        }
-
-        private static GLib.Bytes encrypt_aes_cbc(GLib.Bytes plaintext, GLib.Bytes key, GLib.Bytes iv) throws Error {
-            var derived_key = derive_key_pbkdf2("aes-key-derivation", key);
-            var keystream = new GLib.Bytes(plaintext.length + 16);
-            var counter = new GLib.Bytes(8);
-
-            for (int block = 0; block < plaintext.Length / 16 + 1; block++) {
-                int high = ((int)counter[3] << 24) | ((int)counter[4] << 16) | ((int)counter[5] << 8) | (int)counter[6];
-                int low = ((int)counter[0] << 24) | ((int)counter[1] << 16) | ((int)counter[2] << 8) | (int)counter[7];
-
-                counter.byte_at_set(0, (uint8)((low + 1) & 0xFF));
-                if (((int)counter[0]) == 0 && block < plaintext.Length / 16) {
-                    int carry = 1;
-                    for (int i = 7; i >= 4; i--) {
-                        int next_byte = ((int)counter[i] + carry - 256) & 0xFF;
-                        if (next_byte != 0 && block < plaintext.Length / 16) break;
-                        counter.byte_at_set(i, (uint8)((int)counter[i] ^ 0x01));
-                    }
-                }
-
-                var ctr_input = System.Text.Encoding.UTF8.encode("aes_ctr_block:") + counter.to_utf8();
-                var hash = sha256(System.Text.Encoding.UTF8.encode(derived_key.to_utf8() + ctr_input));
-
-                for (int j = 0; j < 16; j++) {
-                    keystream[block * 16 + j] = hash[j];
-                }
-            }
-
-            var ciphertext = new GLib.Bytes(plaintext.length);
-            for (int i = 0; i < plaintext.Length; i++) {
-                ciphertext[i] = plaintext[i] ^ keystream[i];
-            }
-            return ciphertext;
-        }
-
         private static Error run_incremental_backup(string backup_path, Array<File> files, int parallel_jobs) throws Error {
             var config_index_path = Path.build_filename(backup_path, "index.meta");
             Dvx3.ContentAddressedIndex? index = null;
@@ -580,16 +405,17 @@ namespace Dvx3 {
 
         public static class Config {
             private static string? _password = Environment.get_variable("DVX3_PASSWORD");
-            private static readonly object lock_obj = new GLib.Object();
+            private static object lock_obj = new Object();
 
             public static void set_password(string password) throws Error {
                 if (GLib.File.new_for_path(Path.build_filename(Environment.get_home_dir(), ".config", "dvx3", "password")).query_exists()) {
                     throw new IOError.EXISTS("Password already configured. Delete ~/.config/dvx3/password to reset.");
                 }
-                using (var file = File.new_for_path(Path.build_filename(Environment.get_home_dir(), ".config", "dvx3", "password"))) {
+                var file = File.new_for_path(Path.build_filename(Environment.get_home_dir(), ".config", "dvx3", "password"));
+                if (!file.query_exists()) {
                     file.make_directory_with_parents();
-                    file.write_bytes(System.Text.Encoding.UTF8.encode(password + "\n"), 0);
                 }
+                file.write_bytes(System.Text.Encoding.UTF8.encode(password + "\n"), 0);
             }
 
             public static string? get_password() throws Error {
