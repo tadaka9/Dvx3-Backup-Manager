@@ -11,7 +11,6 @@ on:
 
 env:
   DEBIAN_FRONTEND: noninteractive
-  APT_MIRROR: "http://ports.ubuntu.com/ubuntu-ports"
 
 jobs:
   # =============================================================================
@@ -25,23 +24,17 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Update package lists
-        run: sudo apt-get update --fix-missing > /dev/null 2>&1 || true
-
-      - name: Install Valac compiler and dependencies
+      - name: Install Valac from system packages (Ubuntu 24.04 has valac 0.56)
         run: |
-          echo "=== Installing Vala ${VALAC_VERSION} ==="
-          # Try exact version first, then fallback to available
+          sudo apt-get update --fix-missing > /dev/null 2>&1 || true
+          echo "=== Checking available valac version ==="
+          sudo DEBIAN_FRONTEND=$DEBIAN_FRONTEND apt-cache policy valac
+
+      - name: Install Vala compiler and dependencies
+        run: |
           sudo DEBIAN_FRONTEND=$DEBIAN_FRONTEND apt-get install -y \
-            valac=${VALAC_VERSION:-0.56} \
-            libglib2.0-dev libjson-glib-1.0-dev libsodium-dev \
-            build-essential pkg-config 2>&1 || {
-              echo "::warning::apt install failed, trying download fallback"
-              mkdir -p /tmp/vala-install && cd /tmp/vala-install
-              curl -sL "https://github.com/vala-lang/vala/releases/download/${VALAC_VERSION:-0.56}/valac-${VALAC_VERSION:-0.56}.linux-x86_64.tar.gz" | \
-                tar xzf - 2>&1 || true
-              echo "::warning::Download fallback also failed — using system valac if available"
-            }
+            valac libglib2.0-dev libjson-glib-1.0-dev libsodium-dev \
+            build-essential pkg-config 2>&1
 
       - name: Verify Valac installation
         run: valac --version
@@ -62,7 +55,7 @@ jobs:
         run: echo "✅ Smoke test passed!"
 
   # =============================================================================
-  # Linux x86_64 — Main build using Ubuntu runner with apt + fallback
+  # Linux x86_64 — Main build using Ubuntu runner with apt
   # =============================================================================
   linux-x64:
     runs-on: ubuntu-latest
@@ -72,16 +65,16 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Update package lists
-        run: sudo apt-get update --fix-missing > /dev/null 2>&1 || true
-
-      - name: Install Valac and dependencies
+      - name: Install Vala and dependencies
         run: |
-          echo "=== Installing build tools ==="
+          sudo apt-get update --fix-missing > /dev/null 2>&1 || true
+          echo "=== Installing valac ===" && \
           sudo DEBIAN_FRONTEND=$DEBIAN_FRONTEND apt-get install -y \
-            valac=${VALAC_VERSION:-0.56} \
-            libglib2.0-dev libjson-glib-1.0-dev libsodium-dev \
+            valac libglib2.0-dev libjson-glib-1.0-dev libsodium-dev \
             build-essential pkg-config 2>&1
+
+      - name: Verify Valac version
+        run: valac --version
 
       - name: Build with Valac (verbose)
         run: make all VERBOSE=1
@@ -137,15 +130,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Update package lists
-        run: sudo apt-get update --fix-missing > /dev/null 2>&1 || true
-
-      - name: Install Valac and dependencies for release build
+      - name: Install Vala and dependencies for release build
         run: |
-          echo "=== Installing release build tools ==="
+          sudo apt-get update --fix-missing > /dev/null 2>&1 || true
           sudo DEBIAN_FRONTEND=$DEBIAN_FRONTEND apt-get install -y \
-            valac=${VALAC_VERSION:-0.56} \
-            libglib2.0-dev libjson-glib-1.0-dev libsodium-dev \
+            valac libglib2.0-dev libjson-glib-1.0-dev libsodium-dev \
             build-essential pkg-config strip 2>&1
 
       - name: Build release artifacts (stripped)
