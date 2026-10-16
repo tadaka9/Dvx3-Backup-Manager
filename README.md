@@ -1,206 +1,160 @@
-# DVX3 Backup Manager
+# DVX3 Backup Manager — Content-Addressable Incremental Backups with Zero-Copy Deduplication
 
-A secure, encrypted backup utility written in [Vala](https://valac.dev) that provides **content-addressable storage** with integrity verification. Built for Linux desktop environments, DVX3 offers a complete backup workflow: **backup → restore → verify** — all with end-to-end encryption and deduplication.
+[![CI Status](https://github.com/tadaka9/Dvx3-Backup-Manager/actions/workflows/ci.yml/badge.svg)](https://github.com/tadaka9/Dvx3-Backup-Manager/actions)
+[![Vala Version](https://img.shields.io/badge/valac-0.56-green.svg)](https://wiki.vala.org/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> 💡 *Key insight: "The most dangerous bug is the one you haven't yet encountered." — Unknown*
->
-> This project addresses that risk through rigorous type-safe implementation, compile-time verification via Vala's static typing system, and runtime integrity checks (SHA-256 hashes) on every restored file.
+> **Zero-copy, content-addressable, AES-encrypted incremental backups built entirely in Vala.**  
+> Inspired by [arXiv:1302.0621 "A Reverse-Deduplication Algorithm for Distributed Backup Systems"](https://arxiv.org/abs/1302.0621) and the [SeaweedFS content-addressable storage model](http://paper.seaweedfs.com).
 
 ---
 
-## ✨ Features
+## 🚀 What is DVX3?
+
+DVX3 is a **pure-Vala** backup system that combines:
 
 | Feature | Description |
 |---------|-------------|
-| 🔐 **AES-CBC Encryption** | PBKDF2-HMAC-SHA256 key derivation with 4096 iterations |
-| 📦 **Content-Addressable Storage** | Every file indexed by SHA-256 hash (deduplication) |
-| ⚡ **Parallel I/O** | Multi-threaded backup jobs with configurable worker count |
-| 🔄 **Incremental Backup** | Only changed files backed up; deduplicated content sharing |
-| 🔍 **Integrity Verification** | Every restored file verified against stored SHA-256 hash |
-| 📦 **Compression Support** | gzip, bzip2, xz, lz4, zstd, brotli (auto-negotiated) |
-| 🐛 **Safe Fallbacks** | SHA-256/MD5 implemented in pure Vala with OpenSSL fallback |
-| 📝 **Metadata Preservation** | File timestamps and relative paths preserved |
+| **Content-Addressable Storage** | Files are identified by their SHA-256 hash; identical content is stored only once. |
+| **Zero-Copy Deduplication** | Existing blocks in the index are reused — no redundant storage, no re-upload. |
+| **AES-CBC Encryption (pure Vala)** | PBKDF2 key derivation with XOR-based stream cipher (CTR approximation). |
+| **Incremental Engine** | Only changed files or new content are backed up; unchanged blobs are skipped automatically. |
+| **Standalone CLI** | Runs without GTK dependencies — works on minimal Linux systems. |
 
 ---
 
-## 🚀 Quick Start
+## 📦 Installation & Build
+
+### Requirements
+
+- Vala ≥ 0.56 (or compatible C compiler)
+- `pkg-config` (optional, for GTK4 GUI support)
+- GCC / Clang
+- OpenSSL development headers (optional, only if OpenSSL bindings are used)
+
+### Quick Start
 
 ```bash
-# Install dependencies
-sudo apt install valac glib-2.0-dev libgtk-4-dev gcc make pkg-config
-
-# Build from source
 git clone https://github.com/tadaka9/Dvx3-Backup-Manager.git
 cd Dvx3-Backup-Manager
 make all
-
-# Set your encryption password
-export DVX3_PASSWORD="my-super-secret-password"
-
-# Backup a directory (incremental, deduplicated)
-./dvx3-cli /path/to/your/data --parallel=4
-
-# Restore from backup with integrity verification
-./dvx3-cli -p my-super-secret-password ./backup.dvx3
 ```
 
----
-
-## 🔧 Command-Line Reference
-
-```
-Usage: dvx3 [OPTIONS] SOURCE|TARGET
-
-Options:
-  -e, --no-encrypt      Disable encryption (DEBUG only)
-  -p PASSWORD           Set encryption password
-  --password=PASSWORD   Set encryption password (long form)
-  --parallel=N          Number of parallel backup threads (default: 4)
-  --config FILE         Path to configuration file
-  -v, --verbose         Verbose output
-  --help                Show this help message
-
-Examples:
-  dvx3 ./data                          # Backup './data' directory
-  dvx3 /home/user/documents            # Full home backup
-  dvx3 ./backup.dvx3 -p mypass        # Restore encrypted backup
-```
-
----
-
-## 🏗️ Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                   DVX3 Backup Manager                         │
-├─────────────────────────────────────────────────────────────┤
-│  ┌──────────────┐         ┌─────────────────────────────┐   │
-│  │    CLI       │◄───────►│     Core Library             │   │
-│  │              │         │  ┌─────────────────────────┐ │   │
-│  │ - Backup     │         │  │ SHA-256 (pure Vala)     │ │   │
-│  │ - Restore    │◄───────►│  │ MD5 (pure Vala)         │ │   │
-│  │ - Encrypt    │         │  │ PBKDF2-HMAC-SHA256      │ │   │
-│  └──────────────┘         │  │ AES-CBC Encryption       │ │   │
-│                           │  │ Content-Addressable Index │ │   │
-│                           │  └─────────────────────────┘ │   │
-│  ┌──────────────┐         └─────────────────────────────┘   │
-│  │     TUI      │                                            │
-│  │              │                                            │
-│  │ - File browser│                                           │
-│  │ - Progress bar│                                           │
-│  │ - Config UI    │                                           │
-│  └──────────────┘                                            │
-├─────────────────────────────────────────────────────────────┤
-│  Storage Layout:                                             │
-│    backup.dvx3/                                              │
-│      ├── magic="DVX3" (4 bytes)                              │
-│      ├── version, algorithm, timestamp                        │
-│      ├── SHA-256 hash of original file                       │
-│      ├── IV (16 bytes for AES-CTR)                           │
-│      └── encrypted or plaintext data                         │
-├─────────────────────────────────────────────────────────────┤
-│  Incremental Backup Layout:                                  │
-│    backup.dvx3/                                              │
-│      ├── index.meta           # Content-addressed index      │
-│      ├── data/<sha256-hex>/   # Content blocks (dedup)       │
-│      └── metadata.json        # File-to-hash mapping         │
-├─────────────────────────────────────────────────────────────┤
-│  Security:                                                    │
-│    • PBKDF2-HMAC-SHA256 with 4096 iterations                  │
-│    • Salt derived from /dev/urandom (16 bytes)                 │
-│    • SHA-256 integrity hash on every file                      │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 📦 Build Requirements
-
-| Dependency | Purpose |
-|-----------|---------|
-| [`valac`](https://wiki.gnome.org/Projects/Vala) 0.56+ | Vala compiler with type system fixes |
-| `glib-2.0-dev` ≥ 2.70 | GLib core library (≥ 3.48 for bytes API) |
-| `gtk4-dev` | GTK4 (TUI requires GTK4, CLI uses GObject introspection) |
-| `gcc` / `clang` | C/C++ compiler for GLib bindings |
-
-> **Note on Vala 0.56:** This project applies explicit workarounds for known type system incompatibilities in Valac 0.56:
-> - Hex literals > 2³¹ use individual fields + switch lookup
-> - Static array initializers replaced with field constants
-> - `GLib.Bytes.length` (lowercase) used everywhere
-> - Manual loop concatenation instead of non-existent `System.Array.concatenate`
-
----
-
-## 🔬 Design Decisions
-
-### Why Vala?
-
-Vala provides **zero-cost abstractions** over C — the compiled output is pure, optimized C with no runtime overhead. This means:
-- No garbage collector pauses during large file reads/writes
-- Native CPU instructions (SSE/AVX for SHA-256) via GCC vectorization
-- A single binary that runs on any Linux distribution without extra dependencies
-
-### Content-Addressable Storage (arXiv:1302.0621)
-
-DVX3 implements **reverse deduplication**: files are stored under directories named by their SHA-256 hash. This provides:
-- Automatic deduplication — identical files share the same content block
-- Fast incremental backups — only new or modified files are written
-- Space-efficient storage — duplicate files consume no additional space
-
-### Security Model
-
-| Layer | Mechanism |
-|-------|-----------|
-| Key Derivation | PBKDF2-HMAC-SHA256 with 4096 iterations |
-| Salt | 16 random bytes from `/dev/urandom` |
-| Encryption | AES-CBC (pure Vala implementation via SHA-256 keystream) |
-| Integrity | SHA-256 hash verified on every restore |
-
----
-
-## 🧪 Testing
+This produces the `dvx3-cli` executable. Run it with:
 
 ```bash
-make test          # Full roundtrip: backup → restore → verify
-make rebuild       # Clean build from scratch
-make install       # Install to /usr/local/bin/dvx3
+./dvx3-cli --help
+```
+
+### Build Options
+
+| Flag | Description |
+|------|-------------|
+| `-e` / `--no-encrypt` | Disable encryption (DEBUG only) |
+| `-p PASSWORD` | Set AES encryption password |
+| `--parallel=N` | Number of parallel backup threads |
+| `--config FILE` | Path to configuration file |
+
+---
+
+## 📚 Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────┐
+│  DVX3 Backup Manager v2.0.1                         │
+├─────────────────────────────────────────────────────┤
+│                                                      │
+│  ┌──────────────────┐     ┌──────────────────────┐  │
+│  │   Core Library   │◄────►│ Incremental Engine  │  │
+│  │  (vala/core/)    │      │  Content-Addressed   │  │
+│  │                  │      │  Index + Dedup        │  │
+│  │  ┌──────────┐   │      └──────────────────────┘  │
+│  │  │ SHA-256  │   │                                  │
+│  │  │ MD5       │◄─►│  /backup/data/<sha256-hex>/    │
+│  │  │ PBKDF2   │     └──────────────────────┬───────┘  │
+│  │  │ AES-CBC  │                             │          │
+│  │  │ (pure Vala)│                          │          │
+│  │  └──────────┘                             │          │
+│  │                                           │          │
+│  │  Fallbacks:                               │          │
+│  │    - OpenSSL (if available)               │          │
+│  │    - XOR stream cipher                    │          │
+│  └──────────────────┘                         │          │
+│                                               │          │
+│  ┌─────────────────────────────────────┐      │          │
+│  │     CLI Interface (cli/main.vala)   │◄─────►│  │
+│  │                                      │        │          │
+│  │  - Backup: dvx3-cli ./data           │        │          │
+│  │  - Restore: dvx3-cli /backup.dvx3    │        │          │
+│  │  - Parallel threads                  │        │          │
+│  │  - Incremental detection             │◄───────┘          │
+│  └─────────────────────────────────────┘                      │
+│                                                               │
+├──────────────────────────────────────────────────────────────┤
+│  Data Layout:                                                │
+│  /backup/                                                     │
+│    ├── data/<sha256-hex>/               ← content-addressed blobs
+│    ├── index.meta                        ← version, file count, bytes
+│    └── DVX3                             ← magic + metadata header
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Core Library (`vala/core/dvx3.vala`)
+
+| Function | Purpose |
+|----------|---------|
+| `sha256(bytes)` / `md5(bytes)` | Pure-Vala cryptographic hashing (with OpenSSL fallback) |
+| `pbkdf2_hmac_sha256(password, salt, iterations=4096)` | Key derivation for encryption |
+| `encrypt_aes_cbc(plaintext, key, iv)` | AES-CBC with XOR-based stream cipher approximation |
+| `random_bytes(count)` / `random_int32()` | Cryptographically secure random numbers (`/dev/urandom` fallback) |
+
+### Incremental Engine (`vala/core/incremental.vala`)
+
+The content-addressable index stores:
+
+- **SHA-256 hash** → file size, modification timestamp
+- **Metadata** → source path, creation time, inode info (for change detection)
+
+On each backup run:
+
+1. Scan the source directory for new or modified files.
+2. Compute SHA-256 of each file's content.
+3. Lookup in the index — if a matching hash exists, skip writing (dedup).
+4. If new content is found, encrypt and store under `/backup/data/<hash>/`.
+
+This achieves **zero-copy deduplication** across backup sessions: identical files never touch disk more than once.
+
+---
+
+## 🧪 Running Tests
+
+```bash
+make test    # Validates CLI help output and basic operations
+```
+
+Manual roundtrip test:
+
+```bash
+mkdir -p /tmp/test-source && echo "Hello, World!" > /tmp/test-source/hello.txt
+./dvx3-cli ./test-source          # Backup (creates /backup)
+./dvx3-cli /backup.dvx3           # Restore to current directory
+cat hello.txt                     # Should print: Hello, World!
 ```
 
 ---
 
-## 📚 References & Research
+## 🔐 Cryptographic Design
 
-- **arXiv:1302.0621** — *Reverse Deduplication Storage Layout* — content-addressable indexing for deduplicated backups
-- **arXiv:2409.07081** — *Asynchronous Data Copy with Consistency Groups* — atomic multi-resource backup semantics
+| Algorithm | Role | Notes |
+|-----------|------|-------|
+| **SHA-256** | Content addressing (file identification) | Pure Vala implementation with OpenSSL fallback |
+| **PBKDF2-HMAC-SHA256** | Password-to-key derivation | 4096 iterations; salt stored in backup header |
+| **AES-CBC / XOR Stream Cipher** | Encryption | Fallback: SHA-256 keyed counter mode ≈ CTR; OpenSSL used if available |
 
----
-
-## 🐛 Known Issues & Workarounds
-
-| Issue | Status | Fix Applied |
-|-------|--------|--------------|
-| Hex literal overflow in Valac 0.56 | ✅ Fixed | Constants defined as `int` fields, accessed via switch lookup |
-| Static array initializer rejected | ✅ Fixed | Switch-based constant lookup table |
-| `.Length` vs `.length` on `GLib.Bytes` | ✅ Fixed | All uses corrected to lowercase `.length` |
-| Missing `System.Array.concatenate` | ✅ Fixed | Manual loop concatenation implemented |
-| `GLib.log()` API changed in 0.56 | ✅ Fixed | Direct `print()` calls used instead |
-
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a branch: `git checkout -b feature/amazing-feature`
-3. Make your changes (follow [CONTRIBUTING.md](./CONTRIBUTING.md))
-4. Commit with conventional commit message: `feat(core): add X feature`
-5. Push to GitHub and open a Pull Request
+> 🔍 The XOR-based stream cipher is a demonstration of a pure-Vala approach. In production, we recommend the OpenSSL fallback or integrating `libsodium`.
 
 ---
 
 ## 📄 License
 
-This project is released under the [MIT License](./LICENSE). Feel free to use it in your own projects, embed it as a library, or contribute improvements!
-
----
-
-**Built with ❤️ using Vala — type-safe systems programming for the modern era.**
+MIT — see [`LICENSE`](LICENSE) for details.
